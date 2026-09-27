@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { SourceState } from "./source-list-display";
 import {
+  readinessRecovery,
   reportRecoveryHref,
   sourceRecoveryHref,
   sourceTrustFacts,
@@ -36,6 +37,18 @@ test("recovery links retain the client and reporting window", () => {
   assert.equal(report.hash, "#report-readiness");
 });
 
+test("delivery recovery opens scoped report readiness", () => {
+  const window = { start: "2026-08-01", end: "2026-08-31" };
+  const recovery = readinessRecovery({ code: "DESTINATION_UNVERIFIED" }, "client-1", window);
+  assert.equal(recovery.label, "Review report readiness");
+  const href = new URL(recovery.href!, "https://console.example");
+  assert.equal(href.pathname, "/reports");
+  assert.equal(href.searchParams.get("clientId"), "client-1");
+  assert.equal(href.searchParams.get("startDate"), window.start);
+  assert.equal(href.searchParams.get("endDate"), window.end);
+  assert.equal(href.hash, "#report-readiness");
+});
+
 test("all-clients recovery links preserve the UI scope token", () => {
   const href = sourceRecoveryHref("connection-1", "all");
   assert.equal(new URL(href, "https://console.example").searchParams.get("clientId"), "all");
@@ -63,5 +76,8 @@ test("source trust distinguishes authorization from evidence of a successful imp
     sourceTrustFacts({ ...connected, needsReconnect: true }, null, null).authorization,
     "Action required",
   );
+  assert.equal(sourceTrustFacts({ ...connected, kind: "sync-issue" }, null, null).authorization, "Connected");
+  assert.equal(sourceTrustFacts({ ...connected, kind: "syncing" }, null, null).authorization, "Connected");
+  assert.equal(sourceTrustFacts({ ...connected, kind: "attention" }, null, null).authorization, "Needs verification");
   assert.equal(sourceTrustFacts(connected, "Never", null).latestSuccessfulImport, null);
 });

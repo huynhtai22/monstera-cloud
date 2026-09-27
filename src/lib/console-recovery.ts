@@ -27,7 +27,7 @@ export function readinessRecovery(issue: ReadinessIssue, clientId: string, windo
     case "SOURCE_QUARANTINED": case "SYNC_FAILED": case "SYNC_PARTIAL": case "SOURCE_UNVERIFIED": return { label: "Review affected source", href: source };
     case "DATA_STALE": case "REPORTING_WINDOW_INCOMPLETE": return { label: "Import reporting window", href: withClientContextAndParams("/explorer", clientId, { startDate: window.start, endDate: window.end }) + "#warehouse-refresh" };
     case "CURRENCY_UNKNOWN": case "TIMEZONE_UNKNOWN": case "TIMEZONE_CONFLICT": case "CURRENCY_CONFLICT": case "REQUIRED_PROVIDERS_INFERRED": case "DESTINATION_REQUIREMENTS_MISSING": return { label: "Review reporting configuration", configure: true };
-    case "DESTINATION_UNAVAILABLE": case "DESTINATION_UNVERIFIED": case "DESTINATION_STALE": return { label: "Review client delivery", href: withClientContextAndParams("/exports", clientId, { startDate: window.start, endDate: window.end }) };
+    case "DESTINATION_UNAVAILABLE": case "DESTINATION_UNVERIFIED": case "DESTINATION_STALE": return { label: "Review report readiness", href: reportRecoveryHref(clientId, window) };
     case "SYNC_IN_PROGRESS": return { label: "Recheck progress", recheck: true };
     case "EVIDENCE_LIMIT_REACHED": case "MIXED_CURRENCY": return { label: "Inspect this reporting window", href: withClientContextAndParams("/explorer", clientId, { startDate: window.start, endDate: window.end }) };
   }
@@ -37,7 +37,7 @@ export function readinessRecovery(issue: ReadinessIssue, clientId: string, windo
 export function sourceTrustFacts(state: SourceState, lastSync?: string | null, dataThrough?: string | null) {
   const knownSuccess = Boolean(lastSync && lastSync !== "Never" && Number.isFinite(Date.parse(lastSync)));
   return {
-    authorization: state.needsReconnect ? "Action required" : ["connected", "stale", "not-synced"].includes(state.kind) ? "Connected" : "Needs verification",
+    authorization: state.needsReconnect ? "Action required" : state.kind === "attention" ? "Needs verification" : "Connected",
     latestSuccessfulImport: knownSuccess && lastSync ? new Date(lastSync).toISOString() : null,
     dataThrough: dataThrough && Number.isFinite(Date.parse(dataThrough)) ? new Date(dataThrough).toISOString().slice(0, 10) : null,
   };
