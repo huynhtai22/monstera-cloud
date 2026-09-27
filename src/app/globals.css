@@ -612,6 +612,20 @@ html.disable-transitions *::after {
 
 /* High-contrast mode: replace blurs with opaque solid fills */
 @media (forced-colors: active) {
+    .console-activity-text {
+        background: none;
+        animation: none;
+        -webkit-text-fill-color: currentColor;
+    }
+
+    .console-activity-dots > span {
+        background: CanvasText;
+    }
+
+    .console-skeleton-shimmer::after {
+        display: none;
+    }
+
     .glass-panel {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
