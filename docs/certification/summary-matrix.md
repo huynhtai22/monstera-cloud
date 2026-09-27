@@ -1,10 +1,10 @@
 # Advertising Connectors Certification Summary Matrix
 
-**Status Date:** 2026-09-05  
+**Status Date:** 2026-09-27
 **Evaluation Harness:** `src/lib/ad-certification/harness.ts` (v1.1.0)  
 **Standard:** Strict ordered progression (`CODE_VERIFIED` → `SANDBOX_VERIFIED` → `LIVE_CONNECTED` → `LIVE_IMPORTED` → `LIVE_RECONCILED` → `DESTINATION_VERIFIED` → `RECOVERY_VERIFIED` → `PILOT_CERTIFIED`)  
 **Metric Contract Version:** 1.0.0  
-**Harness Contract Schema:** 20260904160000  
+**Harness Contract Schema:** Resolved from the release migration version at build/runtime
 
 ---
 
@@ -16,7 +16,7 @@
 > - **Google Ads, Meta Ads, and TikTok Ads remain strictly at `CODE_VERIFIED`.**
 > - **A clean committed/deployed build is strictly required for live certification.** (Dirty-tree runs are marked `certificationEligible: false` and cannot execute live runs).
 > - **The commit SHA must identify the actual deployed source state** (derived from immutable runtime build metadata, never client-supplied).
-> - **The schema version must match the applied deployment migration** (`20260904160000_reporting_evidence`).
+> - **The schema version must match the applied deployment migration** (resolved through the same release-schema resolver as `/api/version`).
 > - **The live Google run begins only after deployment verification and explicit owner authorization.**
 > - **Credentials must use the deployment platform’s secret management** (AWS Secrets Manager, Google Cloud Secret Manager, or Vercel Environment Variables with production isolation).
 > - **No secret may ever be pasted into Codex, Git repositories, generated reports, or chat.**
@@ -83,14 +83,16 @@ To prevent ambiguity regarding downstream export capabilities, delivery and retr
 Initial configuration items only enable the live certification run to begin (`LIVE_CONNECTED` / `LIVE_IMPORTED`); they do **not** award `PILOT_CERTIFIED`. Progression to `PILOT_CERTIFIED` strictly requires completing all subsequent mandatory gates:
 
 ### Step 1: Google Ads Live Advance
-1. Inject `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, and `GOOGLE_ADS_CLIENT_SECRET` via the platform secret manager into an isolated staging/pilot execution environment.
+1. Inject `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, and `GOOGLE_ADS_CLIENT_SECRET` via the platform secret manager into an isolated staging/pilot execution environment. Set `AD_CERTIFICATION_LIVE_RUNS_ENABLED=true` only in that isolated environment; it is a server-side deployment flag, never a request parameter.
 2. Execute OAuth authorization flow with the approved `adwords` scope using the account owner's administrative credentials (`LIVE_CONNECTED`).
 3. Select an active customer account (`CID`) that generated real ad impressions and spend within the target 7-day window.
-4. Execute 7-day bounded sync (`2026-08-01` to `2026-08-07`) populating warehouse tables (`LIVE_IMPORTED`).
-5. **Gate 5 (Mandatory):** Run `evaluateReconciliation` to compare warehouse metrics against Google Ads UI totals under snapshot-aligned timing context (`LIVE_RECONCILED`).
-6. **Gate 6 (Mandatory):** Retrieve dataset via Google Sheets Add-on or Looker Studio connector to mint verified `DestinationDeliveryReceipt` (`DESTINATION_VERIFIED`).
-7. **Gate 7 (Mandatory):** Execute duplicate sync pass to confirm idempotent deduplication (zero row duplication) and error taxonomy handling (`RECOVERY_VERIFIED`).
-8. **Gate 8 (Mandatory):** Authorized platform reviewer verifies provider portal facts (developer token Basic Access approved, live account mode confirmed; API version `v23` derived from runtime connector in `src/lib/google-ads.ts`, not Google Cloud Console) and signs off on the sanitized evidence pack (`PILOT_CERTIFIED`).
+4. The authenticated workspace owner records portal facts through `POST /api/ad-certification/portal-confirmation`, scoped to the connected source and CID. The harness reads the persisted owner confirmation; caller-supplied claims do not establish verified status.
+5. Execute a 7-day bounded sync populating warehouse tables (`LIVE_IMPORTED`).
+6. A persisted platform `OPERATOR` starts the evaluation through `POST /api/ad-certification/run`, supplying native Google Ads totals and snapshot timestamps from the same date window. The server binds the evidence pack to its deployed commit/schema metadata and requires both the pack and audit event to persist durably.
+7. **Gate 5 (Mandatory):** Reconcile warehouse metrics against Google Ads UI totals under snapshot-aligned timing context (`LIVE_RECONCILED`).
+8. **Gate 6 (Mandatory):** Retrieve dataset via Google Sheets Add-on or Looker Studio connector to mint verified `DestinationDeliveryReceipt` (`DESTINATION_VERIFIED`).
+9. **Gate 7 (Mandatory):** Execute duplicate sync pass to confirm idempotent deduplication (zero row duplication) and error taxonomy handling (`RECOVERY_VERIFIED`).
+10. **Gate 8 (Mandatory):** Authorized platform reviewer verifies provider portal facts (developer token Basic Access approved, live account mode confirmed; API version `v23` derived from runtime connector in `src/lib/google-ads.ts`, not Google Cloud Console) and signs off on the sanitized evidence pack (`PILOT_CERTIFIED`).
 
 ### Step 2: Meta Ads Live Advance
 1. Inject `META_ADS_APP_ID` and `META_ADS_APP_SECRET` via the platform secret manager into isolated staging/production.
