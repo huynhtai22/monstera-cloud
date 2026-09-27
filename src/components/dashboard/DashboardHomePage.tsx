@@ -19,6 +19,7 @@ import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { SetupWizard } from "./SetupWizard";
+import { ConsoleActivityLabel } from "./ConsoleActivityLabel";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
 import { trackOnce } from "@/lib/analytics-events";
@@ -80,29 +81,30 @@ function DashboardSkeleton() {
     <PageShell>
       <section aria-busy="true" aria-label="Loading dashboard" className="space-y-6">
         <p className="sr-only" role="status">Loading your workspace dashboard</p>
+        <ConsoleActivityLabel label="Preparing your dashboard" className="text-xs text-ink-mute" />
         <div className="flex items-center justify-between border-b border-line pb-4">
           <div className="space-y-2">
-            <div className="h-5 w-28 rounded bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
-            <div className="h-3 w-56 rounded bg-panel/80 motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="console-skeleton-shimmer h-5 w-28 rounded bg-panel" />
+            <div className="console-skeleton-shimmer h-3 w-56 rounded bg-panel/80" />
           </div>
-          <div className="h-8 w-24 rounded-md bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="console-skeleton-shimmer h-8 w-24 rounded-md bg-panel" />
         </div>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="rounded-lg border border-line bg-panel p-3.5">
-              <div className="h-3 w-16 rounded bg-canvas motion-safe:animate-pulse motion-reduce:animate-none" />
-              <div className="mt-3 h-5 w-24 rounded bg-canvas motion-safe:animate-pulse motion-reduce:animate-none" />
+              <div className="console-skeleton-shimmer h-3 w-16 rounded bg-canvas" />
+              <div className="console-skeleton-shimmer mt-3 h-5 w-24 rounded bg-canvas" />
             </div>
           ))}
         </div>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
           <div className="space-y-6 xl:col-span-7">
-            <div className="h-56 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
-            <div className="h-40 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="console-skeleton-shimmer h-56 rounded-lg border border-line bg-panel" />
+            <div className="console-skeleton-shimmer h-40 rounded-lg border border-line bg-panel" />
           </div>
           <div className="space-y-6 xl:col-span-5">
-            <div className="h-44 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
-            <div className="h-52 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="console-skeleton-shimmer h-44 rounded-lg border border-line bg-panel" />
+            <div className="console-skeleton-shimmer h-52 rounded-lg border border-line bg-panel" />
           </div>
         </div>
       </section>
@@ -225,8 +227,14 @@ function DashboardSourceRow({ source }: { source: DashboardOverviewDTO["sourcesL
         className={cn("inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium", state.textClassName)}
         aria-label={`${state.label}. ${state.detail}`}
       >
-        <span className={cn("h-1.5 w-1.5 rounded-full", state.dotClassName, source.state === "syncing" && "motion-safe:animate-pulse motion-reduce:animate-none")} />
-        {state.label}
+        {source.state === "syncing" ? (
+          <ConsoleActivityLabel label={state.label} />
+        ) : (
+          <>
+            <span className={cn("h-1.5 w-1.5 rounded-full", state.dotClassName)} />
+            {state.label}
+          </>
+        )}
       </span>
     </div>
   );
@@ -359,8 +367,11 @@ export function DashboardHomePage() {
             disabled={isValidating}
             className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:cursor-wait disabled:opacity-50"
           >
-            <RefreshCw className={cn("h-3 w-3", isValidating && "motion-safe:animate-spin")} />
-            {isValidating ? "Retrying…" : "Retry"}
+            {isValidating ? (
+              <ConsoleActivityLabel label="Retrying…" />
+            ) : (
+              <><RefreshCw className="h-3 w-3" />Retry</>
+            )}
           </button>
         </div>
       </PageShell>
@@ -415,8 +426,14 @@ export function DashboardHomePage() {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-mute" role="status" aria-live="polite">
               <span className={cn("inline-flex items-center gap-1 font-medium", warehouseState.textClassName)}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", warehouseState.dotClassName, summaryCards?.warehouse?.status === "refreshing" && "motion-safe:animate-pulse motion-reduce:animate-none")} />
-                Warehouse: {warehouseState.label}
+                {summaryCards?.warehouse?.status === "refreshing" ? (
+                  <ConsoleActivityLabel label="Warehouse: Syncing" />
+                ) : (
+                  <>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", warehouseState.dotClassName)} />
+                    Warehouse: {warehouseState.label}
+                  </>
+                )}
               </span>
               <span aria-hidden="true">·</span>
               <span>{warehouseSnapshot?.dataThroughDate ? `Data through ${warehouseSnapshot.dataThroughDate}` : warehouseState.detail}</span>
@@ -436,8 +453,11 @@ export function DashboardHomePage() {
               disabled={isUpdating}
               className="inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1.5 text-xs font-medium text-ink-mute transition-colors duration-150 hover:bg-white/[0.04] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:cursor-wait disabled:opacity-60"
             >
-              <RefreshCw className={cn("h-3 w-3 transition-transform duration-150", isUpdating && "motion-safe:animate-spin text-ink")} />
-              <span>{isUpdating ? "Updating…" : "Update status"}</span>
+              {isUpdating ? (
+                <ConsoleActivityLabel label="Updating…" className="text-ink" />
+              ) : (
+                <><RefreshCw className="h-3 w-3" /><span>Update status</span></>
+              )}
             </button>
             <Link
               href="/sources"
@@ -468,7 +488,7 @@ export function DashboardHomePage() {
               disabled={isUpdating}
               className="self-end rounded-md border border-amber-400/30 px-2.5 py-1.5 font-semibold text-amber-100 transition-colors hover:bg-amber-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/40 disabled:cursor-wait disabled:opacity-50 sm:self-auto"
             >
-              {isUpdating ? "Retrying…" : "Retry update"}
+              {isUpdating ? <ConsoleActivityLabel label="Retrying…" /> : "Retry update"}
             </button>
           </div>
         )}
@@ -513,6 +533,9 @@ export function DashboardHomePage() {
               <span className="inline-flex items-center rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink-mute">
                 Last 7 Days
               </span>
+              {summaryCards?.warehouse?.status === "refreshing" && (
+                <ConsoleActivityLabel label="Refreshing metrics" className="text-[11px] text-ink-mute" />
+              )}
             </div>
             <Link
               href="/explorer"
@@ -698,8 +721,14 @@ export function DashboardHomePage() {
               <Database className="h-3.5 w-3.5 text-ink-mute" />
             </div>
             <p className="mt-1.5 text-base font-semibold tabular-nums text-ink flex items-center gap-1.5">
-              <span className={cn("h-1.5 w-1.5 rounded-full", warehouseState.dotClassName, summaryCards?.warehouse?.status === "refreshing" && "motion-safe:animate-pulse motion-reduce:animate-none")} />
-              <span className={warehouseState.textClassName}>{warehouseState.label}</span>
+              {summaryCards?.warehouse?.status === "refreshing" ? (
+                <ConsoleActivityLabel label={warehouseState.label} className={warehouseState.textClassName} />
+              ) : (
+                <>
+                  <span className={cn("h-1.5 w-1.5 rounded-full", warehouseState.dotClassName)} />
+                  <span className={warehouseState.textClassName}>{warehouseState.label}</span>
+                </>
+              )}
             </p>
             <p className="mt-0.5 text-[11px] text-ink-mute truncate">
               {summaryCards?.warehouse?.dataThroughDate ? `Data through ${summaryCards.warehouse.dataThroughDate}` : warehouseState.detail}
@@ -851,7 +880,9 @@ export function DashboardHomePage() {
                   </h2>
                   <span className="text-ink-mute">·</span>
                   <span className="text-[11px] text-ink-mute">
-                    {warehouseSnapshot?.lastRefreshAt ? `Refreshed ${warehouseSnapshot.lastRefreshAt}` : "Awaiting first sync"}
+                    {summaryCards?.warehouse?.status === "refreshing" ? (
+                      <ConsoleActivityLabel label="Refreshing data" />
+                    ) : warehouseSnapshot?.lastRefreshAt ? `Refreshed ${warehouseSnapshot.lastRefreshAt}` : "Awaiting first sync"}
                   </span>
                 </div>
                 <Link
@@ -953,8 +984,14 @@ export function DashboardHomePage() {
                         <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-ink-mute">{dest.subtext}</p>
                       </div>
                       <span className={cn("inline-flex shrink-0 items-center gap-1 text-[10px] font-medium", state.textClassName)}>
-                        <span className={cn("h-1 w-1 rounded-full", state.dotClassName)} />
-                        {state.label}
+                        {dest.status === "syncing" ? (
+                          <ConsoleActivityLabel label={state.label} />
+                        ) : (
+                          <>
+                            <span className={cn("h-1 w-1 rounded-full", state.dotClassName)} />
+                            {state.label}
+                          </>
+                        )}
                       </span>
                     </Link>
                   );

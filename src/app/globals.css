@@ -514,10 +514,118 @@ html.disable-transitions *::after {
     animation: shimmerSweep 1.2s var(--spring, cubic-bezier(0.25,1,0.5,1)) forwards;
 }
 
+/* Console work states: a quiet 3×3 dot sequence and a moving text highlight. */
+.console-activity-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.console-activity-dots {
+    display: inline-grid;
+    flex: none;
+    grid-template-columns: repeat(3, 3px);
+    gap: 2px;
+    width: 13px;
+    height: 13px;
+}
+
+.console-activity-dots > span {
+    width: 3px;
+    height: 3px;
+    border-radius: 1px;
+    background: #d6a55f;
+    opacity: 0.3;
+    animation: consoleDotWave 1.45s ease-in-out infinite;
+}
+
+.console-activity-dots > span:nth-child(2) { animation-delay: 100ms; }
+.console-activity-dots > span:nth-child(3) { animation-delay: 200ms; }
+.console-activity-dots > span:nth-child(4) { animation-delay: 400ms; }
+.console-activity-dots > span:nth-child(5) { animation-delay: 300ms; }
+.console-activity-dots > span:nth-child(6) { animation-delay: 250ms; }
+.console-activity-dots > span:nth-child(7) { animation-delay: 500ms; }
+.console-activity-dots > span:nth-child(8) { animation-delay: 600ms; }
+.console-activity-dots > span:nth-child(9) { animation-delay: 700ms; }
+
+@keyframes consoleDotWave {
+    0%, 70%, 100% { opacity: 0.25; transform: scale(0.75); }
+    35% { opacity: 1; transform: scale(1); }
+}
+
+.console-activity-text {
+    display: inline-block;
+    background: linear-gradient(100deg, currentColor 30%, #fff 50%, currentColor 70%);
+    background-size: 250% 100%;
+    background-position: 130% 0;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: consoleTextShimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes consoleTextShimmer {
+    to { background-position: -130% 0; }
+}
+
+.console-skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.console-skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, 0.09) 50%, transparent 75%);
+    transform: translateX(-100%);
+    pointer-events: none;
+    animation: consoleSkeletonShimmer 2.1s ease-in-out infinite;
+}
+
+@keyframes consoleSkeletonShimmer {
+    to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .console-activity-dots > span {
+        animation: none;
+        opacity: 0.65;
+        transform: none;
+    }
+
+    .console-activity-text {
+        background: none;
+        animation: none;
+        -webkit-text-fill-color: currentColor;
+    }
+
+    .console-skeleton-shimmer::after {
+        display: none;
+        animation: none;
+    }
+}
+
 /* ── Accessibility: forced-colors / reduced-transparency ────────────────── */
 
 /* High-contrast mode: replace blurs with opaque solid fills */
 @media (forced-colors: active) {
+    .console-activity-text {
+        background: none;
+        animation: none;
+        -webkit-text-fill-color: currentColor;
+    }
+
+    .console-activity-dots > span {
+        background: CanvasText;
+    }
+
+    .console-skeleton-shimmer::after {
+        display: none;
+    }
+
     .glass-panel {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
