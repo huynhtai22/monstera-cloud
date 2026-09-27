@@ -2,6 +2,11 @@ import { Resend } from 'resend';
 import { logger } from "@/lib/logger";
 import { assertMailSimulationAllowed } from "@/lib/e2e-env-guard";
 import { classifyTransportFailure } from "@/lib/dispatch-outcome";
+import {
+  classifyApprovedEmailException,
+  classifyApprovedEmailResponse,
+  type ApprovedBlueprintEmailOutcome,
+} from "@/lib/report-email-outcome";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
@@ -289,6 +294,48 @@ export const sendClientWeeklyReport = async (
     return { success: false, error: err };
   }
 };
+
+export type ApprovedBlueprintEmail = {
+  to: string;
+  subject: string;
+  html: string;
+  idempotencyKey: string;
+};
+
+/**
+ * Send an already-rendered, approved snapshot email and preserve the
+ * provider's acceptance boundary. A Resend API rejection is definitive;
+ * transport exceptions are ambiguous unless the socket provably never
+ * connected. Raw provider errors and recipient details are never returned.
+ */
+export async function sendApprovedBlueprintEmail(
+  message: ApprovedBlueprintEmail,
+): Promise<ApprovedBlueprintEmailOutcome> {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating approved report email");
+    return { status: "ACCEPTED", providerMessageId: null };
+  }
+
+  try {
+    const response = await getResendClient().emails.send({
+      from: "Monstera Cloud <no-reply@monsteracloud.com>",
+      to: [message.to],
+      subject: message.subject,
+      html: message.html,
+    }, { idempotencyKey: message.idempotencyKey });
+    if (response.error) {
+      logger.warn("[MAIL] Approved report email rejected by provider");
+    }
+    return classifyApprovedEmailResponse(response);
+  } catch (error) {
+    const outcome = classifyApprovedEmailException(error);
+    logger.warn("[MAIL] Approved report email transport ended without a provider response", {
+      status: outcome.status,
+    });
+    return outcome;
+  }
+}
 
 export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
   try {
