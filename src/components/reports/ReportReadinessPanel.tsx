@@ -42,12 +42,12 @@ export function ReportReadinessPanel({ evaluation, loading, error, onRetry, comp
     </div>
     <p className="mt-2 text-xs leading-relaxed text-ink-mute">{issue ? READINESS_MESSAGES[issue.code] : "Saved evidence meets all readiness checks for this window."}</p>
     <p className="mt-2 text-[11px] text-ink-mute">{evaluation.window.start} — {evaluation.window.end} · Evaluated {time(evaluation.evaluatedAt)}</p>
-    <dl className="mt-4 grid gap-3 rounded-lg border border-line p-3 sm:grid-cols-3" aria-label="Reporting data checks">
-      <div><dt className="text-[11px] text-ink-mute">Latest recorded successful import</dt><dd className="mt-1 text-xs text-ink">{time(evaluation.latestSuccessfulSyncAt)}</dd></div>
-      <div><dt className="text-[11px] text-ink-mute">Latest data date</dt><dd className="mt-1 text-xs text-ink">{evaluation.latestDataDate ?? "Not confirmed"}</dd></div>
-      <div><dt className="text-[11px] text-ink-mute">Reporting window coverage</dt><dd className="mt-1 text-xs text-ink">{evaluation.dataStatus === "READY" ? "Data checks passed" : labels[evaluation.dataStatus] ?? "Unknown"}</dd></div>
-    </dl>
-    <p className="mt-2 text-[11px] text-ink-mute">A recent import or data date alone does not establish complete coverage. Readiness also checks required accounts, dates, reporting context, and delivery evidence.</p>
+    <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-mute" aria-label="Reporting data checks">
+      <span>Last successful import: <span className="text-ink">{time(evaluation.latestSuccessfulSyncAt)}</span></span>
+      <span>Latest data date: <span className="text-ink">{evaluation.latestDataDate ?? "Not confirmed"}</span></span>
+      <span>Window coverage: <span className="text-ink">{evaluation.dataStatus === "READY" ? "Data checks passed" : labels[evaluation.dataStatus] ?? "Unknown"}</span></span>
+    </p>
+    <p className="mt-1 text-[11px] text-ink-mute">Readiness checks required accounts, dates, reporting context, and delivery evidence.</p>
     {[...evaluation.blockers, ...evaluation.warnings].length > 0 && <details className="mt-4 rounded-lg border border-line p-3 text-xs">
       <summary className="cursor-pointer font-medium text-ink">Recovery actions ({evaluation.blockers.length + evaluation.warnings.length})</summary>
       <ul className="mt-3 space-y-2" aria-label="Report recovery actions">
