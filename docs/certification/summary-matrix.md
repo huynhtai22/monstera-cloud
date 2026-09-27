@@ -27,7 +27,7 @@
 
 | Provider | Highest Proven Level | Controlled Pilot Status | External Access / Approval Status | Primary Blocker to Live Pilot |
 |---|:---:|:---:|---|---|
-| **Google Ads** | **`CODE_VERIFIED`** | ❌ **BLOCKED** | ✅ Basic Access Approved (2026-08-25). 15,000 ops/day quota. | Pending verified production OAuth client credentials and developer token in platform secret manager, and authorized customer CID. Test accounts structurally omit serving metrics. |
+| **Google Ads** | **`CODE_VERIFIED`** | ❌ **BLOCKED** | Google Cloud project access level and authorized customer CID still need live verification. | Pending configured OAuth client credentials, verified Ads API access for the owning Cloud project, and authorized customer CID. Test accounts structurally omit serving metrics. |
 | **Meta Ads** | **`CODE_VERIFIED`** | ❌ **BLOCKED** | ⚠️ App Review / Live mode pending live app setup. | Pending `META_ADS_APP_ID` & `META_ADS_APP_SECRET` in platform secret manager, production OAuth consent on an active `act_*` account, and native Ads Manager reconciliation. |
 | **TikTok Ads** | **`CODE_VERIFIED`** | ❌ **BLOCKED** | ⚠️ TikTok for Business Marketing API app pending. | Pending `TIKTOK_BUSINESS_APP_ID` & `SECRET` in platform secret manager, production OAuth consent on authorized numeric advertiser account, and report task polling. |
 
@@ -38,7 +38,7 @@
 | Certification Gate | Google Ads | Meta Ads | TikTok Ads | Rules & Acceptance Criteria |
 |---|:---:|:---:|:---:|---|
 | **1. CODE_VERIFIED** | ✅ **PASSED** | ✅ **PASSED** | ✅ **PASSED** | Contract v1.0.0 validated. Unit test suites passing locally. Schema mapping region-agnostic and multi-currency safe. |
-| **2. SANDBOX_VERIFIED** | ⚪ **NOT_APPLICABLE** | ⚠️ **BLOCKED** | ⚠️ **BLOCKED** | Google Ads test accounts structurally omit serving metrics; Basic Access live path is the approved alternative path. Meta & TikTok blocked due to missing developer sandbox credentials in environment. |
+| **2. SANDBOX_VERIFIED** | ⚪ **NOT_APPLICABLE** | ⚠️ **BLOCKED** | ⚠️ **BLOCKED** | Google Ads test accounts structurally omit serving metrics; authorized live-account validation is the alternative path. Meta & TikTok blocked due to missing developer sandbox credentials in environment. |
 | **3. LIVE_CONNECTED** | ⚠️ **BLOCKED** | ⏸️ **NOT_EXECUTED** | ⏸️ **NOT_EXECUTED** | Google Ads blocked by missing live credentials. Meta and TikTok not executed due to upstream Gate 2 block. |
 | **4. LIVE_IMPORTED** | ⏸️ **NOT_EXECUTED** | ⏸️ **NOT_EXECUTED** | ⏸️ **NOT_EXECUTED** | Bounded 7-day reporting window imported into `CampaignMetric` with verified continuous date coverage. |
 | **5. LIVE_RECONCILED** | ⏸️ **NOT_EXECUTED** | ⏸️ **NOT_EXECUTED** | ⏸️ **NOT_EXECUTED** | Native platform totals reconciled against warehouse totals under identical semantics (timezone, currency, attribution). Snapshot alignment strictly enforced. |
@@ -69,7 +69,7 @@ To prevent ambiguity regarding downstream export capabilities, delivery and retr
    - The root `.gitignore` enforces exclusion of `evidence/` and all reviewer report bundles.
    - The harness programmatically refuses (`throw new Error(...)`) to persist live evidence to git-tracked repository paths.
 2. **Deep Redaction:**
-   - All client secrets, developer tokens, access tokens, refresh tokens, auth headers, and session cookies are deeply redacted to `"[REDACTED]"` prior to serialization.
+   - All client secrets, provider tokens, access tokens, refresh tokens, auth headers, and session cookies are deeply redacted to `"[REDACTED]"` prior to serialization.
    - Account identifiers are masked with preserved correlation suffixes (e.g. `act_***6789`, `id_***7890`).
    - Audit evidence packs record `harnessVersion`, `contractVersion`, `buildId`, `schemaVersion`, and `commitSha` for immutable provenance.
 
@@ -78,12 +78,12 @@ To prevent ambiguity regarding downstream export capabilities, delivery and retr
 ## 5. Human Review & Owner Action Checklist (Platform Secret Manager Protocol)
 
 > [!CAUTION]
-> **Zero Local Secrets:** Never enter live credentials, API keys, or developer tokens into `.env.local`, git repositories, or chat prompts. All live credentials must be injected exclusively via secure deployment platform secret managers (e.g., AWS Secrets Manager, Google Cloud Secret Manager, or Vercel Environment Secrets with production restriction).
+> **Zero Local Secrets:** Never enter live credentials, API keys, or access tokens into `.env.local`, git repositories, or chat prompts. All live credentials must be injected exclusively via secure deployment platform secret managers (e.g., AWS Secrets Manager, Google Cloud Secret Manager, or Vercel Environment Secrets with production restriction).
 
 Initial configuration items only enable the live certification run to begin (`LIVE_CONNECTED` / `LIVE_IMPORTED`); they do **not** award `PILOT_CERTIFIED`. Progression to `PILOT_CERTIFIED` strictly requires completing all subsequent mandatory gates:
 
 ### Step 1: Google Ads Live Advance
-1. Inject `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, and `GOOGLE_ADS_CLIENT_SECRET` via the platform secret manager into an isolated staging/pilot execution environment. Set `AD_CERTIFICATION_LIVE_RUNS_ENABLED=true` only in that isolated environment; it is a server-side deployment flag, never a request parameter.
+1. Inject `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET` via the platform secret manager into an isolated staging/pilot execution environment. Verify the owning Google Cloud project's Google Ads API access level. Set `AD_CERTIFICATION_LIVE_RUNS_ENABLED=true` only in that isolated environment; it is a server-side deployment flag, never a request parameter.
 2. Execute OAuth authorization flow with the approved `adwords` scope using the account owner's administrative credentials (`LIVE_CONNECTED`).
 3. Select an active customer account (`CID`) that generated real ad impressions and spend within the target 7-day window.
 4. The authenticated workspace owner records portal facts through `POST /api/ad-certification/portal-confirmation`, scoped to the connected source and CID. The harness reads the persisted owner confirmation; caller-supplied claims do not establish verified status.
@@ -92,7 +92,7 @@ Initial configuration items only enable the live certification run to begin (`LI
 7. **Gate 5 (Mandatory):** Reconcile warehouse metrics against Google Ads UI totals under snapshot-aligned timing context (`LIVE_RECONCILED`).
 8. **Gate 6 (Mandatory):** Retrieve dataset via Google Sheets Add-on or Looker Studio connector to mint verified `DestinationDeliveryReceipt` (`DESTINATION_VERIFIED`).
 9. **Gate 7 (Mandatory):** Execute duplicate sync pass to confirm idempotent deduplication (zero row duplication) and error taxonomy handling (`RECOVERY_VERIFIED`).
-10. **Gate 8 (Mandatory):** Authorized platform reviewer verifies provider portal facts (developer token Basic Access approved, live account mode confirmed; API version `v23` derived from runtime connector in `src/lib/google-ads.ts`, not Google Cloud Console) and signs off on the sanitized evidence pack (`PILOT_CERTIFIED`).
+10. **Gate 8 (Mandatory):** Authorized platform reviewer verifies provider facts (Google Ads API access for the OAuth client's Cloud project, live account mode confirmed; API version `v23` derived from runtime connector in `src/lib/google-ads.ts`) and signs off on the sanitized evidence pack (`PILOT_CERTIFIED`).
 
 ### Step 2: Meta Ads Live Advance
 1. Inject `META_ADS_APP_ID` and `META_ADS_APP_SECRET` via the platform secret manager into isolated staging/production.

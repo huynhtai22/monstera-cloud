@@ -960,11 +960,10 @@ export class CertificationHarness {
     if (input.provider === "google_ads") {
       const reason =
         "Google Ads test accounts do NOT produce real serving metrics (impressions, clicks, spend). " +
-        "Google Ads Basic Access was approved on 2026-08-25 for production API calls. " +
-        "Live developer token and authorized live account serve as the approved verification path.";
+        "Live Google Ads API access for the OAuth client's Cloud project and an authorized live account are required for production validation.";
       const alternativePath =
         "Google test-account API behavior is separately code/test verified in unit/integration test suites; " +
-        "serving metric reconciliation proceeds to authorized live run with approved Basic Access token.";
+        "serving metric reconciliation proceeds to an authorized live run after Cloud project access is verified.";
 
       CertificationHarness.validateGateTransition("SANDBOX_VERIFIED", "NOT_APPLICABLE", {
         provider: "google_ads",

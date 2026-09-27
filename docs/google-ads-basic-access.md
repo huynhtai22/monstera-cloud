@@ -1,19 +1,18 @@
-# Google Ads — Basic Access validation status & manual checklist
+# Google Ads — API access validation status & manual checklist
 
-**Status: Basic Access approved (2026-08-25) — production validation pending.**
+**Status: Google Ads API project access must be verified in Google Cloud Console — live account validation pending.**
 
-Basic Access removes the external API-access blocker. It does not by itself prove OAuth correctness, metric accuracy, tenant safety, or synchronization reliability. This document captures what is verified in-repo and the exact remaining manual procedure.
+Google retired developer-token headers on 2026-09-09. API authorization now depends on the access level of the Google Cloud project that owns the OAuth client. Project access alone does not prove OAuth correctness, metric accuracy, tenant safety, or synchronization reliability. This document captures what is verified in-repo and the remaining live-account procedure.
 
-## Verified in-repository (2026-08-24)
+## Verified in-repository (2026-09-27)
 
-- **Developer token handling**: consumed only server-side from `GOOGLE_ADS_DEVELOPER_TOKEN`, injected as the `developer-token` header (`src/lib/google-ads.ts` `searchStream` / `listAccessibleCustomers`). Never sent to the browser, never persisted on connections — a regression that stored it inside connection credential blobs via the OAuth adapter's `extraFields` was found and removed.
-- **Error redaction**: provider responses that echo request material are scrubbed of the developer-token value before an error leaves the client (`scrubDevToken`); unit-enforced.
+- **Current request authentication**: the connector sends the user's OAuth bearer token and, for MCC requests, `login-customer-id`. It does not require or send `GOOGLE_ADS_DEVELOPER_TOKEN`.
+- **Project access errors**: `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION` is classified as an application-level access blocker; legacy `DEVELOPER_TOKEN_NOT_APPROVED` responses remain recognized for compatibility.
 - **Micros conversion**: `cost_micros` → currency exactly once during normalization; `average_cpc`/`average_cost` (micros without the suffix) now converted as well; `ctr` untouched.
-- **Structured approval error**: `DEVELOPER_TOKEN_NOT_APPROVED` remains a first-class, non-retried classification (other deployments/tokens may still hit it) — see `isGoogleAdsDeveloperTokenBlocked`.
 - **MCC hierarchy**: leaf discovery via `customer_client` with root MCC as `login-customer-id`; standalone accounts fall back to self-as-leaf; manager children excluded from sync targets.
 - **Removed campaigns**: excluded (`campaign.status != 'REMOVED'`). Zero-impression rows follow Google defaults (excluded).
 - **Partial child-account failure**: per-leaf try/catch marks failed leaves retryable without poisoning successful siblings; outcome summary drives connection state.
-- Unit suite: `src/lib/google-ads.test.ts` (18 cases — normalization, headers/login-id, batch merge, date clauses, retry matrix, redaction, discovery fallback).
+- Unit suite: `src/lib/google-ads.test.ts` covers normalization, current headers/login-id, batch merge, date clauses, retry matrix, project-access classification, discovery fallback, and confirms the retired token setting is ignored.
 
 ## Manual validation checklist (requires an authorized live account)
 
@@ -40,11 +39,12 @@ Basic Access removes the external API-access blocker. It does not by itself prov
 
 Do not compare totals copied from differently scoped reports. Record the customer ID, completed `since`/`until` range, Google Ads account timezone, currency, campaign scope (the product excludes `REMOVED` campaigns), and conversion semantics on both sides. The pure internal helper `reconcileGoogleAdsTotals` in `src/lib/google-ads-reconciliation.ts` returns a context mismatch before a variance is interpreted; it accepts only sanitized totals and makes no provider request.
 
-For a manual pilot record, aggregate `CampaignMetric` using the same workspace, connection, account, date window, and campaign scope used by the Google report. Never include OAuth tokens, developer tokens, or raw connection credentials in the record.
+For a manual pilot record, aggregate `CampaignMetric` using the same workspace, connection, account, date window, and campaign scope used by the Google report. Never include OAuth tokens or raw connection credentials in the record.
 
-## Known Basic Access notes
+## Google Cloud project access notes
 
-- Basic Access enforces daily operations quotas (fine for pilot cadences; not unlimited capacity).
+- Verify the Google Ads API access level for the Google Cloud project that owns the OAuth client. Google Ads API project access and OAuth user permissions are separate checks.
+- Daily operations quotas and customer permissions still apply.
 - No claim of real-time data — rolling re-sync windows apply.
 - Manager-child access depends on the linking structure at authorization time.
 
@@ -52,7 +52,8 @@ For a manual pilot record, aggregate `CampaignMetric` using the same workspace, 
 
 | Failure | Class | Retry? | User action |
 |---|---|---|---|
-| `DEVELOPER_TOKEN_NOT_APPROVED` | app-level blocker | no | Contact support / check deployment token config |
+| `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION` | app-level blocker | no | Verify Google Ads API access for the OAuth client's Cloud project in Google Cloud Console |
+| `DEVELOPER_TOKEN_NOT_APPROVED` | legacy provider response | no | Confirm the deployed connector no longer sends a developer-token header; inspect the upstream response |
 | 401 / expired access token | transient auth | auto (refresh) | none |
 | Revoked refresh token / `invalid_grant` | permanent auth | no | Reconnect from Sources |
 | 403 permission denied on customer | account access | no | Review account access / linking |
