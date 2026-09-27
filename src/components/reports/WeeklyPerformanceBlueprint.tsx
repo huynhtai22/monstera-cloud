@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Loader2,
   RefreshCw,
+  Send,
   ShieldAlert,
   Sparkles,
   SlidersHorizontal,
@@ -129,7 +130,7 @@ export type ReportLifecycleState =
   | "Not ready to review"
   | "Ready to review"
   | "Approved — ready to send"
-  | "Delivered"
+  | "Dataset retrieval verified"
   | "Approval outdated"
   | string;
 
@@ -161,6 +162,16 @@ type BlueprintPayload = {
   approval?: ReportApprovalState | null;
   lifecycle?: ReportLifecycle | null;
   lifecycleState?: string;
+  canEmailApprovedReports?: boolean;
+  emailDelivery?: {
+    id: string;
+    status: "PROVIDER_STARTED" | "ACCEPTED" | "DEFINITIVE_FAILED" | "AMBIGUOUS";
+    recipient: string;
+    providerMessageId: string | null;
+    failureCode: string | null;
+    attemptedAt: string;
+    finishedAt: string | null;
+  } | null;
   error?: string;
 };
 
@@ -202,9 +213,17 @@ function LifecycleBadge({ state }: { state: ReportLifecycleState }) {
       tone: "border-emerald-500/40 bg-emerald-950/30 text-emerald-300",
       icon: CheckCircle2,
     },
-    "Delivered": {
+    "Dataset retrieval verified": {
       tone: "border-purple-500/40 bg-purple-950/30 text-purple-300",
       icon: BadgeCheck,
+    },
+    "Dataset retrieval verified (unapproved)": {
+      tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
+      icon: ShieldAlert,
+    },
+    "Dataset evidence outdated": {
+      tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
+      icon: ShieldAlert,
     },
     "Approval outdated": {
       tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
@@ -274,6 +293,9 @@ export function WeeklyPerformanceBlueprint({
   const [windowEnd, setWindowEnd] = React.useState("");
   const [generating, setGenerating] = React.useState(false);
   const [approving, setApproving] = React.useState(false);
+  const [sendingEmail, setSendingEmail] = React.useState(false);
+  const [emailRecipient, setEmailRecipient] = React.useState("");
+  const emailIdempotencyKey = React.useRef<string | null>(null);
   const [generateError, setGenerateError] = React.useState<{ message: string; code?: string } | null>(null);
 
   React.useEffect(() => {
@@ -291,6 +313,10 @@ export function WeeklyPerformanceBlueprint({
     enabled ? `/api/reports/blueprint?${query.toString()}` : null,
     fetcher,
   );
+
+  React.useEffect(() => {
+    emailIdempotencyKey.current = null;
+  }, [workspaceId, selectedClientId, data?.snapshot?.id]);
 
   const clientRequirement = data?.client ?? null;
   const requirementsConfigured = Boolean(
@@ -354,6 +380,51 @@ export function WeeklyPerformanceBlueprint({
     }
   };
 
+  const sendApprovedEmail = async () => {
+    if (!data?.snapshot?.id || !emailRecipient.trim()) return;
+    setSendingEmail(true);
+    if (
+      data.emailDelivery?.status === "PROVIDER_STARTED" &&
+      Date.now() - new Date(data.emailDelivery.attemptedAt).getTime() >= 10 * 60 * 1000
+    ) {
+      // A fresh click after the recovery window is an explicit operator retry.
+      emailIdempotencyKey.current = null;
+    }
+    emailIdempotencyKey.current ??= crypto.randomUUID();
+    try {
+      const res = await fetch("/api/reports/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          snapshotId: data.snapshot.id,
+          recipient: emailRecipient.trim(),
+          idempotencyKey: emailIdempotencyKey.current,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (payload.attempt?.status === "ACCEPTED") {
+        toast.success("Email provider accepted the report. Inbox delivery is not confirmed.");
+      } else if (payload.attempt?.status === "DEFINITIVE_FAILED") {
+        toast.error("The email provider rejected the report send.");
+      } else if (payload.attempt?.status === "AMBIGUOUS" || res.status === 202) {
+        toast.error(payload.attempt?.status === "PROVIDER_STARTED"
+          ? "The send is still in progress. Wait for its outcome before trying again."
+          : "The email outcome is unknown. Check the delivery record before sending again.");
+      } else if (!res.ok) {
+        throw new Error(payload.error || "Could not email this report");
+      }
+      if (payload.attempt?.status !== "PROVIDER_STARTED" && payload.attempt?.status !== "AMBIGUOUS") {
+        emailIdempotencyKey.current = null;
+      }
+      await revalidate();
+    } catch (sendError) {
+      toast.error(sendError instanceof Error ? sendError.message : "Could not email this report");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   if (!enabled) {
     return (
       <section className={cn(CARD, "relative z-10")} aria-label="Verified Weekly Performance Blueprint">
@@ -386,6 +457,18 @@ export function WeeklyPerformanceBlueprint({
   const report = data?.report ?? null;
   const snapshot = data?.snapshot ?? null;
   const isStale = snapshot?.freshness.freshness === "STALE";
+  const canSendEmail = Boolean(
+    snapshot?.freshness.freshness === "CURRENT"
+    && data?.lifecycle?.dataStatus === "READY"
+    && data.lifecycle.approvalStatus === "APPROVED"
+    && data?.canEmailApprovedReports === true,
+  );
+  const latestEmailAttempt = data?.emailDelivery ?? null;
+  const emailSendInProgress = Boolean(
+    latestEmailAttempt?.status === "PROVIDER_STARTED"
+    && Date.now() - new Date(latestEmailAttempt.attemptedAt).getTime() < 10 * 60 * 1000,
+  );
+  const emailOutcomeAmbiguous = latestEmailAttempt?.status === "AMBIGUOUS";
   const displayedWindow = report?.overview.reportingWindow
     ?? data?.defaultWindow
     ?? null;
@@ -618,19 +701,67 @@ export function WeeklyPerformanceBlueprint({
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">3. Destination Delivery</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">3. Dataset Retrieval Evidence</p>
               <p className="mt-0.5 font-medium text-ink">
                 {data?.lifecycle?.deliveryStatus === "DELIVERED" ? (
-                  <span className="text-emerald-400">Delivered (proof verified)</span>
+                  <span className="text-emerald-400">Current retrieval proof · report email not confirmed</span>
                 ) : data?.lifecycle?.deliveryStatus === "OUTDATED" ? (
-                  <span className="text-amber-400">Delivery outdated (snapshot updated)</span>
+                  <span className="text-amber-400">Retrieval evidence is outdated</span>
                 ) : data?.lifecycle?.deliveryStatus === "FAILED" ? (
-                  <span className="text-red-400">Delivery failed</span>
+                  <span className="text-red-400">Destination retrieval failed</span>
                 ) : (
-                  <span className="text-ink-mute">Not delivered (pending send)</span>
+                  <span className="text-ink-mute">No current dataset retrieval proof</span>
                 )}
               </p>
             </div>
+          </div>
+          <div className="mt-4 border-t border-line/60 pt-4">
+            <h3 className="text-xs font-semibold text-ink">Email this approved snapshot</h3>
+            <p className="mt-1 text-[11px] text-ink-mute">
+              Sends the saved snapshot shown below. The email provider’s acceptance does not confirm inbox delivery.
+            </p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="flex-1 text-[11px] font-medium text-ink-mute">
+                Recipient email
+                <input
+                  type="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  value={emailRecipient}
+                  onChange={(event) => setEmailRecipient(event.target.value)}
+                  placeholder="name@example.com"
+                  className="mt-1 w-full rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void sendApprovedEmail()}
+                disabled={sendingEmail || emailSendInProgress || emailOutcomeAmbiguous || !canSendEmail || !emailRecipient.trim()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                title={emailOutcomeAmbiguous
+                  ? "Reconcile the existing provider outcome before retrying"
+                  : !canSendEmail ? "A current snapshot with READY data and an active approval is required" : undefined}
+              >
+                {sendingEmail ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" /> : <Send className="h-3.5 w-3.5" aria-hidden="true" />}
+                {sendingEmail ? "Sending…" : "Send approved report"}
+              </button>
+            </div>
+            {latestEmailAttempt ? (
+              <p role="status" className={cn(
+                "mt-2 text-[11px]",
+                latestEmailAttempt.status === "ACCEPTED" ? "text-emerald-400"
+                  : latestEmailAttempt.status === "DEFINITIVE_FAILED" ? "text-red-400"
+                    : "text-amber-300",
+              )}>
+                {latestEmailAttempt.status === "ACCEPTED"
+                  ? `Accepted by email provider for ${latestEmailAttempt.recipient}; inbox delivery is not confirmed.`
+                  : latestEmailAttempt.status === "DEFINITIVE_FAILED"
+                    ? `Email provider rejected the send to ${latestEmailAttempt.recipient}.`
+                    : latestEmailAttempt.status === "AMBIGUOUS"
+                      ? `Outcome is unknown for ${latestEmailAttempt.recipient}; reconcile provider records before any retry.`
+                      : `A send to ${latestEmailAttempt.recipient} is still processing or has an unknown outcome.`}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

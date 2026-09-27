@@ -4,8 +4,8 @@
  * Exposes three independent axes plus a descriptive summary label:
  * 1. dataStatus: Is this snapshot's data complete and safe for an operator to review?
  * 2. approvalStatus: Has this exact snapshot received human operator sign-off?
- * 3. deliveryStatus: Has this snapshot been delivered to an external destination (e.g. Sheets/Looker)?
- * 4. summaryLabel: A truthful composite summary that never masks unapproved delivery.
+ * 3. deliveryStatus: Does current authenticated destination-retrieval evidence exist?
+ * 4. summaryLabel: Retrieval proof never claims that a report was emailed.
  */
 
 export type ReportApprovalStatus = "NOT_APPROVED" | "APPROVED" | "OUTDATED";
@@ -27,10 +27,10 @@ export type ReportLifecycleState =
   | "Not ready to review"
   | "Ready to review"
   | "Approved — ready to send"
-  | "Delivered"
+  | "Dataset retrieval verified"
   | "Approval outdated"
-  | "Delivery outdated"
-  | "Delivered (unapproved)"
+  | "Dataset evidence outdated"
+  | "Dataset retrieval verified (unapproved)"
   | string;
 
 export type ReportApprovalSummary = {
@@ -153,18 +153,18 @@ export function deriveReportLifecycle(input: DeriveLifecycleInput): ReportLifecy
     summaryLabel = "Approval outdated";
   } else if (approvalStatus === "APPROVED") {
     if (deliveryStatus === "DELIVERED") {
-      summaryLabel = "Delivered";
+      summaryLabel = "Dataset retrieval verified";
     } else if (deliveryStatus === "OUTDATED") {
-      summaryLabel = "Delivery outdated";
+      summaryLabel = "Dataset evidence outdated";
     } else {
       summaryLabel = "Approved — ready to send";
     }
   } else {
     // NOT_APPROVED
     if (deliveryStatus === "DELIVERED") {
-      summaryLabel = "Delivered (unapproved)";
+      summaryLabel = "Dataset retrieval verified (unapproved)";
     } else if (deliveryStatus === "OUTDATED") {
-      summaryLabel = "Delivery outdated";
+      summaryLabel = "Dataset evidence outdated";
     } else {
       summaryLabel = "Ready to review";
     }
