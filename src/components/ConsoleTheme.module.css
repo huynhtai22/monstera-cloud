@@ -1,0 +1,141 @@
+/* Visual treatment for the real app shell. Page behavior stays in its existing components. */
+.root[data-console-theme="dark"] {
+  --color-canvas: #0a0a0a;
+  --color-panel: #111111;
+  --color-line: #2a2a2a;
+  --color-ink: #ededed;
+  --color-ink-mute: #969696;
+  --color-primary: #ededed;
+  --color-primary-foreground: #171717;
+  --color-primary-hover: #ffffff;
+  --color-surface-muted: #161616;
+  --ui-bg-rgb: 17 17 17;
+  --ui-fg-rgb: 237 237 237;
+  --ui-border-rgb: 42 42 42;
+  --ui-primary-rgb: 237 237 237;
+  --ui-primary-foreground-rgb: 23 23 23;
+  --console-motion-accent: #86c99b;
+  --shadow-card: 0 1px 0 #ffffff04;
+}
+.root[data-console-theme="dark"] > aside {
+  background: #101010;
+}
+.root [data-console-button] {
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: none;
+}
+.root [data-console-button="ghost"] {
+  border-color: var(--color-line);
+  background: var(--color-panel);
+}
+.root [data-console-button="ghost"]:hover {
+  background: color-mix(in srgb, var(--color-ink) 4%, var(--color-panel));
+  border-color: color-mix(in srgb, var(--color-ink) 20%, var(--color-line));
+}
+.root [data-console-button="primary"] {
+  --console-motion-accent: #39764c;
+  border-color: var(--color-primary);
+}
+.root main :global(.console-page) > :where(header, div) > h1,
+.root main :global(.console-page) h1 {
+  font-size: clamp(25px, 2.4vw, 32px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.25;
+}
+.root main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  border-color: var(--color-line);
+  border-radius: 8px;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+.root main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea)::placeholder {
+  color: var(--color-ink-mute);
+}
+.root main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-ink) 20%, var(--color-line));
+}
+.root main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  border-color: color-mix(in srgb, var(--color-ink) 38%, var(--color-line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 7%, transparent);
+}
+.root main :global(.console-page) :where([role="alert"]) {
+  border-radius: 10px;
+}
+.root main :global(.console-page) :where(.rounded-lg.border.border-line.bg-panel, .rounded-xl.border.border-line.bg-panel) {
+  border-radius: 12px;
+}
+.root :global([role="dialog"]) :where(button, input, select, textarea) {
+  border-radius: 8px;
+}
+.root :where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-ink-mute);
+  outline-offset: 3px;
+}
+.root :global(.console-source-list) {
+  border-radius: 12px;
+  box-shadow: none;
+}
+.root :global(.console-source-list) tbody tr {
+  transition: background-color 180ms ease;
+}
+.root :global(.console-source-list) tbody tr:hover {
+  background-color: color-mix(in srgb, var(--color-ink) 3%, var(--color-panel));
+}
+.root :global(.console-scorecard) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)),
+    var(--color-panel) 75%
+  );
+  transition: border-color 200ms ease;
+}
+.root :global(.console-scorecard)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    color-mix(in srgb, var(--color-ink) 5%, transparent) 50%,
+    transparent 75%
+  );
+  transform: translateX(-110%);
+}
+.root :global(.console-scorecard):hover {
+  border-color: color-mix(in srgb, var(--color-ink) 25%, var(--color-line));
+}
+.root :global(.console-scorecard):hover::after {
+  animation: scorecardSweep 950ms ease both;
+}
+@keyframes scorecardSweep {
+  to {
+    transform: translateX(110%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .root :global(.console-scorecard),
+  .root :global(.console-source-list) tbody tr,
+  .root main :global(.console-page) :where(input, select, textarea) {
+    transition: none;
+  }
+  .root :global(.console-scorecard)::after {
+    display: none;
+  }
+}
+@media (forced-colors: active) {
+  .root :global(.console-scorecard) {
+    background: Canvas;
+    border-color: CanvasText;
+  }
+  .root :global(.console-scorecard)::after {
+    display: none;
+  }
+}

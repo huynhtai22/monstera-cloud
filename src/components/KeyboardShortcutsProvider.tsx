@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
+import { CommandPalette } from "@/components/CommandPalette";
 
 function isEditableTarget(t: EventTarget | null): boolean {
     if (!t || !(t instanceof HTMLElement)) return false;
@@ -81,6 +82,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
     return (
         <>
             {children}
+            <CommandPalette />
             {helpOpen ? (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="kbd-shortcuts-title">
                     <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Close" onClick={() => setHelpOpen(false)} />

@@ -9,6 +9,7 @@ import { WorkspaceSessionSync } from './WorkspaceSessionSync';
 import { SessionHeartbeat } from './SessionHeartbeat';
 import { DemoModeBanner } from './DemoModeBanner';
 import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
+import { CommandPaletteTrigger } from './CommandPalette';
 import { NotificationCenter } from './NotificationCenter';
 import { UpgradeNudge } from './UpgradeNudge';
 import { ClientContextBarGate } from './client-context/ClientContextBarGate';
@@ -16,6 +17,8 @@ import { PendingNavigationProvider } from './client-context/PendingNavigationPro
 import { Menu, Moon, Sun, ChevronRight } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { rememberAppPath } from "@/lib/app-return-path";
+
+import consoleTheme from "./ConsoleTheme.module.css";
 
 const THEME_STORAGE_KEY = "monstera-theme";
 const SIDEBAR_COLLAPSED_KEY = "monstera-sidebar-collapsed";
@@ -112,7 +115,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <SessionHeartbeat />
         {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
         {loading ? <GlobeLoader visible /> : null}
-        <div className="flex min-h-screen bg-canvas font-sans text-ink">
+        <div data-console-theme={isDarkMode ? "dark" : "light"} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
@@ -164,7 +167,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         <ChevronRight className="h-3.5 w-3.5 text-line" strokeWidth={1.5} aria-hidden />
                         <span className="font-medium text-ink">{mobileTitle}</span>
                     </nav>
-                    <div className="pointer-events-auto">
+                    <div className="pointer-events-auto flex items-center gap-2">
+                        <CommandPaletteTrigger />
                         <NotificationCenter />
                     </div>
                 </div>

@@ -39,6 +39,7 @@ import { RefreshWarehouseModal } from "./RefreshWarehouseModal";
 import { ClientExportModal } from "./ClientExportModal";
 import { calculatePlatformRollups } from "@/lib/client-export";
 import { AnalystPane } from "./AnalystPane";
+import { SavedViews } from "@/components/ui/SavedViews";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -1110,14 +1111,18 @@ export function WarehouseWorkbench() {
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsRefreshOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-white px-3.5 py-2 text-xs font-semibold text-neutral-900 shadow-xs transition-colors hover:bg-neutral-100"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh warehouse
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <SavedViews href={`${pathname}${observedSearchString ? `?${observedSearchString}` : ""}`} />
+          <button
+            type="button"
+            id="warehouse-refresh"
+            onClick={() => setIsRefreshOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3.5 py-2 text-xs font-semibold text-neutral-900 shadow-xs transition-colors hover:bg-neutral-100"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh warehouse
+          </button>
+        </div>
       </div>
 
       <Suspense fallback={null}>
@@ -1281,7 +1286,7 @@ export function WarehouseWorkbench() {
               ["Blended ROAS", roasKpiNode],
               ["Traffic", `${totals.clicks.toLocaleString()} clicks · ${(totals.impressions / 1000).toFixed(1)}K imp`],
             ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
-              <div key={k} className="rounded-lg border border-line bg-panel px-4 py-3">
+              <div key={k} className="console-scorecard rounded-lg border border-line bg-panel px-4 py-3">
                 <p className="text-xs font-medium text-ink-mute">{k}</p>
                 <p className="mt-1 text-base font-semibold text-ink">{v}</p>
               </div>

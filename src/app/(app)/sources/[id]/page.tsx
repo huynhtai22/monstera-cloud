@@ -2,6 +2,9 @@
 
 import React, { useCallback, useState } from "react";
 import Link from "next/link";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import { SourceTrustSummary } from "@/components/sources/SourceTrustSummary";
+import { validRecoveryWindow, reportRecoveryHref } from "@/lib/console-recovery";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
@@ -37,6 +40,8 @@ const fetcher = async (url: string) => {
 export default function SourceDetailPage() {
     const params = useParams();
     const router = useRouter();
+    const { hrefFor, requestedRaw, searchParams } = useClientContextNavigation();
+    const recoveryWindow = validRecoveryWindow(searchParams.get("startDate"), searchParams.get("endDate"));
     const id = typeof params?.id === "string" ? params.id : "";
     const { mutate } = useSWRConfig();
 
@@ -73,6 +78,7 @@ export default function SourceDetailPage() {
               status: string;
               lastError: string | null;
               lastSyncAt: string | null;
+              lastDataThrough?: string | null;
               workspaceId: string;
               workspace?: { name: string };
               credentials?: string;
@@ -147,7 +153,7 @@ export default function SourceDetailPage() {
 
         setSelectedLog(enrichedLog);
         setIsDrawerOpen(true);
-    }, [data, pipelines]);
+    }, [data, pipelines, setIsDrawerOpen]);
 
     const recentLogs = (data?.recentLogs ?? []) as Array<{
         id: string;
@@ -265,7 +271,7 @@ export default function SourceDetailPage() {
         return (
             <PageShell>
                 <p className="text-xs text-red-400">{error instanceof Error ? error.message : "Source not found."}</p>
-                <Link href="/sources" className="mt-4 inline-block text-xs font-semibold text-white underline hover:no-underline">
+                <Link href={hrefFor("/sources")} className="mt-4 inline-block text-xs font-semibold text-white underline hover:no-underline">
                     Back to Sources
                 </Link>
             </PageShell>
@@ -286,7 +292,7 @@ export default function SourceDetailPage() {
     const lastSync = formatLastSyncLabel(connection.lastSyncAt);
     const identityMeta = [
         lastSync.text === "Never" ? "Never synced" : `Last sync ${lastSync.text}`,
-        connection.workspace?.name ? `Hourly into ${connection.workspace.name}` : "Hourly auto-sync",
+        connection.workspace?.name ?? null,
         connection.environment === "sandbox" ? "Sandbox" : null,
     ].filter(Boolean).join(" · ");
 
@@ -295,7 +301,7 @@ export default function SourceDetailPage() {
             {/* Navigation & Header */}
             <div className="mb-8">
                 <Link
-                    href="/sources"
+                    href={hrefFor("/sources")}
                     className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-white transition-colors"
                 >
                     <ArrowLeft className="h-3.5 w-3.5" />
@@ -438,29 +444,67 @@ export default function SourceDetailPage() {
                         ) : null}
 
                         <Link
-                            href={`/explorer`}
+                            href={hrefFor("/explorer")}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-3.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] hover:border-white/30 transition-all shadow-xs"
                         >
                             <BarChart3 className="h-3.5 w-3.5 text-ink-mute" />
                             <span>View in Explorer</span>
                         </Link>
 
-                        <button
-                            type="button"
-                            onClick={() => setDisconnectOpen(true)}
-                            disabled={busy !== null}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-transparent px-3.5 py-1.5 text-xs font-semibold text-ink-mute hover:text-rose-300 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors"
-                        >
-                            <Unplug className="h-3.5 w-3.5" />
-                            <span>Disconnect</span>
-                        </button>
                     </div>
                 </div>
             </div>
 
-            {Array.isArray(data?.recentProviderRuns) && data.recentProviderRuns.length > 0 ? (
-                <div className="mb-8">
-                    <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink">Source activity</h2>
+            <nav aria-label="Source details" className="mb-6 flex flex-wrap gap-1 rounded-xl border border-line bg-panel/70 p-1">
+                {[
+                    ["source-recovery", "Overview"],
+                    ["source-accounts", "Accounts"],
+                    ["source-activity", "Activity"],
+                    ["source-settings", "Settings"],
+                ].map(([target, label]) => (
+                    <a key={target} href={`#${target}`} className="rounded-lg px-3 py-2 text-xs font-medium text-ink-mute transition-colors hover:bg-white/[0.05] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30">
+                        {label}
+                    </a>
+                ))}
+            </nav>
+
+            {isSource && <section id="source-recovery" aria-label="Source overview" className="console-scorecard mb-6 scroll-mt-24 rounded-xl border border-line bg-panel p-4 sm:p-5">
+                <h2 className="text-sm font-semibold text-ink">Connection and data checks</h2>
+                <p className="mt-2 mb-4 text-xs leading-relaxed text-ink-mute">{sourceState.detail || sourceState.subtext} {sourceState.kind !== "connected" ? "Reports using this source may remain blocked until their data checks pass." : "Evaluate the client’s report before relying on this source for delivery."}</p>
+                <SourceTrustSummary state={sourceState} lastSync={connection.lastSyncAt} dataThrough={connection.lastDataThrough} reportsHref={requestedRaw && requestedRaw !== "all" ? reportRecoveryHref(requestedRaw, recoveryWindow) : hrefFor("/reports?view=performance")} />
+                <div className="mt-4 flex flex-wrap gap-3 text-xs">
+                    {sourceState.needsReconnect && <button type="button" className="rounded-md border border-line px-3 py-2 font-medium text-ink" onClick={openFixModal}>Review authorization</button>}
+                    <Link className="rounded-md border border-line px-3 py-2 font-medium text-ink" href={hrefFor("/explorer#warehouse-refresh")}>{recoveryWindow ? `Review import: ${recoveryWindow.start} – ${recoveryWindow.end}` : "Review warehouse import"}</Link>
+                    <Link className="px-2 py-2 text-ink underline" href={hrefFor("/reports?view=sync&status=error")}>Inspect sync errors</Link>
+                </div>
+            </section>}
+
+            {isSource ? (
+                <section id="source-accounts" aria-label="Connected accounts" className="mb-8 scroll-mt-24 rounded-xl border border-line bg-panel p-4 sm:p-5">
+                    <div className="mb-3">
+                        <h2 className="text-sm font-semibold text-ink">Accounts in scope</h2>
+                        <p className="mt-1 text-xs text-ink-mute">Choose which provider accounts this source can sync for your workspace and client reports.</p>
+                    </div>
+                    <SourceScopePanel
+                        connectionId={connection.id}
+                        provider={connection.provider}
+                        connectionName={displayName}
+                        managerBadge={managerBadge}
+                        accountEmail={accountEmail}
+                        needsReconnect={sourceState.needsReconnect}
+                        onReconnect={openFixModal}
+                    />
+                </section>
+            ) : null}
+
+            <section id="source-activity" aria-label="Source activity" className="mb-8 scroll-mt-24 rounded-xl border border-line bg-panel p-4 sm:p-5">
+                <div className="mb-4">
+                    <h2 className="text-sm font-semibold text-ink">Activity and sync history</h2>
+                    <p className="mt-1 text-xs text-ink-mute">Provider requests, ingestion runs, and diagnostic details for this connection.</p>
+                </div>
+                {Array.isArray(data?.recentProviderRuns) && data.recentProviderRuns.length > 0 ? (
+                <div className="mb-6">
+                    <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-mute">Provider requests</h3>
                     <div className="space-y-2">
                         {data.recentProviderRuns.map((run: any) => (
                             <div key={run.id} className="rounded-lg border border-line bg-panel p-3 text-xs">
@@ -476,29 +520,15 @@ export default function SourceDetailPage() {
                 </div>
             ) : null}
 
-            {isSource ? (
-                <div className="mb-10">
-                    <SourceScopePanel
-                        connectionId={connection.id}
-                        provider={connection.provider}
-                        connectionName={displayName}
-                        managerBadge={managerBadge}
-                        accountEmail={accountEmail}
-                        needsReconnect={sourceState.needsReconnect}
-                        onReconnect={openFixModal}
-                    />
-                </div>
-            ) : null}
-
             {/* Recent Execution Logs */}
             {recentLogs.length > 0 ? (
-                <div className="mb-8">
+                <div>
                     <div className="mb-3 flex items-center justify-between">
                         <div>
                             <h2 className="text-xs font-bold uppercase tracking-wider text-ink">Recent Ingestion Runs</h2>
                             <p className="text-[11px] text-ink-mute">Execution duration, row throughput, and diagnostic traces.</p>
                         </div>
-                        <Link href="/reports" className="text-xs font-medium text-ink-mute hover:text-ink transition-colors">
+                        <Link href={hrefFor("/reports?view=sync")} className="text-xs font-medium text-ink-mute hover:text-ink transition-colors">
                             View full audit log →
                         </Link>
                     </div>
@@ -538,7 +568,38 @@ export default function SourceDetailPage() {
                         ))}
                     </ul>
                 </div>
-            ) : null}
+            ) : !data?.recentProviderRuns?.length ? <p className="rounded-lg border border-dashed border-line bg-canvas p-6 text-center text-xs text-ink-mute">No sync activity has been recorded for this connection yet.</p> : null}
+            </section>
+
+            <section id="source-settings" aria-label="Source settings" className="console-scorecard mb-8 scroll-mt-24 rounded-xl border border-line bg-panel p-4 sm:p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h2 className="text-sm font-semibold text-ink">Connection settings</h2>
+                        <p className="mt-1 text-xs text-ink-mute">Review source identity and manage this connection.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => { setNameInput(connection.name); setIsEditingName(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-medium text-ink hover:bg-white/[0.04]">
+                            <Pencil className="h-3.5 w-3.5" /> Rename connection
+                        </button>
+                        <button type="button" onClick={() => setDisconnectOpen(true)} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">
+                            <Unplug className="h-3.5 w-3.5" /> Disconnect
+                        </button>
+                    </div>
+                </div>
+                <dl className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                        ["Provider", connection.provider.replaceAll("_", " ")],
+                        ["Workspace", connection.workspace?.name ?? "Current workspace"],
+                        ["Connection ID", connection.id],
+                        ["Environment", connection.environment ?? "Not specified"],
+                    ].map(([label, value]) => (
+                        <div key={label} className="min-w-0 rounded-lg border border-line bg-canvas px-3 py-2.5">
+                            <dt className="text-[10px] font-medium uppercase tracking-wider text-ink-mute">{label}</dt>
+                            <dd className="mt-1 truncate text-xs font-medium capitalize text-ink" title={value}>{value}</dd>
+                        </div>
+                    ))}
+                </dl>
+            </section>
 
             {/* Modals & Drawers */}
             <ConfirmDialog

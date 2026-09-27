@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import useSWR from "swr";
@@ -904,19 +905,12 @@ export function RefreshWarehouseModal({
               disabled={isSubmitting || connections.length === 0 || selectedConnIds.size === 0 || isTargetResolving}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-4 py-2 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-50"
             >
-              {isSubmitting ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  Queueing refresh…
-                </>
-              ) : isTargetResolving ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  Resolving account…
-                </>
-              ) : (
-                "Run refresh"
-              )}
+              <ConsoleSyncLabel
+                active={isSubmitting || isTargetResolving}
+                idleLabel="Run refresh"
+                activeLabel={isSubmitting ? "Queueing refresh…" : "Resolving account…"}
+                idleIcon={<RefreshCw className="h-3.5 w-3.5" />}
+              />
             </button>
           </div>
         )}
