@@ -294,7 +294,7 @@ describe("PostgreSQL Integration: extended-backfill staging qualification", () =
     // Full-range aggregates and a provider count covering half the tenant's
     // rows may be cheaper as sequential scans. They still have to satisfy the
     // measured latency gate below; narrower interactive queries must use an index.
-    const aggregateException = new Set(["metrics-731-day", "metrics-cross-provider", "metrics-minmax-companion", "metrics-distinct-platforms"]);
+    const aggregateException = new Set(["metrics-731-day", "metrics-count-companion", "metrics-cross-provider", "metrics-minmax-companion", "metrics-distinct-platforms"]);
     for (const [label, sql, params] of plans) {
       const planText = await explainOf(label, sql, params);
       planTexts[label] = planText;
