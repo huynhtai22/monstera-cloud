@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { GOOGLE_ADS_OAUTH_SCOPE } from "@/lib/google-ads-constants";
 import type { ProviderAccessFacts } from "./types";
 
 /** Facts a workspace owner must inspect in Google's developer and OAuth portals. */
 export const googleAdsPortalAccessInputSchema = z.object({
   appAccountMode: z.literal("live"),
   grantedScopesOrPermissions: z.array(z.string().trim().min(1).max(200)).min(1).max(20)
-    .refine((scopes) => scopes.includes("https://www.googleapis.com/auth/adwords"), {
+    .refine((scopes) => scopes.includes(GOOGLE_ADS_OAUTH_SCOPE), {
       message: "Google Ads OAuth scope is required",
     }),
   accessLevelStatus: z.enum(["basic", "standard"]),

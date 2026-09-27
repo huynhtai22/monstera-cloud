@@ -16,6 +16,7 @@ const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSI
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
+import { GOOGLE_ADS_OAUTH_SCOPE } from '@/lib/google-ads-constants';
 
 export class GoogleAdsProviderError extends Error {
   constructor(message: string, readonly retryable: boolean, readonly status?: number, readonly code?: string) {
@@ -221,7 +222,7 @@ export class GoogleAdsOAuthClient {
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', 'https://www.googleapis.com/auth/adwords openid email profile');
+    url.searchParams.set('scope', `${GOOGLE_ADS_OAUTH_SCOPE} openid email profile`);
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'offline');   // get refresh_token
     url.searchParams.set('prompt', 'consent');         // force re-consent to always get refresh_token
