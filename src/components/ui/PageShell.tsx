@@ -12,6 +12,7 @@ type PageShellProps = {
 export function PageShell({ children, className }: PageShellProps) {
     return (
         <div
+            data-console-page="true"
             className={cn(
                 "console-page relative w-full px-6 py-6 sm:px-8 sm:py-7 lg:px-10 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-reduce:animate-none",
                 className
