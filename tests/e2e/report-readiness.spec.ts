@@ -108,7 +108,8 @@ test("client portfolio renders all four statuses and expandable evidence without
   const ready = page.locator('[data-readiness="READY"]');
   await ready.getByText("meta ads · Ready",{exact:true}).click();
   await expect(ready.getByText("Account sample-account:",{exact:false})).toBeVisible();
-  await expect(ready.getByRole("link",{name:"Review source"})).toHaveAttribute("href","/sources/fixture-source-READY?clientId=fixture-READY&startDate=2026-09-20&endDate=2026-09-26#source-recovery");
+  const {start,end}=evaluations[0].window;
+  await expect(ready.getByRole("link",{name:"Review source"})).toHaveAttribute("href",`/sources/fixture-source-READY?clientId=fixture-READY&startDate=${start}&endDate=${end}#source-recovery`);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth+1)).toBeTruthy();
   expect(errors).toEqual([]);
   await page.screenshot({path:testInfo.outputPath("readiness-portfolio.png"),fullPage:true});
