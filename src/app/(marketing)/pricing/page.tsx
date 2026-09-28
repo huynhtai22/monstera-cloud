@@ -34,7 +34,7 @@ function PricingPageContent() {
   ];
 
   return (
-    <main lang={language} className="marketing-polish pricing-frontier">
+    <div lang={language} className="marketing-polish pricing-frontier">
       <section className="pf-hero"><div className="pf-hero-glow" aria-hidden="true" /><div className="polish-container">
         <MarketingScrollReveal cinematic><p className="polish-eyebrow">MONSTERA CLOUD / {vi ? "BẢNG GIÁ" : "PRICING"}</p><div className="pf-hero-grid"><div><h1>{vi ? "Bắt đầu rõ ràng." : "Start with clarity."}<br /><span>{vi ? "Mở rộng tự tin." : "Grow with certainty."}</span></h1></div><div className="pf-hero-aside"><p>{vi ? "Dữ liệu hiệu suất của nhiều khách hàng trong một quy trình báo cáo rõ ràng. Dùng thử Agency Pro bảy ngày, rồi quyết định có tiếp tục hay không." : "A clear reporting workflow for every client. Try Agency Pro for seven days, then decide whether it earns a place in your stack."}</p><Link className="polish-link" href="#plans">{vi ? "Khám phá các gói" : "Explore the plans"}<ArrowRight size={16} /></Link></div></div></MarketingScrollReveal>
         <MarketingScrollReveal cinematic className="pf-hero-proof"><span><Check size={15} />{vi ? "Không cần thanh toán để bắt đầu" : "No payment required to start"}</span><span><Check size={15} />{vi ? "Không tự động trừ tiền ngân hàng" : "No automatic bank deductions"}</span><span><Check size={15} />{vi ? "Workspace và dữ liệu được giữ lại" : "Your workspace and data remain"}</span></MarketingScrollReveal>
@@ -64,7 +64,7 @@ function PricingPageContent() {
 
       <section className="pf-bottom"><div className="polish-container"><MarketingScrollReveal cinematic className="pf-bottom-grid"><div><p className="polish-eyebrow">{vi ? "BẠN GIỮ QUYỀN KIỂM SOÁT" : "YOU STAY IN CONTROL"}</p><h2>{vi ? "Bắt đầu với một khách hàng thật." : "Start with one real client."}</h2><p>{vi ? "Bạn đang dùng gói khác? Quản lý workspace trong cài đặt thanh toán. Chuyển gói trả phí cũ và thỏa thuận riêng cần được xem xét trước. Thanh toán tự phục vụ không tự động tính tín dụng theo thời gian còn lại hoặc hoàn tiền." : "Already on another plan? Manage your workspace in billing settings. Legacy paid-tier changes and custom arrangements need a billing review. Self-serve checkout does not automatically apply prorated credits or refunds."}</p><div className="pf-bottom-links"><Link href="/settings?tab=billing" className="polish-link">{vi ? "Quản lý thanh toán" : "Manage billing"}<ArrowRight size={15} /></Link><a href="mailto:support@monsteracloud.com" className="polish-link">{vi ? "Trao đổi với nhà sáng lập" : "Talk to the founder"}<ArrowRight size={15} /></a></div></div><div className="pf-bottom-cta"><span>07</span><p>{vi ? "ngày để kiểm chứng giá trị" : "days to prove the value"}</p><Link href="/register?offer=agency-pro-pilot" className="polish-button">{vi ? "Dùng thử Agency Pro" : "Start your Agency Pro pilot"}<ArrowRight size={16} /></Link></div></MarketingScrollReveal></div></section>
       <VietQrModal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)} planName="professional" planDisplayName="Agency Pro" amountVnd={agencyProAmount(cycle)} billingCycle={cycle} workspaceId={workspaceId} />
-    </main>
+    </div>
   );
 }
 

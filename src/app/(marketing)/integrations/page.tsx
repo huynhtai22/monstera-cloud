@@ -101,7 +101,7 @@ export default function IntegrationsPage() {
     status: source.status, statusTone: source.statusTone,
     sheetsHref: integrationPath(source.sheetsSlug), lookerHref: integrationPath(source.lookerSlug),
   }));
-  return <main className="marketing-polish integrations-frontier">
+  return <div className="marketing-polish integrations-frontier">
     <section className="if-hero"><div className="if-orbit" aria-hidden="true" /><div className="polish-container">
       <MarketingScrollReveal cinematic><div className="if-hero-top"><p className="polish-eyebrow">THE CONNECTED REPORTING WORKSPACE</p><span>MONSTERA / 02</span></div><div className="if-hero-split"><h1>Every source.<br /><span>One clear path.</span></h1><div className="if-hero-aside"><p>From ad platforms and commerce to the reports your team already uses. Choose a route, understand its coverage, and keep a clear view of the data in between.</p><div className="if-hero-actions"><Link href="#explore-routes" className="polish-button">Explore the routes<ArrowRight size={16} /></Link><Link href="#route-directory" className="polish-link">See all connections<ArrowRight size={15} /></Link></div></div></div></MarketingScrollReveal>
       <MarketingScrollReveal cinematic className="if-hero-figures"><div><strong>04</strong><span>PUBLIC SOURCES</span></div><div><strong>02</strong><span>REPORTING DESTINATIONS</span></div><div><strong>08</strong><span>PUBLIC ROUTES</span></div></MarketingScrollReveal>
@@ -114,5 +114,5 @@ export default function IntegrationsPage() {
     <section className="if-destinations polish-container"><MarketingScrollReveal cinematic className="if-section-heading"><p className="polish-eyebrow">THE LAST MILE</p><h2>Work where your team <span>already works.</span></h2></MarketingScrollReveal><div className="if-destination-grid">{DESTINATIONS.map((destination, index) => { const DestinationIcon = destination.icon; return <MarketingScrollReveal cinematic delay={index * 90} key={destination.name}><article className={index === 0 ? "if-destination-card if-destination-light" : "if-destination-card"}><div className="if-destination-card-top"><IntegrationMark src={destination.logo} alt="" size="lg" /><span>{destination.label}</span><DestinationIcon size={21} strokeWidth={1.2} /></div><div><h3>{destination.name}</h3><p>{destination.outcome}</p></div></article></MarketingScrollReveal>; })}</div></section>
 
     <section className="if-scope"><div className="polish-container"><MarketingScrollReveal cinematic className="if-scope-inner"><div><p className="polish-eyebrow">CURRENT PILOT SCOPE</p><h2>Coverage you can <span>count on.</span></h2></div><div><CircleAlert size={20} strokeWidth={1.4} /><p>TikTok Shop and GMV Max, Lazada, Shopify, and Amazon are not public routes yet. Shopee ads metrics depend on Partner Center approval. New routes appear after live-account verification.</p><Link href="/support?pilot=1" className="polish-link">Request pilot access<ArrowRight size={15} /></Link></div></MarketingScrollReveal></div></section>
-  </main>;
+  </div>;
 }

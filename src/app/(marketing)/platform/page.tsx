@@ -122,7 +122,7 @@ function CapabilityVisual({ type }: { type: string }) {
 
 export default function PlatformPage() {
     return (
-        <main className="overflow-x-clip pb-20 text-ink">
+        <div className="overflow-x-clip pb-20 text-ink">
             <section className="relative isolate px-4 pb-16 pt-14 sm:px-6 sm:pb-24 sm:pt-20 lg:px-8">
                 <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-[44rem] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_58%)]" />
                 <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
@@ -169,6 +169,6 @@ export default function PlatformPage() {
             </section>
 
             <section className="px-4 pb-4 sm:px-6 lg:px-8"><MarketingScrollReveal className="mx-auto flex max-w-6xl flex-col gap-6 rounded-2xl border border-white/[0.1] bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.06),transparent_65%)] p-7 sm:flex-row sm:items-center sm:justify-between sm:p-10"><div><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">Start with one real client</p><h2 className="mt-3 max-w-2xl text-2xl font-medium tracking-tight text-ink sm:text-3xl">See how much reporting time you get back.</h2><p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-mute">Try the full workflow for seven days with guided setup and a real client workspace.</p></div><Link href="/register?offer=agency-pro-pilot" className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200">Start the pilot <ArrowRight className="ml-2 h-4 w-4" aria-hidden /></Link></MarketingScrollReveal></section>
-        </main>
+        </div>
     );
 }
