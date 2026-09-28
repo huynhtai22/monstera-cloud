@@ -312,7 +312,7 @@ export function ClientsClient() {
   };
 
   return (
-    <PageShell>
+    <PageShell section="clients">
       {/* ─── 1. PORTFOLIO HEADER ─── */}
       <div className="relative z-10 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-5">
         <div>
