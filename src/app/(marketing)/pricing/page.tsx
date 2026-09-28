@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, Check, ShieldCheck } from "lucide-react";
+import { MarketingScrollReveal } from "@/components/marketing/MarketingScrollReveal";
+import "@/components/marketing/marketing-page-polish.css";
+import "./pricing-frontier.css";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BillingCycleSwitch, PlanOptions } from "@/components/pricing/PlanOptions";
@@ -30,64 +34,37 @@ function PricingPageContent() {
   ];
 
   return (
-    <div lang={language} className="mx-auto max-w-4xl px-5 pb-24 pt-16 sm:px-8 sm:pt-24">
-      <header className="mx-auto mb-10 max-w-2xl text-center">
-        <p className="mb-4 text-xs font-medium text-ink-mute">MONSTERA CLOUD / {vi ? "BẢNG GIÁ" : "PRICING"}</p>
-        <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-          {vi ? "Dữ liệu rõ ràng." : "One clear view."}<br />
-          <span className="text-ink-mute">{vi ? "Chi phí dễ kiểm soát." : "One predictable plan."}</span>
-        </h1>
-        <p className="mx-auto mt-5 max-w-lg text-sm leading-6 text-ink-mute">
-          {vi ? "Tập trung dữ liệu hiệu suất của agency trong một workspace. Bắt đầu dùng thử Agency Pro miễn phí bảy ngày, rồi quyết định khi nào tiếp tục." : "Bring your agency’s performance data into a shared workspace. Start with a seven-day free Agency Pro pilot, then choose when to continue."}
-        </p>
-        <p className="mt-3 text-xs text-ink-mute">{vi ? "Không cần thanh toán để bắt đầu. Không tự động trừ tiền ngân hàng." : "No payment required to start. No automatic bank deductions."}</p>
-      </header>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <BillingCycleSwitch cycle={cycle} onChange={setCycle} language={language} />
-        <div className="flex flex-wrap items-center gap-3">
-          <select aria-label="Pricing language" value={language} onChange={event => setLanguage(event.target.value as PricingLanguage)} className="rounded-lg border border-line bg-panel px-3 py-2 text-xs text-ink">
-            <option value="en">English</option><option value="vi">Tiếng Việt</option>
-          </select>
-          <select aria-label="Pricing currency" value={currency} onChange={event => setCurrency(event.target.value as BillingCurrency)} className="rounded-lg border border-line bg-panel px-3 py-2 text-xs text-ink">
-            <option value="VND">VND · VietQR</option><option value="USD">USD · {vi ? "liên hệ" : "contact sales"}</option>
-          </select>
-        </div>
-      </div>
-      <PlanOptions cycle={cycle} currency={currency} language={language}
-        primaryLabel={vi ? (workspaceId ? "Tiếp tục với Agency Pro" : "Dùng thử miễn phí bảy ngày") : workspaceId ? "Continue with Agency Pro" : "Start seven-day free pilot"}
-        onSelect={plan => {
-          if (plan === "enterprise" || currency === "USD") {
-            window.location.href = "mailto:support@monsteracloud.com?subject=Monstera%20Cloud%20plan%20enquiry";
-            return;
-          }
-          if (!workspaceId) { router.push("/register?offer=agency-pro-pilot"); return; }
-          setCheckoutOpen(true);
-          metaPixelCustom("MC_VietQR_Modal_Opened", { plan, billing_cycle: cycle, amount_vnd: agencyProAmount(cycle) });
-        }}
-      />
-      <p className="mt-4 text-xs leading-5 text-ink-mute">
-        {vi ? "Kết nối nguồn không phải số tài khoản quảng cáo. Khả năng kết nối phụ thuộc phê duyệt của nền tảng và quyền tài khoản. Phạm vi Enterprise được thống nhất trước khi thanh toán. Mỗi khoản thanh toán áp dụng cho workspace đã chọn." : "Source connections are not individual ad accounts. Connector availability depends on provider approval and your account permissions. Enterprise capacity and support are agreed before purchase. Each payment covers the selected workspace."}
-      </p>
-      {currency === "USD" && <p className="mt-3 text-sm text-ink-mute">
-        {vi ? "Thanh toán USD được tư vấn riêng, không qua VietQR. Bạn vẫn có thể " : "USD plans are arranged with sales, not charged through VietQR. You can still "}
-        <Link href="/register?offer=agency-pro-pilot" className="text-ink underline underline-offset-4">{vi ? "dùng thử miễn phí" : "start a free pilot"}</Link>.
-      </p>}
-      <section aria-labelledby="payment-explained" className="mt-12 border-t border-line pt-8">
-        <h2 id="payment-explained" className="text-lg font-semibold text-ink">{vi ? "Điều gì xảy ra khi bạn chọn gói?" : "What happens when you choose a plan?"}</h2>
-        <div className="mt-6 grid gap-6 sm:grid-cols-3">
-          {steps.map(([title, body]) => <div key={title}><h3 className="text-sm font-medium text-ink">{title}</h3><p className="mt-2 text-xs leading-6 text-ink-mute">{body}</p></div>)}
-        </div>
+    <main lang={language} className="marketing-polish pricing-frontier">
+      <section className="pf-hero"><div className="pf-hero-glow" aria-hidden="true" /><div className="polish-container">
+        <MarketingScrollReveal cinematic><p className="polish-eyebrow">MONSTERA CLOUD / {vi ? "BẢNG GIÁ" : "PRICING"}</p><div className="pf-hero-grid"><div><h1>{vi ? "Bắt đầu rõ ràng." : "Start with clarity."}<br /><span>{vi ? "Mở rộng tự tin." : "Grow with certainty."}</span></h1></div><div className="pf-hero-aside"><p>{vi ? "Dữ liệu hiệu suất của nhiều khách hàng trong một quy trình báo cáo rõ ràng. Dùng thử Agency Pro bảy ngày, rồi quyết định có tiếp tục hay không." : "A clear reporting workflow for every client. Try Agency Pro for seven days, then decide whether it earns a place in your stack."}</p><Link className="polish-link" href="#plans">{vi ? "Khám phá các gói" : "Explore the plans"}<ArrowRight size={16} /></Link></div></div></MarketingScrollReveal>
+        <MarketingScrollReveal cinematic className="pf-hero-proof"><span><Check size={15} />{vi ? "Không cần thanh toán để bắt đầu" : "No payment required to start"}</span><span><Check size={15} />{vi ? "Không tự động trừ tiền ngân hàng" : "No automatic bank deductions"}</span><span><Check size={15} />{vi ? "Workspace và dữ liệu được giữ lại" : "Your workspace and data remain"}</span></MarketingScrollReveal>
+      </div></section>
+
+      <section id="plans" className="pf-plan-section polish-container"><MarketingScrollReveal cinematic className="pf-section-heading"><p className="polish-eyebrow">{vi ? "CHỌN GÓI PHÙ HỢP" : "CHOOSE YOUR PATH"}</p><h2>{vi ? "Một bước thử." : "A simple start."}<br /><span>{vi ? "Một lựa chọn rõ ràng." : "A clear decision."}</span></h2><p>{vi ? "Bắt đầu với một khách hàng thật. Kiểm tra báo cáo và chọn cách tiếp tục phù hợp với agency của bạn." : "Start with one real client. Validate the reporting workflow and choose how to continue."}</p></MarketingScrollReveal>
+        <MarketingScrollReveal cinematic className="pf-plan-controls"><BillingCycleSwitch cycle={cycle} onChange={setCycle} language={language} /><div><select aria-label="Pricing language" value={language} onChange={event => setLanguage(event.target.value as PricingLanguage)}><option value="en">English</option><option value="vi">Tiếng Việt</option></select><select aria-label="Pricing currency" value={currency} onChange={event => setCurrency(event.target.value as BillingCurrency)}><option value="VND">VND · VietQR</option><option value="USD">USD · {vi ? "liên hệ" : "contact sales"}</option></select></div></MarketingScrollReveal>
+        <MarketingScrollReveal cinematic className="pf-plans"><PlanOptions cycle={cycle} currency={currency} language={language}
+          primaryLabel={vi ? (workspaceId ? "Tiếp tục với Agency Pro" : "Dùng thử miễn phí bảy ngày") : workspaceId ? "Continue with Agency Pro" : "Start seven-day free pilot"}
+          onSelect={plan => {
+            if (plan === "enterprise" || currency === "USD") {
+              window.location.href = "mailto:support@monsteracloud.com?subject=Monstera%20Cloud%20plan%20enquiry";
+              return;
+            }
+            if (!workspaceId) { router.push("/register?offer=agency-pro-pilot"); return; }
+            setCheckoutOpen(true);
+            metaPixelCustom("MC_VietQR_Modal_Opened", { plan, billing_cycle: cycle, amount_vnd: agencyProAmount(cycle) });
+          }}
+        /></MarketingScrollReveal>
+        <p className="pf-plan-fineprint">{vi ? "Kết nối nguồn không phải số tài khoản quảng cáo. Khả năng kết nối phụ thuộc phê duyệt của nền tảng và quyền tài khoản. Phạm vi Enterprise được thống nhất trước khi thanh toán. Mỗi khoản thanh toán áp dụng cho workspace đã chọn." : "Source connections are not individual ad accounts. Connector availability depends on provider approval and your account permissions. Enterprise capacity and support are agreed before purchase. Each payment covers the selected workspace."}</p>
+        {currency === "USD" && <p className="pf-usd-note">{vi ? "Thanh toán USD được tư vấn riêng, không qua VietQR. Bạn vẫn có thể " : "USD plans are arranged with sales, not charged through VietQR. You can still "}<Link href="/register?offer=agency-pro-pilot">{vi ? "dùng thử miễn phí" : "start a free pilot"}</Link>.</p>}
       </section>
-      <section className="mt-10 rounded-xl border border-line bg-panel p-5">
-        <h2 className="text-sm font-medium text-ink">{vi ? "Bạn đang sử dụng gói khác?" : "Already on a different plan?"}</h2>
-        <p className="mt-2 text-xs leading-6 text-ink-mute">{vi ? "Quản lý workspace trong cài đặt thanh toán. Chuyển gói trả phí cũ và thỏa thuận riêng cần được xem xét trước. Thanh toán tự phục vụ không tự động tính tín dụng theo thời gian còn lại, hoàn tiền hay trừ tiền ngân hàng." : "Manage your workspace in billing settings. Legacy paid-tier changes and custom arrangements need a billing review. There are no automatic prorated credits, refunds or bank deductions in self-serve checkout."}</p>
-        <div className="mt-4 flex flex-wrap gap-5 text-xs">
-          <Link className="text-ink underline underline-offset-4" href="/settings?tab=billing">{vi ? "Quản lý thanh toán" : "Manage billing"}</Link>
-          <a className="text-ink underline underline-offset-4" href="mailto:support@monsteracloud.com">{vi ? "Trao đổi với nhà sáng lập" : "Talk to the founder"}</a>
-        </div>
-      </section>
+
+      <section className="pf-journey"><div className="polish-container"><MarketingScrollReveal cinematic className="pf-journey-heading"><div><p className="polish-eyebrow">{vi ? "TỪ DÙNG THỬ ĐẾN TIẾP TỤC" : "FROM PILOT TO PLAN"}</p><h2>{vi ? "Biết rõ điều gì xảy ra." : "Know what happens next."}</h2></div><ShieldCheck size={72} strokeWidth={.65} /></MarketingScrollReveal><div className="pf-journey-grid">{steps.map(([title, body], index) => <MarketingScrollReveal cinematic delay={index * 75} key={title}><div className="pf-journey-step"><span>0{index + 1}<i /></span><h3>{title}</h3><p>{body}</p></div></MarketingScrollReveal>)}</div></div></section>
+
+      <section className="pf-questions polish-container"><MarketingScrollReveal cinematic><p className="polish-eyebrow">{vi ? "TRƯỚC KHI BẮT ĐẦU" : "BEFORE YOU BEGIN"}</p><h2>{vi ? "Những điều cần biết." : "The useful details."}</h2><p>{vi ? "Chọn gói với đầy đủ thông tin về thanh toán và quyền truy cập." : "A straightforward view of billing and access."}</p></MarketingScrollReveal><div className="pf-question-list"><details><summary>{vi ? "Dùng thử có cần thanh toán không?" : "Do I need to pay to start the pilot?"}<span>+</span></summary><p>{vi ? "Không. Bạn có thể bắt đầu dùng thử Agency Pro bảy ngày mà không cần thanh toán. Không có việc tự động trừ tiền ngân hàng." : "No. You can start the seven-day Agency Pro pilot without payment. There are no automatic bank deductions."}</p></details><details><summary>{vi ? "Gia hạn được tính như thế nào?" : "How does renewal work?"}<span>+</span></summary><p>{vi ? "Thanh toán được PayOS xác minh trước khi gia hạn quyền truy cập. Mỗi lần gia hạn cộng thêm 30 hoặc 365 ngày vào thời gian còn lại." : "PayOS verifies the transfer before access is extended. Each renewal adds 30 or 365 days to your remaining time."}</p></details><details><summary>{vi ? "Nếu gói hết hạn thì sao?" : "What if I do not continue?"}<span>+</span></summary><p>{vi ? "Nếu gói PayOS có ngày hết hạn hoặc thời gian dùng thử kết thúc, giới hạn Free sẽ áp dụng. Workspace và dữ liệu vẫn được giữ lại." : "When a dated PayOS plan or trial expires, Free limits apply. Your workspace and data remain."}</p></details></div></section>
+
+      <section className="pf-bottom"><div className="polish-container"><MarketingScrollReveal cinematic className="pf-bottom-grid"><div><p className="polish-eyebrow">{vi ? "BẠN GIỮ QUYỀN KIỂM SOÁT" : "YOU STAY IN CONTROL"}</p><h2>{vi ? "Bắt đầu với một khách hàng thật." : "Start with one real client."}</h2><p>{vi ? "Bạn đang dùng gói khác? Quản lý workspace trong cài đặt thanh toán. Chuyển gói trả phí cũ và thỏa thuận riêng cần được xem xét trước. Thanh toán tự phục vụ không tự động tính tín dụng theo thời gian còn lại hoặc hoàn tiền." : "Already on another plan? Manage your workspace in billing settings. Legacy paid-tier changes and custom arrangements need a billing review. Self-serve checkout does not automatically apply prorated credits or refunds."}</p><div className="pf-bottom-links"><Link href="/settings?tab=billing" className="polish-link">{vi ? "Quản lý thanh toán" : "Manage billing"}<ArrowRight size={15} /></Link><a href="mailto:support@monsteracloud.com" className="polish-link">{vi ? "Trao đổi với nhà sáng lập" : "Talk to the founder"}<ArrowRight size={15} /></a></div></div><div className="pf-bottom-cta"><span>07</span><p>{vi ? "ngày để kiểm chứng giá trị" : "days to prove the value"}</p><Link href="/register?offer=agency-pro-pilot" className="polish-button">{vi ? "Dùng thử Agency Pro" : "Start your Agency Pro pilot"}<ArrowRight size={16} /></Link></div></MarketingScrollReveal></div></section>
       <VietQrModal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)} planName="professional" planDisplayName="Agency Pro" amountVnd={agencyProAmount(cycle)} billingCycle={cycle} workspaceId={workspaceId} />
-    </div>
+    </main>
   );
 }
 
