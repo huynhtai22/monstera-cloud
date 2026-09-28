@@ -201,7 +201,7 @@
 }
 .root[data-console-theme="dark"] main :global(.console-page) :where(table) {
   border-color: var(--console-line-soft);
-  border-collapse: separate;
+  border-collapse: collapse;
   border-spacing: 0;
 }
 .root[data-console-theme="dark"] main :global(.console-page) :where(thead th) {
