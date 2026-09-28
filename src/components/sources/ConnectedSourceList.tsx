@@ -261,14 +261,6 @@ export function ConnectedSourceList({
     }
   };
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
-  const anySelected = selectedIds.size > 0;
-
-  const toggleSelectAll = () => {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(rows.map((r) => r.id)));
-  };
-
   const toggleSelectOne = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -315,6 +307,22 @@ export function ConnectedSourceList({
     });
     return list;
   }, [rows, selectedPlatform, searchQuery, sortKey, sortDir]);
+
+  useEffect(() => {
+    const visibleIds = new Set(filteredAndSortedRows.map((row) => row.id));
+    setSelectedIds((selected) => {
+      const next = new Set([...selected].filter((id) => visibleIds.has(id)));
+      return next.size === selected.size ? selected : next;
+    });
+  }, [filteredAndSortedRows]);
+
+  const allSelected = filteredAndSortedRows.length > 0 && filteredAndSortedRows.every((row) => selectedIds.has(row.id));
+  const anySelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredAndSortedRows.map((r) => r.id)));
+  };
 
   const bulkSync = () => {
     for (const r of rows) {
