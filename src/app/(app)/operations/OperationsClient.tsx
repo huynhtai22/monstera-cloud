@@ -642,7 +642,7 @@ export function OperationsClient() {
     const actions = React.useMemo(() => deriveOperationsActions(data), [data]);
 
     return (
-        <PageShell>
+        <PageShell section="operations">
             <div data-testid="operations-page" className="mx-auto w-full max-w-6xl">
                 <header className="mb-6 flex flex-col justify-between gap-3 border-b border-line pb-6 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-4">

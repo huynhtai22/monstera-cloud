@@ -185,21 +185,21 @@ export function ConnectedSourceList({
   const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"detailed" | "lite">("lite");
+  const [viewMode, setViewMode] = useState<"connections" | "detailed" | "lite">("connections");
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("monstera_sources_view_mode");
-      if (saved === "detailed" || saved === "lite") {
+      const saved = localStorage.getItem("monstera_sources_view_mode_v2");
+      if (saved === "connections" || saved === "detailed" || saved === "lite") {
         setViewMode(saved);
       }
     } catch {}
   }, []);
 
-  const handleViewModeChange = (mode: "detailed" | "lite") => {
+  const handleViewModeChange = (mode: "connections" | "detailed" | "lite") => {
     setViewMode(mode);
     try {
-      localStorage.setItem("monstera_sources_view_mode", mode);
+      localStorage.setItem("monstera_sources_view_mode_v2", mode);
     } catch {}
   };
 
@@ -426,7 +426,23 @@ export function ConnectedSourceList({
             <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
               <button
                 type="button"
+                onClick={() => handleViewModeChange("connections")}
+                aria-pressed={viewMode === "connections"}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                  viewMode === "connections"
+                    ? "bg-white text-black font-semibold shadow-2xs"
+                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+                title="Connection overview with health and account details"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Overview</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleViewModeChange("detailed")}
+                aria-pressed={viewMode === "detailed"}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   viewMode === "detailed"
@@ -441,6 +457,7 @@ export function ConnectedSourceList({
               <button
                 type="button"
                 onClick={() => handleViewModeChange("lite")}
+                aria-pressed={viewMode === "lite"}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   viewMode === "lite"
@@ -547,6 +564,93 @@ export function ConnectedSourceList({
               Clear search
             </button>
           )}
+        </div>
+      ) : viewMode === "connections" ? (
+        <div className="divide-y divide-line/70 bg-panel/30" aria-label="Source connections">
+          {filteredAndSortedRows.map((r) => {
+            const syncBusy =
+              (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
+            const sourceState = sourceStateFor(r, Boolean(syncBusy));
+            const state = sourceState.kind;
+            const needsDiagnostic = state === "auth-required" || state === "sync-issue" || state === "partial" || state === "syncing";
+            return (
+              <article
+                key={r.id}
+                className={cn(
+                  "grid grid-cols-1 items-center gap-3 px-4 py-4 transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_minmax(180px,auto)_auto] sm:gap-5 sm:px-5",
+                  syncBusy && "bg-[#86c99b]/[0.035]"
+                )}
+                data-source-connection={r.id}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="md" /> : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Link
+                        href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
+                        className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white"
+                      >
+                        {r.name}
+                      </Link>
+                      {r.managerBadge ? (
+                        <CopyableBadge
+                          text={r.managerBadge}
+                          copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\\s*/, "")}
+                          title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
+                          className="hidden max-w-[180px] truncate text-[10px] text-ink-mute sm:inline-flex"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-mute">
+                      <span>{PROVIDER_DISPLAY_NAME[r.provider || ""] || r.provider || "Source"}</span>
+                      <span aria-hidden="true" className="text-ink-mute/50">·</span>
+                      <span>{r.accountCount ?? r.accountTags?.length ?? 0} {r.accountCount === 1 ? "account" : "accounts"}</span>
+                      <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} />
+                    </div>
+                    {needsDiagnostic && sourceState.detail ? (
+                      <p className={cn(
+                        "mt-2 max-w-3xl text-xs leading-relaxed",
+                        state === "auth-required" ? "text-rose-300" : "text-amber-300"
+                      )}>
+                        {sourceState.detail}
+                      </p>
+                    ) : null}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(r.id)}
+                    onChange={() => toggleSelectOne(r.id)}
+                    aria-label={`Select ${r.name}`}
+                    className="h-4 w-4 shrink-0 rounded border-line bg-canvas accent-white"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-start sm:justify-center sm:gap-1">
+                  <StatusBadge state={sourceState} />
+                  <LastSyncCell lastSync={r.lastSync} />
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Link
+                    href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 text-xs font-medium text-ink transition-colors hover:bg-white/[0.06]"
+                  >
+                    Manage
+                  </Link>
+                  {renderRowAction(r, sourceState, Boolean(syncBusy))}
+                  <button
+                    type="button"
+                    disabled={busyActions.has(r.id)}
+                    onClick={() => onDisconnect(r.id, r.name)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-ink-mute transition-colors hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-50"
+                    title={`Disconnect ${r.name}`}
+                    aria-label={`Disconnect ${r.name}`}
+                    data-no-row-click
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : viewMode === "detailed" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 p-4 sm:p-6 bg-panel/30">
