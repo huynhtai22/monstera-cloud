@@ -1090,7 +1090,7 @@ export function WarehouseWorkbench() {
   const showShopeeCatalog = selectedPlatform === "shopee" || shopeeCampaigns.length > 0 || shopeeProducts.length > 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-console-warehouse="true" className="flex flex-col gap-6">
       {/* ─── 1. HEADER ─── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -1130,7 +1130,7 @@ export function WarehouseWorkbench() {
       </Suspense>
 
       {/* ─── 2. FILTERS ─── */}
-      <div className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5">
+      <div data-console-warehouse-filters="true" className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5">
         {/* Quick Date Presets */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 pb-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1276,7 +1276,7 @@ export function WarehouseWorkbench() {
 
       {/* ─── 3. SUMMARY METRICS ─── */}
       {metrics.length > 0 && (
-        <div className="space-y-3">
+        <div data-console-warehouse-summary="true" className="space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
             {([
               ["Spend", moneyKpiNode("spend")],
@@ -1378,7 +1378,7 @@ export function WarehouseWorkbench() {
       )}
 
       {/* ─── 4. WAREHOUSE DATA TABLE ─── */}
-      <div className="overflow-hidden rounded-lg border border-line bg-panel">
+      <div data-console-warehouse-table="true" className="overflow-hidden rounded-lg border border-line bg-panel">
         {/* Table toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">Warehouse data</h2>

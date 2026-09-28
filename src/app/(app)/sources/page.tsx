@@ -806,6 +806,15 @@ export default function SourcesPage() {
         return { connectedRows: connected, availableCards: available };
     }, [filteredIntegrations]);
 
+    const discoverableCards = useMemo(() => {
+        const connectedIds = new Set(connectedCatalogIdList);
+        const query = searchQuery.trim().toLowerCase();
+        return catalogIntegrations.filter((integration) =>
+            !connectedIds.has(integration.id) &&
+            (!query || `${integration.name} ${integration.description}`.toLowerCase().includes(query))
+        );
+    }, [catalogIntegrations, connectedCatalogIdList, searchQuery]);
+
     const activeWorkspace = useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
         return workspaces.find((w: { id: string }) => w.id === activeWorkspaceId) ?? null;
@@ -899,6 +908,7 @@ export default function SourcesPage() {
 
     return (
         <PageShell
+            section="sources"
             className="w-full"
             withBackdrop
         >
@@ -910,7 +920,7 @@ export default function SourcesPage() {
                 />
             )}
 
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="console-section-heading mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-ink">Sources</h1>
                     <p className="mt-1 text-sm text-ink-mute">
@@ -1069,6 +1079,31 @@ export default function SourcesPage() {
                 </div>
             </div>
 
+            {!isLoading && (
+                <section className="console-source-summary mb-6 grid grid-cols-2 overflow-hidden rounded-xl border border-line bg-panel sm:grid-cols-4" aria-label="Source connection summary">
+                    <div className="border-b border-r border-line p-4 sm:border-b-0 sm:p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-mute">Connections</p>
+                        <p className="mt-2 text-2xl font-medium tracking-tight text-ink">{connectedSourceCount}</p>
+                        <p className="mt-1 text-[11px] text-ink-mute">In this workspace</p>
+                    </div>
+                    <div className="border-b border-line p-4 sm:border-b-0 sm:border-r sm:p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-mute">Linked accounts</p>
+                        <p className="mt-2 text-2xl font-medium tracking-tight text-ink">{connectedRows.reduce((sum: number, row: any) => sum + Number(row.accountCount ?? row.accountTags?.length ?? 0), 0)}</p>
+                        <p className="mt-1 text-[11px] text-ink-mute">Accounts in the current view</p>
+                    </div>
+                    <div className="border-r border-line p-4 sm:p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-mute">Current in view</p>
+                        <p className="mt-2 text-2xl font-medium tracking-tight text-[#86c99b]">{filterStats.connected}</p>
+                        <p className="mt-1 text-[11px] text-ink-mute">With recent successful syncs</p>
+                    </div>
+                    <div className="p-4 sm:p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-mute">Need attention</p>
+                        <p className={cn("mt-2 text-2xl font-medium tracking-tight", needsAttentionCount > 0 ? "text-amber-300" : "text-ink")}>{needsAttentionCount}</p>
+                        <p className="mt-1 text-[11px] text-ink-mute">Authorization or sync issues</p>
+                    </div>
+                </section>
+            )}
+
             {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
@@ -1201,7 +1236,7 @@ export default function SourcesPage() {
                         </section>
                     )}
                     {(activeFilter === 'connected' || activeFilter === 'attention') && connectedRows.length > 0 && (
-                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className="scroll-mt-6">
+                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className={cn("scroll-mt-6", activeFilter === "connected" && catalogIntegrations.length > 0 && "console-source-layout")}>
                             <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
                             <ConnectedSourceList
                                 rows={connectedRows}
@@ -1212,6 +1247,44 @@ export default function SourcesPage() {
                                 onFixConnection={handleFixConnection}
                                 onRenameConnection={handleRenameConnection}
                             />
+                            {activeFilter === "connected" && catalogIntegrations.length > 0 ? (
+                                <aside className="console-source-discover rounded-xl border border-line bg-panel p-5" aria-label="Discover available connectors">
+                                    <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Expand your workspace</p>
+                                    <h2 className="mt-2 text-base font-medium tracking-tight text-ink">Add a platform</h2>
+                                    <p className="mt-1 text-xs leading-relaxed text-ink-mute">Bring advertising and commerce data together.</p>
+                                    <div className="my-4 space-y-1">
+                                        {discoverableCards.slice(0, 5).map((integration: any) => (
+                                            <button
+                                                key={integration.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedIntegration(integration);
+                                                    setIsSourceModalOpen(true);
+                                                }}
+                                                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-ink transition-colors hover:bg-white/[0.04]"
+                                            >
+                                                <IntegrationMark src={integration.logoSrc} size="sm" />
+                                                <span className="min-w-0 flex-1 truncate">{integration.name}</span>
+                                                <Plus className="h-3.5 w-3.5 shrink-0 text-ink-mute" aria-hidden />
+                                            </button>
+                                        ))}
+                                        {discoverableCards.length === 0 ? (
+                                            <p className="rounded-lg border border-dashed border-line px-3 py-3 text-[11px] leading-relaxed text-ink-mute">Every currently available platform is connected to this workspace.</p>
+                                        ) : null}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveFilter("available")}
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-white/[0.04]"
+                                    >
+                                        Browse all connectors <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                                    </button>
+                                    <div className="mt-5 border-t border-line pt-4">
+                                        <p className="text-[11px] text-ink-mute">Already connected?</p>
+                                        <Link href="/explorer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-ink hover:text-[#86c99b]">Explore your warehouse <ChevronRight className="h-3 w-3" /></Link>
+                                    </div>
+                                </aside>
+                            ) : null}
                         </section>
                     )}
                     {activeFilter === 'available' && availableCards.length > 0 && (

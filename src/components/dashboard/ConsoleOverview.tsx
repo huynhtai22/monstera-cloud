@@ -228,7 +228,7 @@ export function ConsoleOverview({
     );
 
   return (
-    <div className={styles.console}>
+    <div className={styles.console} data-console-page="true" data-console-section="dashboard">
       <header className={styles.header}>
         <div>
           <p className={styles.eyebrow}>

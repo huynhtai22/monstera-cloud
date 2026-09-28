@@ -260,9 +260,9 @@ export function ReportsClient() {
     const hasActiveFilters = Boolean(sourceFilter || clientFilter || dateFrom || dateTo || statusFilter !== "all");
 
     return (
-        <PageShell>
+        <PageShell section="reports">
             <div className="relative z-10 mb-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-xl font-semibold tracking-tight text-ink">
                             {viewMode === "performance" ? "Executive Performance" : "Sync activity"}
@@ -278,6 +278,7 @@ export function ReportsClient() {
                     <div className="flex items-center rounded-lg border border-line bg-panel p-1">
                         <button
                             type="button"
+                            aria-pressed={viewMode === "performance"}
                             onClick={() => setViewMode("performance")}
                             className={cn(
                                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
@@ -291,6 +292,7 @@ export function ReportsClient() {
                         </button>
                         <button
                             type="button"
+                            aria-pressed={viewMode === "sync"}
                             onClick={() => setViewMode("sync")}
                             className={cn(
                                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
