@@ -595,7 +595,7 @@ export function ConnectedSourceList({
                       {r.managerBadge ? (
                         <CopyableBadge
                           text={r.managerBadge}
-                          copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\\s*/, "")}
+                          copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
                           title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
                           className="hidden max-w-[180px] truncate text-[10px] text-ink-mute sm:inline-flex"
                         />
