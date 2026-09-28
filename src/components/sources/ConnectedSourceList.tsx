@@ -8,10 +8,11 @@ import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
-import { AlertCircle, CheckCircle2, ChevronDown, Clock, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, Filter, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
+import styles from "./ConnectedSourceList.module.css";
 import type { SourceHealthState } from "@/lib/source-health";
 import {
   PROVIDER_DISPLAY_NAME,
@@ -50,6 +51,8 @@ type SortKey = "name" | "status" | "lastSync";
 
 interface ConnectedSourceListProps {
   rows: IntegrationRow[];
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
   onDirectSync: (connectionId: string, provider: string) => void;
@@ -82,30 +85,29 @@ function canDirectSync(provider: string | undefined): boolean {
 
 
 function statusBadgeClass(kind: SourceStateKind): string {
-  if (kind === "auth-required") return "border-rose-500/30 bg-rose-500/10 text-rose-300";
-  if (kind === "sync-issue" || kind === "partial") return "border-amber-500/30 bg-amber-500/10 text-amber-300";
-  if (kind === "not-synced") return "border-sky-500/30 bg-sky-500/10 text-sky-300";
-  if (kind === "syncing") return "border-[#86c99b]/30 bg-[#86c99b]/10 text-[#86c99b]";
-  if (kind === "stale") return "border-line/80 bg-panel text-ink-mute";
-  if (kind === "attention") return "border-line bg-panel text-ink-mute";
-  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (kind === "auth-required") return "text-rose-300";
+  if (kind === "sync-issue" || kind === "partial") return "text-amber-300";
+  if (kind === "not-synced") return "text-sky-300";
+  if (kind === "syncing") return "text-[#9dd7ae]";
+  if (kind === "stale" || kind === "attention") return "text-ink-mute";
+  return "text-emerald-300";
 }
 
 function StatusIcon({ kind }: { kind: SourceStateKind }) {
-  if (kind === "auth-required") return <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />;
-  if (kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />;
-  if (kind === "syncing") return <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-[#86c99b] shrink-0" />;
+  if (kind === "auth-required") return <AlertCircle className="h-3 w-3 text-rose-400 shrink-0" />;
+  if (kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />;
+  if (kind === "syncing") return <Loader2 className="h-3 w-3 motion-safe:animate-spin text-[#86c99b] shrink-0" />;
   if (kind === "not-synced") return <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />;
   if (kind === "stale") return <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 shrink-0" />;
-  if (kind === "attention") return <AlertCircle className="h-3.5 w-3.5 text-ink-mute" />;
-  return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />;
+  if (kind === "attention") return <AlertCircle className="h-3 w-3 text-ink-mute" />;
+  return <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" strokeWidth={2} />;
 }
 
 function StatusBadge({ state }: { state: SourceState }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs",
+        "inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium",
         statusBadgeClass(state.kind),
       )}
       title={state.detail || state.subtext}
@@ -157,15 +159,26 @@ function AccountsCell({
 function LastSyncCell({ lastSync }: { lastSync?: string }) {
   const formatted = formatLastSyncLabel(lastSync);
   return (
-    <div className="flex items-center gap-1.5 text-xs text-ink-mute" title={formatted.title}>
+    <div className="flex items-center gap-1.5 text-[11px] text-ink-mute" title={formatted.title}>
       <Clock className="h-3 w-3 text-ink-mute/70 shrink-0" />
-      <span className="font-medium text-ink">{formatted.text}</span>
+      <span>{formatted.text}</span>
     </div>
+  );
+}
+
+function SourceSelector({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <label className={styles.selector} data-no-row-click data-no-card-click onClick={(event) => event.stopPropagation()}>
+      <input type="checkbox" checked={checked} onChange={onChange} aria-label={label} />
+      <span className={styles.selectorFace} aria-hidden="true"><CheckCircle2 size={14} strokeWidth={2.4} /></span>
+    </label>
   );
 }
 
 export function ConnectedSourceList({
   rows,
+  searchQuery,
+  onSearchChange,
   busyActions,
   onSync,
   onDirectSync,
@@ -183,7 +196,6 @@ export function ConnectedSourceList({
   const [renamingRow, setRenamingRow] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"connections" | "detailed" | "lite">("connections");
 
@@ -340,7 +352,7 @@ export function ConnectedSourceList({
         <button
           type="button"
           onClick={() => onFixConnection(r)}
-          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
           data-no-row-click
           data-no-card-click
           title="Re-authenticate OAuth credentials"
@@ -356,7 +368,7 @@ export function ConnectedSourceList({
           type="button"
           disabled={syncBusy}
           onClick={() => runRowSync(r)}
-          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
           data-no-row-click
           data-no-card-click
           title="Trigger initial warehouse sync"
@@ -371,7 +383,7 @@ export function ConnectedSourceList({
           type="button"
           disabled={syncBusy}
           onClick={() => runRowSync(r)}
-          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
           data-no-row-click
           data-no-card-click
           title="Retry failed sync directly"
@@ -386,7 +398,7 @@ export function ConnectedSourceList({
         disabled={syncBusy || !sourceState.canSync}
         onClick={() => runRowSync(r)}
         className={cn(
-          "inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
+          "inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
           syncBusy || !sourceState.canSync
             ? "cursor-not-allowed border-line bg-panel text-ink-mute"
             : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20",
@@ -401,28 +413,17 @@ export function ConnectedSourceList({
   };
 
   return (
-    <div className="console-source-list rounded-xl border border-line bg-panel shadow-xs overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-line p-4 sm:p-5 bg-panel/70">
+    <div className={cn("console-source-list overflow-hidden rounded-xl border border-line bg-panel shadow-xs", styles.list)}>
+      <div className="flex flex-col gap-4 border-b border-line bg-panel p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
-            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute">Connected sources</span>
+            <span className="text-base font-medium tracking-tight text-ink">Your connections</span>
             <span className="rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink">
               {filteredAndSortedRows.length}{filteredAndSortedRows.length !== rows.length ? ` of ${rows.length}` : ""}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {anySelected && (
-              <>
-                <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
-                  <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
-                </PrimaryButton>
-                <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
-                  <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
-                </SecondaryButton>
-              </>
-            )}
-
             <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
               <button
                 type="button"
@@ -494,20 +495,32 @@ export function ConnectedSourceList({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-line/50">
+        {anySelected && (
+          <div className={cn("flex flex-wrap items-center gap-2 rounded-xl border border-[#86c99b]/20 bg-[#86c99b]/[0.06] px-3 py-2", styles.bulkBar)}>
+            <span className="mr-auto text-xs font-medium text-[#a9d9b9]">{selectedIds.size} selected</span>
+            <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
+              <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
+            </PrimaryButton>
+            <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
+              <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
+            </SecondaryButton>
+          </div>
+        )}
+
+        <div className="flex flex-col justify-between gap-3 border-t border-line/50 pt-4 sm:flex-row sm:items-center">
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" />
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search by MCC, account ID, Gmail, or name…"
               className="h-8.5 w-full rounded-lg border border-line bg-canvas pl-8.5 pr-8 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
+                onClick={() => onSearchChange("")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-mute hover:text-ink"
               >
                 <X className="h-3.5 w-3.5" />
@@ -516,35 +529,20 @@ export function ConnectedSourceList({
           </div>
 
           {availablePlatforms.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSelectedPlatform("all")}
-                className={cn(
-                  "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
-                  selectedPlatform === "all"
-                    ? "bg-white text-black font-semibold shadow-xs"
-                    : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
-                )}
+            <label className={styles.platformFilter}>
+              <Filter size={14} aria-hidden="true" />
+              <select
+                aria-label="Filter connections by platform"
+                value={selectedPlatform}
+                onChange={(event) => setSelectedPlatform(event.target.value)}
               >
-                All ({rows.length})
-              </button>
-              {availablePlatforms.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setSelectedPlatform(p.id)}
-                  className={cn(
-                    "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
-                    selectedPlatform === p.id
-                      ? "bg-white text-black font-semibold shadow-xs"
-                      : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
-                  )}
-                >
-                  {p.label} ({p.count})
-                </button>
-              ))}
-            </div>
+                <option value="all">All platforms · {rows.length}</option>
+                {availablePlatforms.map((platform) => (
+                  <option key={platform.id} value={platform.id}>{platform.label} · {platform.count}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
           )}
         </div>
       </div>
@@ -558,7 +556,7 @@ export function ConnectedSourceList({
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => onSearchChange("")}
               className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
             >
               Clear search
@@ -566,8 +564,8 @@ export function ConnectedSourceList({
           )}
         </div>
       ) : viewMode === "connections" ? (
-        <div className="divide-y divide-line/70 bg-panel/30" aria-label="Source connections">
-          {filteredAndSortedRows.map((r) => {
+        <div className="divide-y divide-line/70 bg-panel" aria-label="Source connections">
+          {filteredAndSortedRows.map((r, index) => {
             const syncBusy =
               (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
             const sourceState = sourceStateFor(r, Boolean(syncBusy));
@@ -577,18 +575,20 @@ export function ConnectedSourceList({
               <article
                 key={r.id}
                 className={cn(
-                  "grid grid-cols-1 items-center gap-3 px-4 py-4 transition-colors hover:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_minmax(180px,auto)_auto] sm:gap-5 sm:px-5",
+                  styles.row,
                   syncBusy && "bg-[#86c99b]/[0.035]"
                 )}
+                style={{ "--row-index": Math.min(index, 8) } as React.CSSProperties}
                 data-source-connection={r.id}
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="md" /> : null}
+                <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
+                <div className={cn("flex min-w-0 items-center gap-3", styles.identity)}>
+                  {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="lg" /> : null}
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <Link
                         href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                        className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white"
+                        className="truncate text-sm font-medium tracking-tight text-ink hover:text-white"
                       >
                         {r.name}
                       </Link>
@@ -597,14 +597,11 @@ export function ConnectedSourceList({
                           text={r.managerBadge}
                           copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
                           title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
-                          className="hidden max-w-[180px] truncate text-[10px] text-ink-mute sm:inline-flex"
+                          className="max-w-[190px] truncate text-[10px] text-ink-mute"
                         />
                       ) : null}
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-mute">
-                      <span>{PROVIDER_DISPLAY_NAME[r.provider || ""] || r.provider || "Source"}</span>
-                      <span aria-hidden="true" className="text-ink-mute/50">·</span>
-                      <span>{r.accountCount ?? r.accountTags?.length ?? 0} {r.accountCount === 1 ? "account" : "accounts"}</span>
                       <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} />
                     </div>
                     {needsDiagnostic && sourceState.detail ? (
@@ -616,19 +613,13 @@ export function ConnectedSourceList({
                       </p>
                     ) : null}
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(r.id)}
-                    onChange={() => toggleSelectOne(r.id)}
-                    aria-label={`Select ${r.name}`}
-                    className="h-4 w-4 shrink-0 rounded border-line bg-canvas accent-white"
-                  />
                 </div>
-                <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-start sm:justify-center sm:gap-1">
-                  <StatusBadge state={sourceState} />
-                  <LastSyncCell lastSync={r.lastSync} />
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className={styles.controls}>
+                  <div className={cn("flex min-w-0 flex-col items-start justify-center gap-1", styles.health)}>
+                    <StatusBadge state={sourceState} />
+                    <LastSyncCell lastSync={r.lastSync} />
+                  </div>
+                  <div className={cn("flex flex-wrap items-center justify-end gap-2", styles.actions)}>
                   <Link
                     href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 text-xs font-medium text-ink transition-colors hover:bg-white/[0.06]"
@@ -647,13 +638,14 @@ export function ConnectedSourceList({
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
+                  </div>
                 </div>
               </article>
             );
           })}
         </div>
       ) : viewMode === "detailed" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 p-4 sm:p-6 bg-panel/30">
+        <div className={styles.detailGrid}>
           {filteredAndSortedRows.map((r) => {
             const syncBusy =
               (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
@@ -723,12 +715,7 @@ export function ConnectedSourceList({
 
                   <div className="flex items-center gap-2.5 shrink-0" data-no-card-click onClick={(e) => e.stopPropagation()}>
                     <StatusBadge state={sourceState} />
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => toggleSelectOne(r.id)}
-                      className="cursor-pointer h-4 w-4 rounded border-line bg-canvas accent-white"
-                    />
+                    <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
                   </div>
                 </div>
 
@@ -784,19 +771,19 @@ export function ConnectedSourceList({
         </div>
       ) : (
         <div className="max-lg:overflow-x-auto">
-          <table className="min-w-[960px] w-full text-sm">
+          <table className="min-w-[850px] w-full text-sm">
             <colgroup>
               <col className="w-12" />
-              <col className="w-[320px]" />
-              <col className="w-[220px]" />
-              <col className="w-[140px]" />
-              <col className="w-[140px]" />
-              <col className="w-[150px]" />
+              <col className="w-[260px]" />
+              <col className="w-[170px]" />
+              <col className="w-[135px]" />
+              <col className="w-[120px]" />
+              <col className="w-[160px]" />
             </colgroup>
             <thead className="border-b border-line bg-panel lg:sticky lg:top-[41px] lg:z-[15]">
               <tr>
                 <th className="w-12 px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">
-                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
+                  <SourceSelector checked={allSelected} onChange={toggleSelectAll} label="Select all connections" />
                 </th>
                 <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Connector</th>
                 <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Accounts</th>
@@ -823,7 +810,7 @@ export function ConnectedSourceList({
                       }}
                     >
                       <td className="px-5 py-3.5" data-no-row-click>
-                        <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
+                        <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3.5">
