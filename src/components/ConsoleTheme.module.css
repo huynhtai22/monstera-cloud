@@ -144,23 +144,23 @@
    restyle existing content; data, actions, authorization and navigation stay
    owned by the page components. */
 .root[data-console-theme="dark"] {
-  --color-canvas: #090c0a;
-  --color-panel: #101411;
-  --color-line: #252d27;
-  --color-ink: #edf1ee;
-  --color-ink-mute: #929b94;
-  --color-surface-muted: #171d19;
+  --color-canvas: #0a0a0a;
+  --color-panel: #111111;
+  --color-line: #2a2a2a;
+  --color-ink: #ededed;
+  --color-ink-mute: #969696;
+  --color-surface-muted: #161616;
   --console-motion-accent: #86c99b;
   --shadow-card: 0 1px 0 #ffffff05;
 }
 .root[data-console-theme="dark"] > aside {
-  background: #0e120f;
+  background: #101010;
 }
 .root[data-console-theme="dark"] main :global(.console-page),
 .root[data-console-theme="dark"] main :global([data-console-page="true"]) {
-  --console-surface-raised: #121713;
-  --console-surface-muted: #171d19;
-  --console-line-soft: #252d27;
+  --console-surface-raised: #111111;
+  --console-surface-muted: #161616;
+  --console-line-soft: #2a2a2a;
   color: var(--color-ink);
 }
 .root main :global(.console-page) :where(h1, h2, h3) {
@@ -226,7 +226,7 @@
 }
 .root[data-console-theme="dark"] main :global(.console-page) :where(.console-scorecard) {
   border-color: var(--console-line-soft);
-  background: linear-gradient(145deg, #171d19, #101411 72%);
+  background: linear-gradient(145deg, #171717, #101010 72%);
 }
 .root[data-console-theme="dark"] main :global(.console-page) :where(.console-scorecard:hover) {
   border-color: color-mix(in srgb, var(--console-motion-accent) 34%, var(--color-line));
@@ -289,7 +289,7 @@
 }
 .root main :global([data-console-destinations="true"] > div) {
   border-radius: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent, #86c99b) 3%, var(--color-panel)), var(--color-panel) 76%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 2%, var(--color-panel)), var(--color-panel) 76%);
   box-shadow: inset 0 1px 0 #ffffff05;
 }
 .root main :global([data-console-section="sources"] .console-section-heading),
@@ -302,7 +302,7 @@
 }
 .root main :global([data-console-section="sources"] .console-source-summary > div) {
   min-width: 0;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent, #86c99b) 3%, var(--color-panel)), var(--color-panel) 78%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 2%, var(--color-panel)), var(--color-panel) 78%);
 }
 .root main :global([data-console-section="sources"] .console-source-layout) {
   display: grid;
@@ -322,7 +322,7 @@
   border-radius: 14px;
 }
 .root main :global([data-console-section="sources"] .console-source-list > div:first-child) {
-  background: color-mix(in srgb, var(--console-motion-accent, #86c99b) 2%, var(--color-panel));
+  background: color-mix(in srgb, var(--color-ink) 2%, var(--color-panel));
 }
 .root main :global([data-console-section="sources"] [data-source-connection]) {
   min-height: 94px;
@@ -345,7 +345,7 @@
 }
 .root main :global([data-console-warehouse-filters="true"]) {
   border-radius: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent, #86c99b) 3%, var(--color-panel)), var(--color-panel) 78%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 2%, var(--color-panel)), var(--color-panel) 78%);
   box-shadow: inset 0 1px 0 #ffffff04;
 }
 .root main :global([data-console-warehouse-summary="true"] .console-scorecard) {
