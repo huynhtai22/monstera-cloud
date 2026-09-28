@@ -395,7 +395,7 @@ export default function MarketingHomePage() {
           <MarketingScrollReveal cinematic>
             <div className="mh-eyebrow"><span className="mh-live-dot" />{vi ? "KHÔNG GIAN DỮ LIỆU CHO AGENCY" : "THE AGENCY DATA WORKSPACE"}<span className="mh-eyebrow-index">MONSTERA / 01</span></div>
             <div className="mh-hero-heading">
-              <h1>{vi ? "Dữ liệu của bạn." : "Your data."}<br /><span>{vi ? "Toàn cảnh rõ ràng." : "In full view."}</span></h1>
+              <h1>{vi ? "Dữ liệu của bạn." : "Your ad data."}<br /><span>{vi ? "Toàn cảnh rõ ràng." : "In full view."}</span></h1>
               <div className="mh-hero-aside">
                 <p>{vi ? "Gom hiệu suất quảng cáo, doanh thu và dữ liệu khách hàng vào một luồng báo cáo rõ ràng. Để agency dành thời gian cho điều quan trọng hơn." : "Ad performance. Commerce. Every client. One clear reporting workflow—so your agency can focus on what comes next."}</p>
                 <div className="mh-actions"><PilotLink location="hero" className="mh-button mh-button-primary">{vi ? "Dùng thử 7 ngày" : "Start your 7-day pilot"}<ArrowRight size={16} /></PilotLink><Link href="#sample-dashboard" className="mh-text-link" onClick={() => trackEvent("landing_sample_dashboard_clicked", { language: lang })}>{vi ? "Khám phá sản phẩm" : "Explore the product"}<span aria-hidden="true">↘</span></Link></div>
