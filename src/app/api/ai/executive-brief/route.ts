@@ -3,10 +3,14 @@ import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { productionRouteDisabled } from "@/lib/request-auth";
+import { resolveReportingContext } from "@/lib/ai/reporting-context";
+import {
+  generateExecutiveBrief,
+  validateModelStructuredSelection,
+  type BriefModelSelection,
+} from "@/lib/ai/executive-brief-generator";
 import { getMonthlyAiBudget } from "@/lib/ai/budget";
 import { enqueueAgentJob } from "@/lib/ai/jobs";
-import { resolveReportingContext } from "@/lib/ai/reporting-context";
-import { generateExecutiveBrief } from "@/lib/ai/executive-brief-generator";
 import type { ExecutiveBriefResponse, ReportingWindowPreset } from "@/lib/ai/reporting-contracts";
 
 function formatBriefExport(
@@ -233,6 +237,20 @@ export async function POST(req: Request) {
         typeof body.expectedFingerprint === "string" ? body.expectedFingerprint.trim() : "";
       const format: "markdown" | "text" | "print" =
         body.format === "text" ? "text" : body.format === "print" ? "print" : "markdown";
+      let modelSelection: BriefModelSelection | undefined;
+      if (body.modelSelection !== undefined) {
+        const validation = validateModelStructuredSelection(
+          body.modelSelection,
+          context.observations.map((observation) => observation.id),
+        );
+        if (!validation.valid) {
+          return NextResponse.json(
+            { error: "Invalid preview selection", code: "INVALID_BRIEF_SELECTION" },
+            { status: 400, headers: { "Cache-Control": "private, no-store" } },
+          );
+        }
+        modelSelection = validation.selection;
+      }
 
       // A. Fingerprint stale check (detects underlying dataset mutations since preview)
       if (!expectedFingerprint || expectedFingerprint !== context.fingerprint) {
@@ -264,6 +282,7 @@ export async function POST(req: Request) {
         context,
         language,
         allowModelRefinement: false,
+        modelSelection,
       });
 
       const content = formatBriefExport(brief, language, format);
@@ -274,6 +293,7 @@ export async function POST(req: Request) {
           format,
           content,
           fingerprint: context.fingerprint,
+          ...(brief.modelSelection ? { modelSelection: brief.modelSelection } : {}),
           exportEligible: true,
           evaluatedAt: context.evaluatedAt,
         },
@@ -281,7 +301,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Default: Preview Action
+    // Export reuses the validated bounded selection returned by this preview.
     const brief = await generateExecutiveBrief({
       context,
       language,
@@ -327,6 +347,11 @@ export async function POST(req: Request) {
       },
     );
   } catch (error) {
+    const rbacRes = toRbacResponse(error);
+    if (rbacRes) {
+      rbacRes.headers.set("Cache-Control", "private, no-store");
+      return rbacRes;
+    }
     const msg = error instanceof Error ? error.message : "Failed to generate brief";
     return NextResponse.json(
       { error: msg },

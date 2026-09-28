@@ -283,6 +283,10 @@ export type ExecutiveBriefResponse = {
   readiness: ReportingContext["readiness"];
   freshnessJourney: FreshnessJourney;
   generationMode: "model_assisted" | "deterministic";
+  modelSelection?: {
+    primaryObservationId: string;
+    emphasis: "spend" | "roas" | "marketplace" | "balanced";
+  };
   sections: {
     headline: string;
     kpiScorecard: ReportingMetricValue[];

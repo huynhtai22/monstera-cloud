@@ -1,0 +1,103 @@
+.pricing-frontier { padding-top:56px; }
+.pf-hero { position:relative; isolation:isolate; padding:61px 0 60px; border-bottom:1px solid var(--polish-line); }
+.pf-hero-glow { position:absolute; z-index:-1; inset:0; pointer-events:none; background:radial-gradient(ellipse at 79% 45%,#7cbf8e1f,transparent 53%); }
+.pf-hero-glow::after { content:""; position:absolute; top:235px; left:-8%; width:115%; height:360px; border-top:1px solid #afebbe35; border-radius:50%; transform:rotate(-6deg); }
+.pf-hero-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:50px; align-items:end; margin-top:52px; }
+.pf-hero h1 { font-size:clamp(57px,6.9vw,96px); white-space:nowrap; }
+.pf-hero-aside { max-width:390px; margin:0 0 8px auto; }
+.pf-hero-aside > p { color:#a8b8ab; font-size:17px; line-height:1.75; }
+.pf-hero-aside > a { margin-top:23px; }
+.pf-hero-proof { display:flex; flex-wrap:wrap; gap:16px 33px; margin-top:82px; padding-top:21px; border-top:1px solid #bce8c52a; }
+.pf-hero-proof span { display:flex; align-items:center; gap:8px; color:#a8b8ac; font-size:11px; }
+.pf-hero-proof svg { color:#bce9c8; }
+.pf-plan-section { padding-top:93px; padding-bottom:102px; }
+.pf-section-heading { max-width:690px; }
+.pf-section-heading h2 { margin-top:18px; }
+.pf-section-heading > p:last-child:not(.polish-eyebrow) { max-width:505px; margin-top:23px; color:#a3b4a7; font-size:15px; line-height:1.75; }
+.pf-plan-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-top:47px; margin-bottom:17px; }
+.pf-plan-controls > div:last-child { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.pf-plan-controls select { padding:9px 13px; border:1px solid #bfe9c52b; border-radius:7px; background:#141b16; color:#d7e9db; font-size:12px; cursor:pointer; }
+.pf-plan-controls > div:first-child { border-color:#bfe9c52b; background:#141b16; }
+.pf-plan-controls button { transition:background 250ms,color 250ms; }
+.pf-plans > div { gap:18px; }
+.pf-plans article { position:relative; min-height:515px; padding:34px; overflow:hidden; border:1px solid #bfe9c52b; border-radius:15px; background:#131a15; transition:border-color 450ms ease,box-shadow 450ms ease,transform 450ms var(--polish-ease); }
+.pf-plans article:first-child { background:radial-gradient(ellipse at 77% 15%,#a9e6b622,transparent 45%),#18241b; border-color:#c4ebce54; box-shadow:0 25px 60px #0005,0 0 60px #9deabb08; }
+.pf-plans article::before { content:""; position:absolute; inset:0 18% auto; height:1px; background:linear-gradient(90deg,transparent,#d0f6d462,transparent); opacity:.6; }
+.pf-plans article:hover { transform:translateY(-3px); border-color:#c4ebce81; box-shadow:0 25px 60px #0005; }
+.pf-plans article h3 { font-size:24px; font-weight:500; letter-spacing:-.035em; }
+.pf-plans article > p { font-size:13px; line-height:1.65; margin-top:12px; }
+.pf-plans article > div:nth-of-type(2) { margin-top:34px; }
+.pf-plans article > div:nth-of-type(2) > span:first-child { font-size:41px; font-weight:500; letter-spacing:-.055em; }
+.pf-plans article button { min-height:47px; margin-top:25px; border-radius:7px; font-size:12px; transition:background 250ms,transform 350ms var(--polish-ease); }
+.pf-plans article button:hover { transform:translateY(-2px); }
+.pf-plans article:first-child button { background:#e9f5eb; color:#14251a; }
+.pf-plans article:first-child button:hover { background:#c9efdb; }
+.pf-plans article:last-child button { border-color:#badac039; }
+.pf-plans article ul { margin-top:29px; padding-top:27px; border-color:#c4e2c32b; }
+.pf-plans article li { font-size:12px; color:#b0c2b3; line-height:1.65; }
+.pf-plans article li svg { color:#b5e9c0; }
+.pf-plan-fineprint { max-width:920px; margin-top:21px; font-size:11px; line-height:1.8; color:#8c9f90; }
+.pf-usd-note { margin-top:18px; font-size:12px; line-height:1.7; color:#adc3b0; }
+.pf-usd-note a { text-decoration:underline; text-underline-offset:4px; color:#e3f2e6; }
+.pf-journey { padding:94px 0 106px; border-block:1px solid var(--polish-line); background:#111713; }
+.pf-journey-heading { display:flex; justify-content:space-between; align-items:end; gap:20px; }
+.pf-journey-heading h2 { margin-top:17px; }
+.pf-journey-heading > svg { color:#7b9a83; }
+.pf-journey-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:35px; margin-top:62px; }
+.pf-journey-step > span { display:flex; align-items:center; gap:17px; color:#bde3c4; font-family:var(--font-mono); font-size:11px; }
+.pf-journey-step i { flex:1; height:1px; background:#bde3c42b; position:relative; }
+.pf-journey-step i::after { content:""; position:absolute; right:0; top:-2px; width:5px; height:5px; border-radius:50%; background:#a6cbb0; }
+.pf-journey-step h3 { font-size:20px; font-weight:500; margin-top:25px; letter-spacing:-.02em; }
+.pf-journey-step p { max-width:325px; color:#a1b0a4; font-size:13px; line-height:1.8; margin-top:13px; }
+.pf-questions { display:grid; grid-template-columns:.8fr 1.2fr; gap:75px; padding-block:101px; }
+.pf-questions h2 { margin-top:18px; }
+.pf-questions > div:first-child > p:last-child { margin-top:20px; font-size:13px; line-height:1.7; color:#91a595; }
+.pf-question-list details { border-top:1px solid var(--polish-line); }
+.pf-question-list details:last-child { border-bottom:1px solid var(--polish-line); }
+.pf-question-list summary { display:flex; align-items:center; justify-content:space-between; gap:20px; list-style:none; cursor:pointer; padding:23px 2px; font-size:13px; }
+.pf-question-list summary::-webkit-details-marker { display:none; }
+.pf-question-list summary span { font-size:19px; color:#a6b9a8; transition:transform 250ms; }
+.pf-question-list details[open] summary span { transform:rotate(45deg); }
+.pf-question-list details > p { color:#96a99b; font-size:12px; line-height:1.75; padding:0 30px 24px 2px; animation:polish-arrive 400ms var(--polish-ease); }
+.pf-bottom { padding:77px 0 104px; border-top:1px solid var(--polish-line); }
+.pf-bottom-grid { display:grid; grid-template-columns:1fr .7fr; align-items:center; gap:65px; }
+.pf-bottom h2 { max-width:535px; margin-top:20px; }
+.pf-bottom-grid > div:first-child > p:not(.polish-eyebrow) { max-width:550px; margin-top:20px; font-size:12px; color:#9cafa0; line-height:1.8; }
+.pf-bottom-links { display:flex; flex-wrap:wrap; gap:25px; margin-top:25px; }
+.pf-bottom-links a { font-size:11px !important; }
+.pf-bottom-cta { padding:30px 35px; border:1px solid #bae8c43a; border-radius:15px; background:#15221a; }
+.pf-bottom-cta > span { display:block; color:#c9efdb; font-size:120px; line-height:1; letter-spacing:-.08em; font-weight:400; }
+.pf-bottom-cta > p { color:#a9c2ad; font-size:12px; margin:0 0 27px 7px; }
+@media (max-width:1000px) {
+ .pf-hero-grid { grid-template-columns:1fr; gap:25px; }
+ .pf-hero-aside { max-width:590px; margin:0; }
+ .pf-plans article { padding:25px; }
+ .pf-plans article > div:nth-of-type(2) > span:first-child { font-size:32px; }
+ .pf-questions { gap:40px; }
+}
+@media (max-width:700px) {
+ .pf-hero { padding:34px 0 47px; }
+ .pf-hero-grid { margin-top:35px; }
+ .pf-hero h1 { white-space:normal; }
+ .pf-hero-aside > p { font-size:14px; }
+ .pf-hero-proof { margin-top:50px; gap:13px; }
+ .pf-hero-proof span { font-size:10px; }
+ .pf-plan-section { padding-block:60px 69px; }
+ .pf-section-heading > p:last-child:not(.polish-eyebrow) { font-size:13px; }
+ .pf-plan-controls { margin-top:32px; }
+ .pf-plans article { min-height:0; }
+ .pf-journey { padding-block:62px; }
+ .pf-journey-heading > svg { display:none; }
+ .pf-journey-grid { grid-template-columns:1fr; margin-top:41px; gap:36px; }
+ .pf-journey-step h3 { margin-top:14px; }
+ .pf-questions { grid-template-columns:1fr; padding-block:65px; gap:30px; }
+ .pf-bottom { padding-block:61px 70px; }
+ .pf-bottom-grid { grid-template-columns:1fr; gap:30px; }
+ .pf-bottom-cta > span { font-size:94px; }
+}
+@media (max-width:380px) {
+ .pf-plan-controls select { font-size:11px; padding:8px; }
+ .pf-plans article { padding:22px; }
+ .pf-plans article > div:nth-of-type(2) > span:first-child { font-size:28px; }
+}
+@media (prefers-reduced-motion:reduce) { .pricing-frontier * { animation:none !important; transition:none !important; } }

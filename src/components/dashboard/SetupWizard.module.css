@@ -1,0 +1,100 @@
+.guide,
+.complete {
+  position: relative;
+  z-index: 10;
+  border: 1px solid #393939;
+  background: linear-gradient(110deg, #1b1b1b, #111111 70%);
+  padding: 22px;
+  border-radius: 12px;
+  margin: 22px 0;
+}
+.guide {
+  border-color: #313131;
+}
+.complete h2,
+.guide h2 {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.complete p {
+  font-size: 12px;
+}
+.complete a,
+.guide button {
+  border-radius: 7px;
+}
+.complete a:hover {
+  border-color: #656565;
+}
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #303030;
+  border-radius: 8px;
+  background: #111111;
+}
+.stepCopy {
+  flex: 1;
+  min-width: 0;
+}
+.stepCopy p:first-child {
+  font-size: 12px;
+}
+.stepCopy p + p {
+  font-size: 11px;
+  line-height: 1.65;
+  margin-top: 7px;
+}
+.active {
+  border-color: #707070;
+  background: #c9c9c908;
+}
+.done {
+  background: #171717;
+}
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #a1a1a166;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: #e4e4e4;
+  background: #d3d3d310;
+  font-size: 11px;
+  grid-column: 2;
+  justify-self: start;
+  margin-left: 0;
+}
+.cta:hover {
+  background: #d3d3d320;
+}
+.cta:focus-visible {
+  outline: 2px solid #e1e1e1;
+  outline-offset: 3px;
+}
+@media (max-width: 1050px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .guide,
+  .complete {
+    padding: 18px;
+  }
+}

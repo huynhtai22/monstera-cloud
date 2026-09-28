@@ -72,27 +72,28 @@ model PasswordResetToken {
 }
 
 model User {
-  id                       String                     @id @default(cuid())
-  name                     String?
-  email                    String?                    @unique
-  hashedPassword           String?
-  emailVerified            DateTime?
-  image                    String?
-  otp                      String?
-  otpExpires               DateTime?
-  otpAttempts              Int                        @default(0)
-  otpLockedUntil           DateTime?
-  plan                     String                     @default("free")
-  subscriptionId           String?                    @unique
-  platformRole             PlatformRole               @default(USER)
-  accounts                 Account[]
-  sessions                 Session[]
-  loginEvents              LoginEvent[]
-  userSessions             UserSession[]
-  workspaceSessionEvidence WorkspaceSessionEvidence[]
-  workspaces               WorkspaceMember[]
-  paymentOrders            PaymentOrder[]
-  reportSnapshotApprovals  ReportSnapshotApproval[]
+  id                          String                       @id @default(cuid())
+  name                        String?
+  email                       String?                      @unique
+  hashedPassword              String?
+  emailVerified               DateTime?
+  image                       String?
+  otp                         String?
+  otpExpires                  DateTime?
+  otpAttempts                 Int                          @default(0)
+  otpLockedUntil              DateTime?
+  plan                        String                       @default("free")
+  subscriptionId              String?                      @unique
+  platformRole                PlatformRole                 @default(USER)
+  accounts                    Account[]
+  sessions                    Session[]
+  loginEvents                 LoginEvent[]
+  userSessions                UserSession[]
+  workspaceSessionEvidence    WorkspaceSessionEvidence[]
+  workspaces                  WorkspaceMember[]
+  paymentOrders               PaymentOrder[]
+  reportSnapshotApprovals     ReportSnapshotApproval[]
+  reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
 }
 
 model LoginEvent {
@@ -191,31 +192,32 @@ model Workspace {
   userDashboards UserDashboard[]
 
   // Looker Studio integration jobs
-  lookerJobs               LookerJob[]
-  warehouseImportJobs      WarehouseImportJob[]
-  warehouseBackfillChunks  WarehouseBackfillChunk[]
-  providerAccess           WorkspaceProviderAccess[]
-  invitations              WorkspaceInvitation[]
-  oauthAttempts            OAuthAttempt[]
-  auditEvents              AuditEvent[]
-  supportTickets           SupportTicket[]
-  aiPolicy                 WorkspaceAiPolicy?
-  agentJobs                AgentJob[]
-  agentTraces              AgentTrace[]
-  evidencePacks            EvidencePackRecord[]
-  connectorRunArtifacts    ConnectorRunArtifact[]
-  payloadDiscoveries       PayloadSchemaDiscovery[]
-  schemaProposals          SchemaPatchProposal[]
-  paymentOrders            PaymentOrder[]
-  providerAccountHealth    ProviderAccountHealth[]
-  reportSnapshots          ReportSnapshot[]
-  reportSnapshotApprovals  ReportSnapshotApproval[]
-  clientAccountAssignments ClientProviderAccountAssignment[]
-  dailyUsage               WorkspaceDailyUsage[]
-  sessionEvidence          WorkspaceSessionEvidence[]
-  apiKeyMutationReceipts   ApiKeyMutationReceipt[]
-  dispatchAttempts         ReportScheduleDispatchAttempt[]
-  clientFreshnessStates    ClientFreshnessState[]
+  lookerJobs                  LookerJob[]
+  warehouseImportJobs         WarehouseImportJob[]
+  warehouseBackfillChunks     WarehouseBackfillChunk[]
+  providerAccess              WorkspaceProviderAccess[]
+  invitations                 WorkspaceInvitation[]
+  oauthAttempts               OAuthAttempt[]
+  auditEvents                 AuditEvent[]
+  supportTickets              SupportTicket[]
+  aiPolicy                    WorkspaceAiPolicy?
+  agentJobs                   AgentJob[]
+  agentTraces                 AgentTrace[]
+  evidencePacks               EvidencePackRecord[]
+  connectorRunArtifacts       ConnectorRunArtifact[]
+  payloadDiscoveries          PayloadSchemaDiscovery[]
+  schemaProposals             SchemaPatchProposal[]
+  paymentOrders               PaymentOrder[]
+  providerAccountHealth       ProviderAccountHealth[]
+  reportSnapshots             ReportSnapshot[]
+  reportSnapshotApprovals     ReportSnapshotApproval[]
+  clientAccountAssignments    ClientProviderAccountAssignment[]
+  dailyUsage                  WorkspaceDailyUsage[]
+  sessionEvidence             WorkspaceSessionEvidence[]
+  apiKeyMutationReceipts      ApiKeyMutationReceipt[]
+  dispatchAttempts            ReportScheduleDispatchAttempt[]
+  reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
+  clientFreshnessStates       ClientFreshnessState[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -295,6 +297,7 @@ model Client {
   deliveryReceipts               DestinationDeliveryReceipt[]
   reportSnapshots                ReportSnapshot[]
   reportSnapshotApprovals        ReportSnapshotApproval[]
+  reportEmailDeliveryAttempts    ReportEmailDeliveryAttempt[]
   accountAssignments             ClientProviderAccountAssignment[]
   freshnessState                 ClientFreshnessState?
 
@@ -361,11 +364,12 @@ model ReportSnapshot {
   result                 Json
   generatedAt            DateTime  @default(now())
 
-  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace             Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   /// Composite FK mirrors PR #152's tenant pattern: the client MUST belong to
   /// the same workspace, enforced by the database, not application code.
-  client    Client                   @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
-  approvals ReportSnapshotApproval[]
+  client                Client                       @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  approvals             ReportSnapshotApproval[]
+  emailDeliveryAttempts ReportEmailDeliveryAttempt[]
 
   @@unique([generationKey, sequence])
   @@unique([generationKey, dependencyHash])
@@ -393,6 +397,36 @@ model ReportSnapshotApproval {
   @@unique([workspaceId, snapshotId])
   @@index([workspaceId, clientId, approvedAt])
   @@index([workspaceId, approvedByUserId])
+}
+
+/// Explicit operator-initiated email sends for an exact approved snapshot.
+/// Provider acceptance is recorded separately from warehouse retrieval receipts.
+model ReportEmailDeliveryAttempt {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  clientId          String
+  snapshotId        String
+  actorUserId       String
+  idempotencyKey    String
+  /// Unique while the provider outcome is unresolved; retained for ambiguous sends until reconciliation.
+  activeClaimKey    String?   @unique
+  recipientDisplay  String
+  recipientHash     String?
+  status            String // PROVIDER_STARTED | ACCEPTED | DEFINITIVE_FAILED | AMBIGUOUS
+  providerMessageId String?
+  failureCode       String?
+  providerStartedAt DateTime  @default(now())
+  finishedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  snapshot  ReportSnapshot @relation(fields: [workspaceId, clientId, snapshotId], references: [workspaceId, clientId, id], onDelete: Cascade)
+  actor     User           @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, clientId, snapshotId, createdAt])
 }
 
 /// Authoritative client assignment for a provider account discovered via a root connection.

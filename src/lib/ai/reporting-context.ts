@@ -199,12 +199,35 @@ export async function resolveReportingContext(
 
     const tempWindows = calculateReportingWindows(preset, now, "UTC", "inferred");
 
-    // 4. Run Canonical Readiness Evaluation
-    const { evaluations: [evaluation] } = await loadReportReadiness(
+    // First resolve the verified account timezone. Readiness is window scoped,
+    // so this preliminary pass is only used to discover the timezone.
+    const { evaluations: [timezoneEvaluation] } = await loadReportReadiness(
       workspaceId,
       { start: tempWindows.current.start, end: tempWindows.current.end },
       { clientId, tx, now },
     );
+
+    if (!timezoneEvaluation) {
+      throw new RbacError("Readiness evaluation failed", "READINESS_FAILED", 500);
+    }
+
+    const resolvedTimezone = timezoneEvaluation.timezones.length === 1 ? timezoneEvaluation.timezones[0] : "UTC";
+    const timezoneSource = timezoneEvaluation.timezones.length === 1 ? "verified" : "inferred";
+    const windows = calculateReportingWindows(preset, now, resolvedTimezone, timezoneSource);
+
+    // Re-evaluate the actual account-local dates. UTC and account-local
+    // windows can differ by a day near midnight, and readiness must describe
+    // the same dates as the metrics and fingerprint below.
+    const windowChanged =
+      windows.current.start !== tempWindows.current.start ||
+      windows.current.end !== tempWindows.current.end;
+    const { evaluations: [evaluation] } = windowChanged
+      ? await loadReportReadiness(
+          workspaceId,
+          { start: windows.current.start, end: windows.current.end },
+          { clientId, tx, now },
+        )
+      : { evaluations: [timezoneEvaluation] };
 
     if (!evaluation) {
       throw new RbacError("Readiness evaluation failed", "READINESS_FAILED", 500);
@@ -213,10 +236,6 @@ export async function resolveReportingContext(
     if (options.onAfterReadiness) {
       await options.onAfterReadiness();
     }
-
-    const resolvedTimezone = evaluation.timezones.length === 1 ? evaluation.timezones[0] : "UTC";
-    const timezoneSource = evaluation.timezones.length === 1 ? "verified" : "inferred";
-    const windows = calculateReportingWindows(preset, now, resolvedTimezone, timezoneSource);
 
     // 5. Enforce Actual Workspace Plan Limits across both resolved windows
     const planLimits = getPlanLimits(client.workspace.plan);

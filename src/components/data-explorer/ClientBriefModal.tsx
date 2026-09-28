@@ -163,6 +163,7 @@ export function ClientBriefModal({
           language,
           action: "export",
           expectedFingerprint: brief.fingerprint,
+          ...(brief.modelSelection ? { modelSelection: brief.modelSelection } : {}),
           format,
         }),
       });

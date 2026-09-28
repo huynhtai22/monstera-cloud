@@ -2,10 +2,9 @@
  * Google Ads API v23 client (REST / SearchStream)
  * Docs: https://developers.google.com/google-ads/api
  *
- * Auth requires THREE things:
- *   1. OAuth 2.0 access token (from user's Google account)
- *   2. Developer Token (from ads.google.com/aw/apicenter — review required for production)
- *   3. login-customer-id header = MCC (Manager Account) customer ID
+ * Auth requires an OAuth 2.0 access token from the user's Google account.
+ * MCC requests also set login-customer-id to the Manager Account customer ID.
+ * Google Ads developer-token headers were retired in September 2026.
  *
  * Query language: GAQL (SQL-like), sent as POST body to SearchStream.
  * Key gotcha: cost_micros must be divided by 1,000,000 to get real currency value.
@@ -16,6 +15,7 @@ const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSI
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
+import { GOOGLE_ADS_OAUTH_SCOPE } from '@/lib/google-ads-constants';
 
 export class GoogleAdsProviderError extends Error {
   constructor(message: string, readonly retryable: boolean, readonly status?: number, readonly code?: string) {
@@ -24,13 +24,25 @@ export class GoogleAdsProviderError extends Error {
   }
 }
 
-/** Application-level developer-token blocker (structured, not a leaf-account failure). */
+/** Legacy error code retained for persisted outcomes and older provider responses. */
 export const GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED = "DEVELOPER_TOKEN_NOT_APPROVED";
+/** Current application-level access blocker for the OAuth client's Cloud project. */
+export const GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED = "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION";
 
+export function isGoogleAdsAccessBlocked(error: unknown): boolean {
+  if (error instanceof GoogleAdsProviderError && [
+    GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED,
+    GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED,
+  ].includes(error.code ?? "")) return true;
+  // Older v23 responses and stored errors can still mention the retired token.
+  return /DEVELOPER_TOKEN_NOT_APPROVED|CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|Google Ads API access.*Cloud project/i.test(
+    error instanceof Error ? error.message : String(error ?? ""),
+  );
+}
+
+/** @deprecated Use isGoogleAdsAccessBlocked; retained for older call sites. */
 export function isGoogleAdsDeveloperTokenBlocked(error: unknown): boolean {
-  if (error instanceof GoogleAdsProviderError && error.code === GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED) return true;
-  // Fallback for legacy/wrapped errors carrying the provider constant.
-  return /DEVELOPER_TOKEN_NOT_APPROVED/i.test(error instanceof Error ? error.message : String(error ?? ""));
+  return isGoogleAdsAccessBlocked(error);
 }
 
 export function isGoogleAdsRetryableFailure(status: number, message: string): boolean {
@@ -45,12 +57,6 @@ export function isGoogleAdsRetryableFailure(status: number, message: string): bo
 export function isGoogleAdsCustomerUnavailable(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /CUSTOMER_NOT_ENABLED|customer account can't be accessed because it is not yet enabled or has been deactivated/i.test(message);
-}
-
-/** Strip the developer-token value from any provider-echoed text (defense in depth). */
-function scrubDevToken(text: string): string {
-  const t = developerToken();
-  return t ? text.split(t).join("[REDACTED_DEVELOPER_TOKEN]") : text;
 }
 
 type RetrySleeper = (delayMs: number) => Promise<void>;
@@ -82,10 +88,10 @@ async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response>
         });
         return response;
       }
-      const detail = scrubDevToken((await response.clone().text()).slice(0, 1000));
+      const detail = (await response.clone().text()).slice(0, 1000);
       const retryable = isGoogleAdsRetryableFailure(response.status, detail);
       const isQuota = response.status === 429 || /resource[_ ]exhausted|rate[_ ]exceeded|quota/i.test(detail);
-      const isDevTokenBlocked = detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED);
+      const isAccessBlocked = isGoogleAdsAccessBlocked(new Error(detail));
 
       emitConnectorTelemetry({
         eventCategory: "provider_request",
@@ -94,16 +100,18 @@ async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response>
         attempt: attempt + 1,
         maxAttempts,
         outcome: isQuota ? "throttled" : retryable ? "retryable_failure" : "permanent_failure",
-        errorCategory: isQuota ? "quota_exhausted" : isDevTokenBlocked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
+        errorCategory: isQuota ? "quota_exhausted" : isAccessBlocked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
         httpStatus: response.status,
         durationMs,
         retryDelayMs: retryable && attempt < maxAttempts - 1 ? 500 * 2 ** attempt : undefined,
       });
 
       if (!retryable || attempt === maxAttempts - 1) {
-        const code = isDevTokenBlocked
-          ? GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED
-          : undefined;
+        const code = detail.includes(GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED)
+          ? GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED
+          : detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED)
+            ? GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED
+            : undefined;
         throw new GoogleAdsProviderError(`Google Ads request failed ${response.status}: ${detail}`, retryable, response.status, code);
       }
     } catch (error) {
@@ -148,10 +156,6 @@ function clientId(): string {
 
 function clientSecret(): string {
   return (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim();
-}
-
-function developerToken(): string {
-  return (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim();
 }
 
 // ── OAuth types ──────────────────────────────────────────────────────────────
@@ -221,7 +225,7 @@ export class GoogleAdsOAuthClient {
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', 'https://www.googleapis.com/auth/adwords openid email profile');
+    url.searchParams.set('scope', `${GOOGLE_ADS_OAUTH_SCOPE} openid email profile`);
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'offline');   // get refresh_token
     url.searchParams.set('prompt', 'consent');         // force re-consent to always get refresh_token
@@ -300,15 +304,11 @@ export class GoogleAdsOAuthClient {
    * Fetch the list of accessible customer accounts (linked to the MCC or directly).
    */
   async listAccessibleCustomers(accessToken: string): Promise<string[]> {
-    const devToken = developerToken();
-    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
-
     const res = await fetchGoogleAds(
       `${GOOGLE_ADS_BASE}/customers:listAccessibleCustomers`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'developer-token': devToken,
         },
       }
     );
@@ -354,14 +354,10 @@ export class GoogleAdsReportClient {
     mccId?: string,
     hooks?: GoogleAdsRawCaptureHooks,
   ): Promise<NormalizedGoogleAdsRow[]> {
-    const devToken = developerToken();
-    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
-
     const cleanCustomerId = customerId.replace(/-/g, '');
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': devToken,
       'Content-Type': 'application/json',
     };
 
@@ -421,9 +417,6 @@ export class GoogleAdsReportClient {
     rootCustomerId: string,
     options: { includeManagers?: boolean } = {},
   ): Promise<Array<{ customerId: string; mccId: string; isManager: boolean; descriptiveName: string }>> {
-    const devToken = developerToken();
-    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
-
     const cleanId = rootCustomerId.replace(/-/g, '');
 
     // Query customer_client to get all accounts accessible under this root
@@ -440,7 +433,6 @@ export class GoogleAdsReportClient {
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': devToken,
       'Content-Type': 'application/json',
       'login-customer-id': cleanId,
     };
@@ -456,6 +448,11 @@ export class GoogleAdsReportClient {
       }
       );
     } catch (error) {
+      // Project-level API access denials are not the expected standalone
+      // account rejection. Preserve them so sync can report the configuration
+      // blocker without quarantining the customer's account for reconnect.
+      if (isGoogleAdsAccessBlocked(error)) throw error;
+
       // A disabled customer also rejects customer_client with a 4xx. Do not
       // fabricate a standalone leaf for it: reporting would fail later with
       // CUSTOMER_NOT_ENABLED and leave the customer with a confusing error.

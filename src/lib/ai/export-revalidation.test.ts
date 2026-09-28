@@ -6,6 +6,7 @@ import { setReportingContextOverride } from "@/lib/ai/reporting-context";
 import prisma from "@/lib/prisma";
 import type { ReportingContext } from "./reporting-contracts";
 import { createMockFreshnessJourney } from "./reporting-contracts";
+import { RbacError } from "@/lib/rbac";
 
 describe("Server-Side Export Revalidation Route Handler (POST /api/ai/executive-brief)", () => {
   const baseContext: ReportingContext = {
@@ -309,6 +310,22 @@ describe("Server-Side Export Revalidation Route Handler (POST /api/ai/executive-
     assert.match(json.error, /Export blocked/);
   });
 
+  it("returns typed plan-limit errors with their intended status and no-store headers", async () => {
+    setReportingContextOverride(async () => {
+      throw new RbacError("Upgrade required", "PLAN_LIMIT_EXCEEDED", 403);
+    });
+
+    const res = await POST(makeRequest({
+      workspaceId: "ws_test_123",
+      clientId: "client_test_456",
+      action: "preview",
+    }));
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get("Cache-Control"), "private, no-store");
+    assert.deepEqual(await res.json(), { error: "Upgrade required", code: "PLAN_LIMIT_EXCEEDED" });
+  });
+
   it("7. 200 valid export content: returns formatted verified export content on matched fingerprint and READY status", async () => {
     const req = makeRequest({
       workspaceId: "ws_test_123",
@@ -367,6 +384,43 @@ describe("Server-Side Export Revalidation Route Handler (POST /api/ai/executive-
     const exportRes = await POST(exportReq);
     assert.equal(exportRes.status, 200);
     assert.equal(exportRes.headers.get("Cache-Control"), "private, no-store");
+  });
+
+  it("reuses the preview's bounded model selection when exporting", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-only-key";
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ primaryObservationId: "obs_spend", emphasis: "roas" }) } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    try {
+      const previewRes = await POST(makeRequest({
+        workspaceId: "ws_test_123",
+        clientId: "client_test_456",
+        action: "preview",
+      }));
+      assert.equal(previewRes.status, 200);
+      const preview = await previewRes.json();
+      assert.equal(preview.brief.generationMode, "model_assisted");
+
+      const exportRes = await POST(makeRequest({
+        workspaceId: "ws_test_123",
+        clientId: "client_test_456",
+        action: "export",
+        expectedFingerprint: preview.fingerprint,
+        modelSelection: preview.brief.modelSelection,
+        format: "markdown",
+      }));
+      assert.equal(exportRes.status, 200);
+      const exported = await exportRes.json();
+      assert.equal(exported.modelSelection.primaryObservationId, "obs_spend");
+      assert.ok(exported.content.includes(preview.brief.sections.headline));
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = originalApiKey;
+    }
   });
 
   it("9. Current-period mutation: invalidates brief export when current-period data changes (HTTP 409)", async () => {

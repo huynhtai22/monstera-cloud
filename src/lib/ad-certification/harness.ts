@@ -23,6 +23,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import prisma from "@/lib/prisma";
+import { resolveLatestMigrationVersion } from "@/lib/release-schema";
 import { withSystemScope } from "@/lib/tenant-guard";
 import { isProviderConfigured } from "@/lib/oauth-framework/registry";
 import {
@@ -45,6 +46,7 @@ import { generateReviewerMarkdown } from "./report-generator";
 import { reportingDataset } from "@/lib/report-delivery";
 
 import { approveEvidence, attestEvidence, evidenceHash } from "./sign-off";
+import { parsePersistedGoogleAdsPortalFacts } from "./portal-access-facts";
 export { assertMandatoryPriorGatesPassed } from "./sign-off";
 
 export interface InternalSimulationOptions {
@@ -67,7 +69,7 @@ export interface InternalSimulationOptions {
   simulatePersistedLiveState?: boolean;
 }
 
-export const CURRENT_SCHEMA_VERSION = "20260905000000";
+export const CURRENT_SCHEMA_VERSION = resolveLatestMigrationVersion();
 export const HARNESS_VERSION = "1.3.0";
 export const EVIDENCE_PACK_SCHEMA_VERSION = "1.1.0";
 
@@ -374,10 +376,9 @@ export class CertificationHarness {
     const derivedApiVersion = RUNTIME_CONNECTOR_API_VERSIONS[input.provider] || "unknown";
 
     // Server-side verification of provider access facts from authorized persisted records
-    let isOwnerConfirmed = await this.verifyPersistedPortalConfirmation(input.workspaceId, input.accountId);
-    if (simulation?.simulatedProviderAccessFacts?.verificationSource === "portal_owner_confirmed" && simulation?.simulatePersistedLiveState) {
-      isOwnerConfirmed = true;
-    }
+    const persistedProviderFacts = await this.getPersistedPortalConfirmation(input.workspaceId, input.accountId, input.connectionId);
+    const isSimulatedOwnerConfirmed = simulation?.simulatedProviderAccessFacts?.verificationSource === "portal_owner_confirmed" && simulation?.simulatePersistedLiveState;
+    const isOwnerConfirmed = Boolean(persistedProviderFacts) || Boolean(isSimulatedOwnerConfirmed);
 
     // Reject untrusted caller claims
     if (input.providerAccessFacts?.status === "VERIFIED" || input.providerAccessFacts?.verificationSource === "portal_owner_confirmed") {
@@ -388,15 +389,16 @@ export class CertificationHarness {
       }
     }
 
+    const confirmedFacts = persistedProviderFacts || (isSimulatedOwnerConfirmed ? simulation?.simulatedProviderAccessFacts : undefined);
     const providerAccessFacts: ProviderAccessFacts = {
       observedApiVersion: derivedApiVersion,
-      appAccountMode: isOwnerConfirmed ? (input.providerAccessFacts?.appAccountMode || simulation?.simulatedProviderAccessFacts?.appAccountMode || "live") : "unverified",
-      grantedScopesOrPermissions: isOwnerConfirmed ? (input.providerAccessFacts?.grantedScopesOrPermissions || simulation?.simulatedProviderAccessFacts?.grantedScopesOrPermissions || []) : [],
-      accessLevelStatus: isOwnerConfirmed ? (input.providerAccessFacts?.accessLevelStatus || simulation?.simulatedProviderAccessFacts?.accessLevelStatus || "basic") : "unverified",
-      authorizationModel: isOwnerConfirmed ? (input.providerAccessFacts?.authorizationModel || simulation?.simulatedProviderAccessFacts?.authorizationModel || "oauth2_user_consent") : "unverified",
-      tokenLifecycleModel: isOwnerConfirmed ? (input.providerAccessFacts?.tokenLifecycleModel || simulation?.simulatedProviderAccessFacts?.tokenLifecycleModel || "refreshable_offline") : "unverified",
+      appAccountMode: isOwnerConfirmed ? (confirmedFacts?.appAccountMode || "unverified") : "unverified",
+      grantedScopesOrPermissions: isOwnerConfirmed ? (confirmedFacts?.grantedScopesOrPermissions || []) : [],
+      accessLevelStatus: isOwnerConfirmed ? (confirmedFacts?.accessLevelStatus || "unverified") : "unverified",
+      authorizationModel: isOwnerConfirmed ? (confirmedFacts?.authorizationModel || "unverified") : "unverified",
+      tokenLifecycleModel: isOwnerConfirmed ? (confirmedFacts?.tokenLifecycleModel || "unverified") : "unverified",
       verificationSource: isOwnerConfirmed ? "portal_owner_confirmed" : "unverified",
-      verifiedAt: isOwnerConfirmed ? (input.providerAccessFacts?.verifiedAt || simulation?.simulatedProviderAccessFacts?.verifiedAt || evaluatedAt) : null,
+      verifiedAt: isOwnerConfirmed ? (confirmedFacts?.verifiedAt || null) : null,
       status: isOwnerConfirmed ? "VERIFIED" : "UNVERIFIED",
     };
 
@@ -868,7 +870,11 @@ export class CertificationHarness {
     }
   }
 
-  private async verifyPersistedPortalConfirmation(workspaceId: string, accountId: string): Promise<boolean> {
+  private async getPersistedPortalConfirmation(
+    workspaceId: string,
+    accountId: string,
+    connectionId?: string,
+  ): Promise<Omit<ProviderAccessFacts, "observedApiVersion"> | null> {
     try {
       const confirmation = await withSystemScope(() =>
         prisma.auditEvent.findFirst({
@@ -877,12 +883,22 @@ export class CertificationHarness {
             action: "PORTAL_ACCESS_CONFIRMED",
             resource: "provider_access_facts",
             resourceId: accountId,
+            ...(connectionId ? { metadata: { path: ["connectionId"], equals: connectionId } } : {}),
           },
+          orderBy: { createdAt: "desc" },
         })
       );
-      return Boolean(confirmation);
+      if (!confirmation || !confirmation.metadata || typeof confirmation.metadata !== "object" || Array.isArray(confirmation.metadata)) return null;
+      const metadata = confirmation.metadata as Record<string, unknown>;
+      if (metadata.provider !== "google_ads" || metadata.verificationSource !== "portal_owner_confirmed") return null;
+      return parsePersistedGoogleAdsPortalFacts({
+        ...(metadata.facts && typeof metadata.facts === "object" && !Array.isArray(metadata.facts) ? metadata.facts : {}),
+        verificationSource: metadata.verificationSource,
+        verifiedAt: metadata.verifiedAt,
+        status: "VERIFIED",
+      });
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -944,11 +960,10 @@ export class CertificationHarness {
     if (input.provider === "google_ads") {
       const reason =
         "Google Ads test accounts do NOT produce real serving metrics (impressions, clicks, spend). " +
-        "Google Ads Basic Access was approved on 2026-08-25 for production API calls. " +
-        "Live developer token and authorized live account serve as the approved verification path.";
+        "Live Google Ads API access for the OAuth client's Cloud project and an authorized live account are required for production validation.";
       const alternativePath =
         "Google test-account API behavior is separately code/test verified in unit/integration test suites; " +
-        "serving metric reconciliation proceeds to authorized live run with approved Basic Access token.";
+        "serving metric reconciliation proceeds to an authorized live run after Cloud project access is verified.";
 
       CertificationHarness.validateGateTransition("SANDBOX_VERIFIED", "NOT_APPLICABLE", {
         provider: "google_ads",

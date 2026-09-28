@@ -35,10 +35,10 @@ export default function ExportsPage() {
     const hasApiKey = Boolean(firstKey);
 
     return (
-        <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
+        <div data-console-page="true" data-console-section="exports" className="console-page relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
 
             {/* Header */}
-            <div className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
+            <div data-console-section-header="true" className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
                 <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-white shadow-xs">
                         <Send className="h-5 w-5" aria-hidden />
@@ -53,7 +53,7 @@ export default function ExportsPage() {
             </div>
 
             {/* Delivery Methods Banner */}
-            <div className="mb-8 rounded-lg border border-line bg-panel p-5">
+            <div data-console-delivery-summary="true" className="mb-8 rounded-lg border border-line bg-panel p-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div className="rounded-md border border-line bg-canvas p-4 shadow-xs">
                         <div className="flex items-center gap-2 font-bold text-white mb-1">
@@ -76,7 +76,7 @@ export default function ExportsPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div data-console-destinations="true" className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Google Sheets Card */}
                 <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-white/30">

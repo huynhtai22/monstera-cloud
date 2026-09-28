@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Button from "./Button";
-import { Loader2 } from "lucide-react";
+import { ConsoleActivityLabel } from "@/components/dashboard/ConsoleActivityLabel";
 import { cn } from "@/lib/utils";
 
 /** Backwards-compatible class string for links styled like the primary button. */
@@ -33,7 +33,7 @@ export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonPr
       >
         {loading ? (
           <>
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            <ConsoleActivityLabel label="" />
             <span>{children}</span>
           </>
         ) : (

@@ -9,7 +9,7 @@ Production-capable architecture, suitable for controlled pilot use, with documen
 
 The August evidence is historical, not blanket approval of newer billing/AI/portfolio surfaces. See [September security validation](./SECURITY-VALIDATION-2026-09-04.md) for local fixes, test coverage, and separate production acceptance gates. Local validation does not establish that these changes have been deployed.
 
-**Google Ads status update (2026-08-25):** Basic Access is approved, removing the prior external developer-token approval blocker. Production connector validation is still pending: a real authorized account must complete bounded OAuth, MCC/customer selection, a seven-day sync, reconciliation, and destination retrieval. This is not a claim of controlled-pilot readiness; see [google-ads-basic-access.md](./google-ads-basic-access.md).
+**Google Ads status update (2026-09-27):** Google retired developer-token headers; the connector no longer requires or sends one. Live validation is still pending: verify Ads API access for the OAuth client's Cloud project, then complete bounded OAuth, MCC/customer selection, a seven-day sync, reconciliation, and destination retrieval with an authorized account. This is not a claim of controlled-pilot readiness; see [google-ads-basic-access.md](./google-ads-basic-access.md).
 
 ## ETL / Sync
 

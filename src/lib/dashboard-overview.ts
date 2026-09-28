@@ -724,6 +724,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: sanitized.explanation,
         actionType: sanitized.actionType,
         actionLabel: sanitized.actionLabel,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -736,7 +737,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "retry",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -749,7 +750,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "retry",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: conn.lastSyncAt?.toISOString() ?? (conn.updatedAt || conn.createdAt).toISOString(),
@@ -762,7 +763,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "review",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -805,7 +806,9 @@ export async function getWorkspaceDashboardOverview(
       explanation: sanitized.explanation,
       actionType: "retry",
       actionLabel: "Review",
-      href: "/reports",
+      href: latestSyncJob.pipeline?.sourceConnection?.id
+        ? `/sources/${encodeURIComponent(latestSyncJob.pipeline.sourceConnection.id)}#source-recovery`
+        : "/reports?view=sync&status=error",
       timestamp: (latestSyncJob.finishedAt || latestSyncJob.createdAt).toISOString(),
     });
   }

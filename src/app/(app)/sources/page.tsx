@@ -27,6 +27,7 @@ import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sour
 import { countSourceHealthStatuses } from "@/lib/source-health";
 import { displayConnectionName, shopeeShopIdFrom, sourceManagerBadge } from "@/lib/source-list-display";
 import { ClientAccountsSection } from "@/components/sources/ClientAccountsSection";
+import { SavedViews } from "@/components/ui/SavedViews";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
@@ -79,8 +80,8 @@ export default function SourcesPage() {
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('connected');
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") ?? "");
+    const [activeFilter, setActiveFilter] = useState(() => searchParams.get("tab") ?? "connected");
     const [initialClientId, setInitialClientId] = useState<string | null>(null);
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
@@ -474,16 +475,30 @@ export default function SourcesPage() {
         const tab = searchParams.get("tab");
         const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
         setInitialClientId(cId);
-        if (cId || tab === "accounts") {
-            setActiveFilter("accounts");
-        }
+        setSearchQuery(searchParams.get("search") ?? "");
+        const validTabs = ["connected", "accounts", "available", "attention"];
+        setActiveFilter(validTabs.includes(tab ?? "") ? tab! : cId ? "accounts" : "connected");
     }, [searchParams, urlClientId]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            const params = new URLSearchParams(window.location.search);
+            if (activeFilter === "connected" && !params.has("clientId")) params.delete("tab");
+            else params.set("tab", activeFilter);
+            if (searchQuery.trim()) params.set("search", searchQuery.trim());
+            else params.delete("search");
+            const next = params.toString();
+            const current = window.location.search.replace(/^\?/, "");
+            if (next !== current) router.replace(next ? `/sources?${next}` : "/sources", { scroll: false });
+        }, 120);
+        return () => window.clearTimeout(timer);
+    }, [activeFilter, router, searchQuery]);
 
     useEffect(() => {
         if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
         if (firstRunFilterAppliedRef.current) return;
         if (connectedSourceCount !== 0) return;
-        if (activeFilter === 'accounts') return;
+        if (activeFilter === 'accounts' || activeFilter === 'attention') return;
         setActiveFilter('available');
         firstRunFilterAppliedRef.current = true;
     }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount, activeFilter]);
@@ -772,13 +787,24 @@ export default function SourcesPage() {
         const combined = [...deduplicatedConnectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {
-            const matchesSearch = integration.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                integration.description.toLowerCase().includes(searchQuery.toLowerCase());
+            const query = searchQuery.trim().toLowerCase();
+            const matchesSearch = !query || [
+                integration.name,
+                integration.description,
+                integration.managerBadge,
+                integration.accountEmail,
+                integration.accountName,
+                integration.shortId,
+                integration.id,
+                ...(integration.accountTags ?? []).flatMap((tag: { id?: string; label?: string } | string) =>
+                    typeof tag === "string" ? [tag] : [tag.id, tag.label]),
+            ].some((value) => String(value ?? "").toLowerCase().includes(query));
 
             if (!matchesSearch) return false;
 
             if (activeFilter === 'connected') return integration.status !== 'available';
             if (activeFilter === 'available') return integration.status === 'available';
+            if (activeFilter === 'attention') return ["error", "stale", "disconnected", "unknown", "partial"].includes(integration.status);
             return integration.status !== 'available';
         });
     }, [searchQuery, activeFilter, sourceConnections, pipelines, activeWorkspaceId, catalogIntegrations]);
@@ -790,6 +816,15 @@ export default function SourcesPage() {
         return { connectedRows: connected, availableCards: available };
     }, [filteredIntegrations]);
 
+    const discoverableCards = useMemo(() => {
+        const connectedIds = new Set(connectedCatalogIdList);
+        const query = searchQuery.trim().toLowerCase();
+        return catalogIntegrations.filter((integration) =>
+            !connectedIds.has(integration.id) &&
+            (!query || `${integration.name} ${integration.description}`.toLowerCase().includes(query))
+        );
+    }, [catalogIntegrations, connectedCatalogIdList, searchQuery]);
+
     const activeWorkspace = useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
         return workspaces.find((w: { id: string }) => w.id === activeWorkspaceId) ?? null;
@@ -798,6 +833,15 @@ export default function SourcesPage() {
     const filterStats = useMemo(() => {
         return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
     }, [filteredIntegrations]);
+    const needsAttentionCount = useMemo(() => {
+        const connections = Array.isArray(sourceConnections) ? sourceConnections : [];
+        const deduped = new Map<string, string>();
+        for (const connection of connections) {
+            const key = `${connection.provider ?? ""}:${connection.remoteAccountId ?? connection.id}`;
+            if (!deduped.has(key)) deduped.set(key, String(connection.healthState ?? connection.status ?? "unknown"));
+        }
+        return Array.from(deduped.values()).filter((status) => ["error", "stale", "disconnected", "unknown", "partial"].includes(status)).length;
+    }, [sourceConnections]);
 
     // Error State (only block the screen when the failing endpoint has NO cached data)
     const hasCachedWorkspaces = Array.isArray(workspaces) && workspaces.length > 0;
@@ -874,6 +918,7 @@ export default function SourcesPage() {
 
     return (
         <PageShell
+            section="sources"
             className="w-full"
             withBackdrop
         >
@@ -885,26 +930,29 @@ export default function SourcesPage() {
                 />
             )}
 
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="console-section-heading mb-7 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-ink">Sources</h1>
-                    <p className="mt-1 text-sm text-ink-mute">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-ink-mute">Workspace / Data connections</p>
+                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[#86c99b]">.</span></h1>
+                    <p className="mt-2 text-sm text-ink-mute">
                         {isLoading
                             ? "Loading your workspace…"
                             : connectedSourceCount === 0
-                              ? "Connect Meta, Google Ads, TikTok Ads, or Shopee. OAuth is read-only."
-                              : "Connector management and pipeline sync controls for this workspace."}
+                              ? "Connect a platform to start bringing data into your workspace."
+                              : "A clear view of every platform feeding your workspace."}
                     </p>
                     {!isLoading && activeWorkspace && (
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-mute" role="status">
-                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1 text-ink-mute">
+                            <span className="inline-flex items-center gap-1.5 text-ink-mute">
                                 Workspace: <span className="font-semibold text-ink">{activeWorkspace.name}</span>
                             </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1 text-ink-mute font-mono">
+                            <span className="text-ink-mute/50" aria-hidden="true">/</span>
+                            <span className="inline-flex items-center gap-1.5 text-ink-mute">
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                                 {connectedSourceCount} source connection{connectedSourceCount === 1 ? "" : "s"}
                             </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1 text-ink-mute">
+                            <span className="text-ink-mute/50" aria-hidden="true">/</span>
+                            <span className="inline-flex items-center gap-1.5 text-ink-mute">
                                 <Clock className="h-3.5 w-3.5 text-ink-mute" />
                                 {lastSyncSummary
                                     ? `Last synced: ${lastSyncSummary}`
@@ -917,6 +965,7 @@ export default function SourcesPage() {
                     <RefreshedAt
                         onRefresh={() => mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"), undefined, { revalidate: true })}
                     />
+                    <SavedViews href={`/sources${searchParams.toString() ? `?${searchParams.toString()}` : ""}`} />
                     <div className="relative" ref={addSourceMenuRef}>
                         <button
                             type="button"
@@ -1043,6 +1092,31 @@ export default function SourcesPage() {
                 </div>
             </div>
 
+            {!isLoading && (
+                <section className="console-source-summary mb-7 grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-panel sm:grid-cols-4" aria-label="Source connection summary">
+                    <div className="min-w-0 border-b border-r border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:border-b-0 sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Connections</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-ink tabular-nums">{connectedSourceCount}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">In this workspace</p>
+                    </div>
+                    <div className="min-w-0 border-b border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:border-b-0 sm:border-r sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Linked accounts</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-ink tabular-nums">{connectedRows.reduce((sum: number, row: any) => sum + Number(row.accountCount ?? row.accountTags?.length ?? 0), 0)}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">In the current view</p>
+                    </div>
+                    <div className="min-w-0 border-r border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Syncing well</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-[#86c99b] tabular-nums">{filterStats.connected}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">Recent successful syncs</p>
+                    </div>
+                    <div className="min-w-0 p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Needs attention</p>
+                        <p className={cn("mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] tabular-nums", needsAttentionCount > 0 ? "text-amber-300" : "text-ink")}>{needsAttentionCount}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">Authorization or sync issues</p>
+                    </div>
+                </section>
+            )}
+
             {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
@@ -1053,8 +1127,8 @@ export default function SourcesPage() {
                 />
             )}
 
-            <div className="mb-6 flex flex-col gap-4 border-b border-line pb-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-2.5" role="tablist" aria-label="Filter integrations">
+            <div className="mb-6 flex flex-col gap-4 border-b border-line lg:flex-row lg:items-center lg:justify-between">
+                <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations">
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
@@ -1098,12 +1172,22 @@ export default function SourcesPage() {
                     >
                         <span>Catalog</span>
                     </button>
-                    {!isLoading && filterStats.needsAttention > 0 && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-300">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                            {filterStats.needsAttention} need attention
+                    <button
+                        role="tab"
+                        aria-selected={activeFilter === 'attention'}
+                        onClick={() => setActiveFilter('attention')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'attention'
+                                ? "border border-rose-500/30 bg-rose-500/10 text-rose-200"
+                                : "text-ink-mute hover:bg-white/[0.03] hover:text-ink"
+                        )}
+                    >
+                        <span>Needs attention</span>
+                        <span className="rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 font-mono text-[10px] text-rose-200">
+                            {isLoading ? "…" : needsAttentionCount}
                         </span>
-                    )}
+                    </button>
                     {!isLoading && filterStats.partial > 0 && (
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-300">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
@@ -1111,7 +1195,7 @@ export default function SourcesPage() {
                         </span>
                     )}
                 </div>
-                {activeFilter !== 'accounts' && (
+                {activeFilter === 'available' && (
                     <div className="flex items-center gap-3">
                         <div className="relative">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
@@ -1138,14 +1222,14 @@ export default function SourcesPage() {
             ) : activeFilter !== 'accounts' && connectedRows.length === 0 && availableCards.length === 0 ? (
                 <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-line bg-panel py-20 text-center" role="tabpanel" aria-live="polite">
                     <Database className="w-10 h-10 text-ink-mute mb-4" />
-                    <h3 className="text-sm font-semibold text-ink mb-1">No integrations found</h3>
+                    <h3 className="text-sm font-semibold text-ink mb-1">{activeFilter === "attention" ? "No sources need attention" : "No integrations found"}</h3>
                     <p className="text-xs text-ink-mute max-w-sm mb-6">
-                        No data sources match &quot;{searchQuery}&quot;.
+                        {activeFilter === "attention" && !searchQuery ? "All connected sources are currently clear." : `No data sources match “${searchQuery}”.`}
                     </p>
                     {searchQuery && (
                         <button
                             type="button"
-                            onClick={() => { setSearchQuery(""); setActiveFilter("all"); }}
+                            onClick={() => { setSearchQuery(""); setActiveFilter("connected"); }}
                             className="inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.06] transition-colors"
                         >
                             <X className="h-4 w-4" />
@@ -1164,11 +1248,13 @@ export default function SourcesPage() {
                             />
                         </section>
                     )}
-                    {activeFilter === 'connected' && connectedRows.length > 0 && (
-                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className="scroll-mt-6">
+                    {(activeFilter === 'connected' || activeFilter === 'attention') && connectedRows.length > 0 && (
+                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className={cn("scroll-mt-6", activeFilter === "connected" && catalogIntegrations.length > 0 && "console-source-layout")}>
                             <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
                             <ConnectedSourceList
                                 rows={connectedRows}
+                                searchQuery={searchQuery}
+                                onSearchChange={setSearchQuery}
                                 busyActions={busyActions}
                                 onSync={handleSync}
                                 onDirectSync={handleDirectSync}
@@ -1176,6 +1262,37 @@ export default function SourcesPage() {
                                 onFixConnection={handleFixConnection}
                                 onRenameConnection={handleRenameConnection}
                             />
+                            {activeFilter === "connected" && catalogIntegrations.length > 0 ? (
+                                <aside className="console-source-discover flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-line bg-panel px-5 py-4" aria-label="Discover available connectors">
+                                    <div className="mr-auto min-w-[210px]">
+                                        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[#9fc6a9]">Keep building</p>
+                                        <h2 className="mt-1 text-sm font-medium text-ink">Connect another platform</h2>
+                                        <p className="mt-1 text-xs text-ink-mute">Add an account whenever you need it.</p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {discoverableCards.slice(0, 4).map((integration: any) => (
+                                            <button
+                                                key={integration.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedIntegration(integration);
+                                                    setIsSourceModalOpen(true);
+                                                }}
+                                                className="inline-flex items-center gap-2 rounded-xl border border-line bg-canvas px-3 py-2 text-xs text-ink transition-all duration-300 hover:-translate-y-0.5 hover:border-[#86c99b]/40 hover:bg-[#86c99b]/[0.05]"
+                                            >
+                                                <IntegrationMark src={integration.logoSrc} size="sm" />
+                                                {integration.name}
+                                                <Plus className="h-3 w-3 text-ink-mute" aria-hidden />
+                                            </button>
+                                        ))}
+                                        {discoverableCards.length === 0 && <p className="text-xs text-ink-mute">All available platforms are connected.</p>}
+                                    </div>
+                                    <div className="flex items-center gap-4 lg:border-l lg:border-line lg:pl-5">
+                                        <button type="button" onClick={() => setActiveFilter("available")} className="inline-flex items-center gap-1.5 text-xs font-medium text-ink transition-colors hover:text-[#a9d9b9]">Browse catalog <ChevronRight className="h-3.5 w-3.5" aria-hidden /></button>
+                                        <Link href="/explorer" className="inline-flex items-center gap-1.5 text-xs text-ink-mute transition-colors hover:text-[#a9d9b9]">Warehouse <ChevronRight className="h-3.5 w-3.5" /></Link>
+                                    </div>
+                                </aside>
+                            ) : null}
                         </section>
                     )}
                     {activeFilter === 'available' && availableCards.length > 0 && (

@@ -312,7 +312,7 @@ export function ClientsClient() {
   };
 
   return (
-    <PageShell>
+    <PageShell section="clients">
       {/* ─── 1. PORTFOLIO HEADER ─── */}
       <div className="relative z-10 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-5">
         <div>
@@ -383,7 +383,7 @@ export function ClientsClient() {
 
       {/* ─── 2. EXECUTIVE METRICS BAR ─── */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="console-scorecard rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
             {displayViewMode === "clients" ? "Total Brands" : "Total Workspaces"}
           </p>
@@ -392,7 +392,7 @@ export function ClientsClient() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="console-scorecard rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
             {displayViewMode === "clients" ? "Assigned Accounts" : "Managed Sources"}
           </p>
@@ -403,7 +403,7 @@ export function ClientsClient() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="console-scorecard rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">Portfolio Health</p>
           <div className="mt-1 flex items-center gap-1.5">
             {(displayViewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount) > 0 ? (

@@ -2,13 +2,17 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import { SourceTrustSummary } from "./SourceTrustSummary";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, ChevronDown, Clock, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
+import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, Filter, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
+import styles from "./ConnectedSourceList.module.css";
 import type { SourceHealthState } from "@/lib/source-health";
 import {
   PROVIDER_DISPLAY_NAME,
@@ -47,6 +51,8 @@ type SortKey = "name" | "status" | "lastSync";
 
 interface ConnectedSourceListProps {
   rows: IntegrationRow[];
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
   onDirectSync: (connectionId: string, provider: string) => void;
@@ -79,34 +85,34 @@ function canDirectSync(provider: string | undefined): boolean {
 
 
 function statusBadgeClass(kind: SourceStateKind): string {
-  if (kind === "auth-required") return "border-rose-500/30 bg-rose-500/10 text-rose-300";
-  if (kind === "sync-issue" || kind === "partial") return "border-amber-500/30 bg-amber-500/10 text-amber-300";
-  if (kind === "not-synced") return "border-sky-500/30 bg-sky-500/10 text-sky-300";
-  if (kind === "syncing") return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300";
-  if (kind === "stale") return "border-line/80 bg-panel text-ink-mute";
-  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (kind === "auth-required") return "text-rose-300";
+  if (kind === "sync-issue" || kind === "partial") return "text-amber-300";
+  if (kind === "not-synced") return "text-sky-300";
+  if (kind === "syncing") return "text-[#9dd7ae]";
+  if (kind === "stale" || kind === "attention") return "text-ink-mute";
+  return "text-emerald-300";
 }
 
 function StatusIcon({ kind }: { kind: SourceStateKind }) {
-  if (kind === "auth-required") return <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />;
-  if (kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />;
-  if (kind === "syncing") return <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />;
+  if (kind === "auth-required") return <AlertCircle className="h-3 w-3 text-rose-400 shrink-0" />;
+  if (kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />;
+  if (kind === "syncing") return <Loader2 className="h-3 w-3 motion-safe:animate-spin text-[#86c99b] shrink-0" />;
   if (kind === "not-synced") return <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />;
   if (kind === "stale") return <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 shrink-0" />;
-  return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />;
+  if (kind === "attention") return <AlertCircle className="h-3 w-3 text-ink-mute" />;
+  return <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" strokeWidth={2} />;
 }
 
 function StatusBadge({ state }: { state: SourceState }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs",
+        "inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium",
         statusBadgeClass(state.kind),
       )}
       title={state.detail || state.subtext}
     >
-      <StatusIcon kind={state.kind} />
-      <span>{state.label}</span>
+      <ConsoleSyncLabel active={state.kind === "syncing"} idleLabel={state.label} activeLabel={state.label} idleIcon={<StatusIcon kind={state.kind} />} />
     </span>
   );
 }
@@ -153,15 +159,26 @@ function AccountsCell({
 function LastSyncCell({ lastSync }: { lastSync?: string }) {
   const formatted = formatLastSyncLabel(lastSync);
   return (
-    <div className="flex items-center gap-1.5 text-xs text-ink-mute" title={formatted.title}>
+    <div className="flex items-center gap-1.5 text-[11px] text-ink-mute" title={formatted.title}>
       <Clock className="h-3 w-3 text-ink-mute/70 shrink-0" />
-      <span className="font-medium text-ink">{formatted.text}</span>
+      <span>{formatted.text}</span>
     </div>
+  );
+}
+
+function SourceSelector({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <label className={styles.selector} data-no-row-click data-no-card-click onClick={(event) => event.stopPropagation()}>
+      <input type="checkbox" checked={checked} onChange={onChange} aria-label={label} />
+      <span className={styles.selectorFace} aria-hidden="true"><CheckCircle2 size={14} strokeWidth={2.4} /></span>
+    </label>
   );
 }
 
 export function ConnectedSourceList({
   rows,
+  searchQuery,
+  onSearchChange,
   busyActions,
   onSync,
   onDirectSync,
@@ -170,6 +187,7 @@ export function ConnectedSourceList({
   onRenameConnection,
 }: ConnectedSourceListProps) {
   const router = useRouter();
+  const { hrefFor } = useClientContextNavigation();
   const { mutate } = useSWRConfig();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -178,23 +196,22 @@ export function ConnectedSourceList({
   const [renamingRow, setRenamingRow] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"detailed" | "lite">("lite");
+  const [viewMode, setViewMode] = useState<"connections" | "detailed" | "lite">("connections");
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("monstera_sources_view_mode");
-      if (saved === "detailed" || saved === "lite") {
+      const saved = localStorage.getItem("monstera_sources_view_mode_v2");
+      if (saved === "connections" || saved === "detailed" || saved === "lite") {
         setViewMode(saved);
       }
     } catch {}
   }, []);
 
-  const handleViewModeChange = (mode: "detailed" | "lite") => {
+  const handleViewModeChange = (mode: "connections" | "detailed" | "lite") => {
     setViewMode(mode);
     try {
-      localStorage.setItem("monstera_sources_view_mode", mode);
+      localStorage.setItem("monstera_sources_view_mode_v2", mode);
     } catch {}
   };
 
@@ -244,14 +261,6 @@ export function ConnectedSourceList({
     }
   };
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
-  const anySelected = selectedIds.size > 0;
-
-  const toggleSelectAll = () => {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(rows.map((r) => r.id)));
-  };
-
   const toggleSelectOne = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -299,6 +308,22 @@ export function ConnectedSourceList({
     return list;
   }, [rows, selectedPlatform, searchQuery, sortKey, sortDir]);
 
+  useEffect(() => {
+    const visibleIds = new Set(filteredAndSortedRows.map((row) => row.id));
+    setSelectedIds((selected) => {
+      const next = new Set([...selected].filter((id) => visibleIds.has(id)));
+      return next.size === selected.size ? selected : next;
+    });
+  }, [filteredAndSortedRows]);
+
+  const allSelected = filteredAndSortedRows.length > 0 && filteredAndSortedRows.every((row) => selectedIds.has(row.id));
+  const anySelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredAndSortedRows.map((r) => r.id)));
+  };
+
   const bulkSync = () => {
     for (const r of rows) {
       if (!selectedIds.has(r.id)) continue;
@@ -335,7 +360,7 @@ export function ConnectedSourceList({
         <button
           type="button"
           onClick={() => onFixConnection(r)}
-          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
           data-no-row-click
           data-no-card-click
           title="Re-authenticate OAuth credentials"
@@ -351,13 +376,12 @@ export function ConnectedSourceList({
           type="button"
           disabled={syncBusy}
           onClick={() => runRowSync(r)}
-          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
           data-no-row-click
           data-no-card-click
           title="Trigger initial warehouse sync"
         >
-          {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
-          <span>{syncBusy ? "Syncing" : "First sync"}</span>
+          <ConsoleSyncLabel active={syncBusy} idleLabel="First sync" activeLabel="Syncing" idleIcon={<Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />} />
         </button>
       );
     }
@@ -367,13 +391,12 @@ export function ConnectedSourceList({
           type="button"
           disabled={syncBusy}
           onClick={() => runRowSync(r)}
-          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
           data-no-row-click
           data-no-card-click
           title="Retry failed sync directly"
         >
-          {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
-          <span>{syncBusy ? "Syncing" : "Retry sync"}</span>
+          <ConsoleSyncLabel active={syncBusy} idleLabel="Retry sync" activeLabel="Syncing" idleIcon={<RefreshCw className="h-3.5 w-3.5 text-amber-400" />} />
         </button>
       );
     }
@@ -383,7 +406,7 @@ export function ConnectedSourceList({
         disabled={syncBusy || !sourceState.canSync}
         onClick={() => runRowSync(r)}
         className={cn(
-          "inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
+          "inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
           syncBusy || !sourceState.canSync
             ? "cursor-not-allowed border-line bg-panel text-ink-mute"
             : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20",
@@ -392,43 +415,43 @@ export function ConnectedSourceList({
         data-no-card-click
         title={sourceState.kind === "syncing" ? sourceState.detail : "Trigger warehouse sync"}
       >
-        {syncBusy || sourceState.kind === "syncing" ? (
-          <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
-        ) : (
-          <RefreshCw className="h-3.5 w-3.5" />
-        )}
-        <span>{syncBusy || sourceState.kind === "syncing" ? "Syncing" : "Sync"}</span>
+        <ConsoleSyncLabel active={syncBusy || sourceState.kind === "syncing"} idleLabel="Sync" activeLabel="Syncing" idleIcon={<RefreshCw className="h-3.5 w-3.5" />} />
       </button>
     );
   };
 
   return (
-    <div className="rounded-xl border border-line bg-panel shadow-xs overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-line p-4 sm:p-5 bg-panel/70">
+    <div className={cn("console-source-list overflow-hidden rounded-xl border border-line bg-panel shadow-xs", styles.list)}>
+      <div className="flex flex-col gap-4 border-b border-line bg-panel p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
-            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute">Connected sources</span>
+            <span className="text-base font-medium tracking-tight text-ink">Your connections</span>
             <span className="rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink">
               {filteredAndSortedRows.length}{filteredAndSortedRows.length !== rows.length ? ` of ${rows.length}` : ""}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {anySelected && (
-              <>
-                <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
-                  <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
-                </PrimaryButton>
-                <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
-                  <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
-                </SecondaryButton>
-              </>
-            )}
-
             <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
               <button
                 type="button"
+                onClick={() => handleViewModeChange("connections")}
+                aria-pressed={viewMode === "connections"}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                  viewMode === "connections"
+                    ? "bg-white text-black font-semibold shadow-2xs"
+                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+                title="Connection overview with health and account details"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Overview</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleViewModeChange("detailed")}
+                aria-pressed={viewMode === "detailed"}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   viewMode === "detailed"
@@ -443,6 +466,7 @@ export function ConnectedSourceList({
               <button
                 type="button"
                 onClick={() => handleViewModeChange("lite")}
+                aria-pressed={viewMode === "lite"}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   viewMode === "lite"
@@ -479,20 +503,32 @@ export function ConnectedSourceList({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-line/50">
+        {anySelected && (
+          <div className={cn("flex flex-wrap items-center gap-2 rounded-xl border border-[#86c99b]/20 bg-[#86c99b]/[0.06] px-3 py-2", styles.bulkBar)}>
+            <span className="mr-auto text-xs font-medium text-[#a9d9b9]">{selectedIds.size} selected</span>
+            <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
+              <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
+            </PrimaryButton>
+            <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
+              <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
+            </SecondaryButton>
+          </div>
+        )}
+
+        <div className="flex flex-col justify-between gap-3 border-t border-line/50 pt-4 sm:flex-row sm:items-center">
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" />
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search by MCC, account ID, Gmail, or name…"
               className="h-8.5 w-full rounded-lg border border-line bg-canvas pl-8.5 pr-8 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
+                onClick={() => onSearchChange("")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-mute hover:text-ink"
               >
                 <X className="h-3.5 w-3.5" />
@@ -501,35 +537,20 @@ export function ConnectedSourceList({
           </div>
 
           {availablePlatforms.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSelectedPlatform("all")}
-                className={cn(
-                  "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
-                  selectedPlatform === "all"
-                    ? "bg-white text-black font-semibold shadow-xs"
-                    : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
-                )}
+            <label className={styles.platformFilter}>
+              <Filter size={14} aria-hidden="true" />
+              <select
+                aria-label="Filter connections by platform"
+                value={selectedPlatform}
+                onChange={(event) => setSelectedPlatform(event.target.value)}
               >
-                All ({rows.length})
-              </button>
-              {availablePlatforms.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setSelectedPlatform(p.id)}
-                  className={cn(
-                    "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
-                    selectedPlatform === p.id
-                      ? "bg-white text-black font-semibold shadow-xs"
-                      : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
-                  )}
-                >
-                  {p.label} ({p.count})
-                </button>
-              ))}
-            </div>
+                <option value="all">All platforms · {rows.length}</option>
+                {availablePlatforms.map((platform) => (
+                  <option key={platform.id} value={platform.id}>{platform.label} · {platform.count}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
           )}
         </div>
       </div>
@@ -543,15 +564,96 @@ export function ConnectedSourceList({
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => onSearchChange("")}
               className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
             >
               Clear search
             </button>
           )}
         </div>
+      ) : viewMode === "connections" ? (
+        <div className="divide-y divide-line/70 bg-panel" aria-label="Source connections">
+          {filteredAndSortedRows.map((r, index) => {
+            const syncBusy =
+              (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
+            const sourceState = sourceStateFor(r, Boolean(syncBusy));
+            const state = sourceState.kind;
+            const needsDiagnostic = state === "auth-required" || state === "sync-issue" || state === "partial" || state === "syncing";
+            return (
+              <article
+                key={r.id}
+                className={cn(
+                  styles.row,
+                  syncBusy && "bg-[#86c99b]/[0.035]"
+                )}
+                style={{ "--row-index": Math.min(index, 8) } as React.CSSProperties}
+                data-source-connection={r.id}
+              >
+                <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
+                <div className={cn("flex min-w-0 items-center gap-3", styles.identity)}>
+                  {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="lg" /> : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <Link
+                        href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
+                        className="truncate text-sm font-medium tracking-tight text-ink hover:text-white"
+                      >
+                        {r.name}
+                      </Link>
+                      {r.managerBadge ? (
+                        <CopyableBadge
+                          text={r.managerBadge}
+                          copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
+                          title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
+                          className="max-w-[190px] truncate text-[10px] text-ink-mute"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-mute">
+                      <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} />
+                    </div>
+                    {needsDiagnostic && sourceState.detail ? (
+                      <p className={cn(
+                        "mt-2 max-w-3xl text-xs leading-relaxed",
+                        state === "auth-required" ? "text-rose-300" : "text-amber-300"
+                      )}>
+                        {sourceState.detail}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className={styles.controls}>
+                  <div className={cn("flex min-w-0 flex-col items-start justify-center gap-1", styles.health)}>
+                    <StatusBadge state={sourceState} />
+                    <LastSyncCell lastSync={r.lastSync} />
+                  </div>
+                  <div className={cn("flex flex-wrap items-center justify-end gap-2", styles.actions)}>
+                  <Link
+                    href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 text-xs font-medium text-ink transition-colors hover:bg-white/[0.06]"
+                  >
+                    Manage
+                  </Link>
+                  {renderRowAction(r, sourceState, Boolean(syncBusy))}
+                  <button
+                    type="button"
+                    disabled={busyActions.has(r.id)}
+                    onClick={() => onDisconnect(r.id, r.name)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-ink-mute transition-colors hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-50"
+                    title={`Disconnect ${r.name}`}
+                    aria-label={`Disconnect ${r.name}`}
+                    data-no-row-click
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       ) : viewMode === "detailed" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 p-4 sm:p-6 bg-panel/30">
+        <div className={styles.detailGrid}>
           {filteredAndSortedRows.map((r) => {
             const syncBusy =
               (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
@@ -564,7 +666,7 @@ export function ConnectedSourceList({
                 key={r.id}
                 onClick={(e) => {
                   if (!(e.target as HTMLElement).closest("[data-no-card-click]")) {
-                    router.push(`/sources/${r.id}`);
+                    router.push(hrefFor(`/sources/${encodeURIComponent(r.id)}`));
                   }
                 }}
                 className={cn(
@@ -588,7 +690,7 @@ export function ConnectedSourceList({
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-1.5 group/name">
                         <Link
-                          href={`/sources/${r.id}`}
+                          href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
                           className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
                           data-no-card-click
                         >
@@ -621,12 +723,7 @@ export function ConnectedSourceList({
 
                   <div className="flex items-center gap-2.5 shrink-0" data-no-card-click onClick={(e) => e.stopPropagation()}>
                     <StatusBadge state={sourceState} />
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => toggleSelectOne(r.id)}
-                      className="cursor-pointer h-4 w-4 rounded border-line bg-canvas accent-white"
-                    />
+                    <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
                   </div>
                 </div>
 
@@ -639,13 +736,14 @@ export function ConnectedSourceList({
                     <span className="text-ink-mute shrink-0">Last sync:</span>
                     <LastSyncCell lastSync={r.lastSync} />
                   </div>
+                  <SourceTrustSummary compact state={sourceState} lastSync={r.lastSync} dataThrough={r.dataThroughDate} reportsHref={hrefFor("/reports?view=performance#report-readiness")} />
                   {showDiagnostic && sourceState.detail && (
                     <div className={cn(
                       "rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2.5 mt-2",
                       sourceState.kind === "auth-required"
                         ? "border-rose-500/25 bg-rose-500/[0.08] text-rose-300"
                         : sourceState.kind === "syncing"
-                          ? "border-cyan-500/25 bg-cyan-500/[0.08] text-cyan-200"
+                        ? "border-[#86c99b]/25 bg-[#86c99b]/[0.08] text-[#86c99b]"
                           : "border-amber-500/25 bg-amber-500/[0.08] text-amber-300"
                     )}>
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -656,7 +754,7 @@ export function ConnectedSourceList({
 
                 <div className="pt-3.5 mt-auto border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
                   <Link
-                    href={`/sources/${r.id}`}
+                    href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-ink transition-colors py-1"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -681,19 +779,19 @@ export function ConnectedSourceList({
         </div>
       ) : (
         <div className="max-lg:overflow-x-auto">
-          <table className="min-w-[960px] w-full text-sm">
+          <table className="min-w-[850px] w-full text-sm">
             <colgroup>
               <col className="w-12" />
-              <col className="w-[320px]" />
-              <col className="w-[220px]" />
-              <col className="w-[140px]" />
-              <col className="w-[140px]" />
-              <col className="w-[150px]" />
+              <col className="w-[260px]" />
+              <col className="w-[170px]" />
+              <col className="w-[135px]" />
+              <col className="w-[120px]" />
+              <col className="w-[160px]" />
             </colgroup>
             <thead className="border-b border-line bg-panel lg:sticky lg:top-[41px] lg:z-[15]">
               <tr>
                 <th className="w-12 px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">
-                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
+                  <SourceSelector checked={allSelected} onChange={toggleSelectAll} label="Select all connections" />
                 </th>
                 <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Connector</th>
                 <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Accounts</th>
@@ -715,12 +813,12 @@ export function ConnectedSourceList({
                       className="cursor-pointer hover:bg-white/[0.025] transition-colors duration-150 border-b border-line/40 last:border-0"
                       onClick={(e) => {
                         if (!(e.target as HTMLElement).closest("[data-no-row-click]")) {
-                          router.push(`/sources/${r.id}`);
+                          router.push(hrefFor(`/sources/${encodeURIComponent(r.id)}`));
                         }
                       }}
                     >
                       <td className="px-5 py-3.5" data-no-row-click>
-                        <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
+                        <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3.5">
@@ -732,7 +830,7 @@ export function ConnectedSourceList({
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-center gap-1.5 group/name">
                               <Link
-                                href={`/sources/${r.id}`}
+                                href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
                                 className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
                                 data-no-row-click
                               >
@@ -771,6 +869,7 @@ export function ConnectedSourceList({
                       </td>
                       <td className="px-5 py-3.5">
                         <LastSyncCell lastSync={r.lastSync} />
+                        <p className="mt-1 text-[11px] text-ink-mute">Data through {r.dataThroughDate?.slice(0, 10) || "not confirmed"}</p>
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-2">
@@ -804,36 +903,37 @@ export function ConnectedSourceList({
                                 sourceState.kind === "auth-required"
                                   ? "border-rose-500/30 bg-rose-500/10"
                                   : sourceState.kind === "syncing"
-                                    ? "border-cyan-500/30 bg-cyan-500/10"
+                                    ? "border-[#86c99b]/30 bg-[#86c99b]/10"
                                     : "border-amber-500/30 bg-amber-500/10",
                               )}>
                                 <AlertCircle className={cn(
                                   "h-4 w-4 shrink-0 mt-0.5",
-                                  sourceState.kind === "auth-required" ? "text-rose-400" : sourceState.kind === "syncing" ? "text-cyan-400" : "text-amber-400",
+                                  sourceState.kind === "auth-required" ? "text-rose-400" : sourceState.kind === "syncing" ? "text-[#86c99b]" : "text-amber-400",
                                 )} />
                                 <div className="min-w-0">
                                   <h4 className={cn(
                                     "text-sm font-semibold",
-                                    sourceState.kind === "auth-required" ? "text-rose-200" : sourceState.kind === "syncing" ? "text-cyan-200" : "text-amber-200",
+                                    sourceState.kind === "auth-required" ? "text-rose-200" : sourceState.kind === "syncing" ? "text-[#86c99b]" : "text-amber-200",
                                   )}>
                                     {sourceState.kind === "auth-required" ? "Needs re-auth" : sourceState.kind === "syncing" ? "Still processing" : "Sync diagnostic"}
                                   </h4>
                                   <p className={cn(
                                     "mt-0.5 text-xs leading-relaxed",
-                                    sourceState.kind === "auth-required" ? "text-rose-300/90" : sourceState.kind === "syncing" ? "text-cyan-200/90" : "text-amber-300/90",
+                                    sourceState.kind === "auth-required" ? "text-rose-300/90" : sourceState.kind === "syncing" ? "text-[#86c99b]/90" : "text-amber-300/90",
                                   )}>
                                     {sourceState.detail}
                                   </p>
                                 </div>
                               </div>
                             )}
+                            <SourceTrustSummary state={sourceState} lastSync={r.lastSync} dataThrough={r.dataThroughDate} reportsHref={hrefFor("/reports?view=performance#report-readiness")} />
                             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-mute">
                               <div className="flex flex-wrap items-center gap-3">
-                                <Link href={`/sources/${r.id}`} className="font-semibold text-ink hover:text-white transition-colors">
+                                <Link href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)} className="font-semibold text-ink hover:text-white transition-colors">
                                   Open source details →
                                 </Link>
                                 <span className="text-line">·</span>
-                                <Link href="/explorer" className="font-semibold text-ink hover:text-white transition-colors">
+                                <Link href={hrefFor("/explorer")} className="font-semibold text-ink hover:text-white transition-colors">
                                   View warehouse data →
                                 </Link>
                               </div>

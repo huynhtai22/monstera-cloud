@@ -9,6 +9,8 @@ export type GenerateBriefOptions = {
   context: ReportingContext;
   language?: "en" | "vi";
   timeoutMs?: number;
+  /** A previously validated selection preserves the headline reviewed at preview. */
+  modelSelection?: BriefModelSelection;
   /** When false (e.g. budget exhausted), skip model refinement and use deterministic output. */
   allowModelRefinement?: boolean;
 };
@@ -241,6 +243,7 @@ export async function generateExecutiveBrief(
 
   let generationMode: "model_assisted" | "deterministic" = "deterministic";
   let headline = deterministicSections.headline;
+  let modelSelection: BriefModelSelection | undefined;
   const observations: ReportingObservation[] = [...deterministicSections.observations];
 
   // 2. Optional model refinement via bounded structured contract
@@ -248,7 +251,14 @@ export async function generateExecutiveBrief(
   const route = routeModel("narrative");
   const allowedObservationIds = context.observations.map((o) => o.id);
 
-  if (options.allowModelRefinement !== false && apiKey && route.provider === "openai" && allowedObservationIds.length > 0) {
+  if (options.modelSelection) {
+    const validation = validateModelStructuredSelection(options.modelSelection, allowedObservationIds);
+    if (validation.valid) {
+      modelSelection = validation.selection;
+      headline = renderHeadlineFromSelection(context, language, modelSelection);
+      generationMode = "model_assisted";
+    }
+  } else if (options.allowModelRefinement !== false && apiKey && route.provider === "openai" && allowedObservationIds.length > 0) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -295,7 +305,8 @@ Rules:
           const parsed = JSON.parse(text);
           const validation = validateModelStructuredSelection(parsed, allowedObservationIds);
           if (validation.valid) {
-            headline = renderHeadlineFromSelection(context, language, validation.selection);
+            modelSelection = validation.selection;
+            headline = renderHeadlineFromSelection(context, language, modelSelection);
             generationMode = "model_assisted";
           }
         }
@@ -315,6 +326,7 @@ Rules:
     readiness: context.readiness,
     freshnessJourney: context.freshnessJourney,
     generationMode,
+    ...(modelSelection ? { modelSelection } : {}),
     sections: {
       headline,
       kpiScorecard: deterministicSections.kpiScorecard,

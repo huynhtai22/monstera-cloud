@@ -45,18 +45,18 @@ The repository has pieces of this evidence (`Connection.lastSyncAt`, `lastError`
 
 | Feature / decision | User problem and target | Evidence and expected outcome | Dependencies / risk / maintenance | Gate and status |
 | --- | --- | --- | --- | --- |
-| Google Ads Basic Access validation | Agency operator needs a real, bounded report they can trust | Basic Access was approved 2026-08-25; code supports OAuth, MCC discovery, bounded sync, retained history, and structured errors | Real authorized account and production configuration; provider permissions and metric semantics remain external risk | **Production validation pending.** Do not broaden exposure before a reconciled seven-day run and destination retrieval. |
+| Google Ads live validation | Agency operator needs a real, bounded report they can trust | Code supports OAuth, MCC discovery, bounded sync, retained history, structured errors, and a guarded seven-day certification evaluator | Still requires approved Google Ads API project access, an authorized live CID, a real import, native reconciliation, destination retrieval, and recovery proof | **Production validation pending.** Do not broaden exposure before a reconciled seven-day run and destination retrieval. |
 | Controlled pilot checklist + reconciliation | Operator needs proof before delivery | Identical account, dates, scope, currency, timezone, and conversion semantics make variance explainable | Manual authorized validation; low ongoing cost | Required before claiming Google Ads controlled-pilot readiness. |
-| Minimal shared health truth | Agency must distinguish pending, partial, stale, error, and fresh states | Current states are distributed; partial `lastError` could appear as generic error and stale was omitted from Dashboard attention | Shared resolver must remain backward-compatible; no schema migration | First bounded implementation slice. |
+| Minimal shared health truth | Agency must distinguish pending, partial, stale, error, and fresh states | Shared resolver, data-through dates, retry/reconnect actions, and Dashboard/Operations/Sources health views are implemented. Production alert receipt and end-to-end customer recovery still need evidence. | Keep displayed state tied to durable sync and account-health evidence; no health claims based on OAuth connection alone. | **Code delivered; pilot acceptance pending.** |
 | Five prospective design partners | Product needs external demand signals | Outreach belongs outside this repository | Commercial coordination | Identify before expanding scope; do not claim it is complete here. |
 
-### Phase 1 — Operational Health Foundation (**Next**)
+### Phase 1 — Operational Health Foundation (**Code delivered; acceptance next**)
 
 **Goal:** every existing console surface communicates the same connection truth.
 
-Deliverables: centralized server-side health resolver; deterministic precedence; per-connection data-through date; Dashboard, Sources, source detail, client health, and Runs alignment; actionable attention items; explicit automatic-retry versus user-action states; source-health filtering. **No new Health navigation page.**
+Delivered in code: centralized server-side health resolver; deterministic precedence; per-connection data-through date; Dashboard, Sources, source detail, client health, and Operations alignment; actionable attention items; automatic-retry versus user-action guidance; source-health filtering. **No new Health navigation page.**
 
-Exit gate: pilot operators can locate and recover every stale, partial, error, disconnected, and unknown source without a parallel tracking sheet. A dedicated Health Center is reconsidered only when pilot evidence shows Dashboard and Sources are insufficient at multi-client scale.
+Acceptance gate: a pilot operator demonstrates locating and recovering each stale, partial, error, disconnected, and unknown source, confirms automatic retry pickup, and receives the configured alert. Until that evidence exists, code delivery does not count as operational acceptance. A dedicated Health Center is reconsidered only when pilot evidence shows Dashboard and Sources are insufficient at multi-client scale.
 
 ### Phase 2 — Agency Operations
 
@@ -113,4 +113,4 @@ Do not build yet: hundreds of shallow connectors; a full BI dashboard builder; f
 
 ## Current evidence and release posture
 
-Google Ads is **Basic Access approved — production validation pending**. Approval removes the external developer-token approval blocker; it does not prove OAuth, MCC behavior, correct production configuration, metric completeness, tenant safety in a live flow, Sheets delivery, Looker delivery, or controlled-pilot readiness. The detailed manual evidence procedure is in [google-ads-basic-access.md](./google-ads-basic-access.md).
+Google Ads is **code verified — live validation pending**. The deployed connector uses OAuth and the access level of the Google Cloud project that owns its OAuth client; code verification does not prove OAuth, MCC behavior, correct production configuration, metric completeness, tenant safety in a live flow, Sheets delivery, Looker delivery, or controlled-pilot readiness. The detailed evidence procedure is in [google-ads-basic-access.md](./google-ads-basic-access.md).

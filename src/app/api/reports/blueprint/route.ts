@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 import { getAuthSession } from "@/lib/auth-session";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import {
@@ -118,7 +119,7 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
-    await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
+    const workspaceAccess = await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
     const resolution = await resolveClientContext({
       workspaceId,
       requestedClientId: clientId,
@@ -135,6 +136,25 @@ export async function GET(req: Request) {
       windowStart: windowStart ?? undefined,
       windowEnd: windowEnd ?? undefined,
     });
+    const latestEmailAttempt = result.snapshot
+      ? await prisma.reportEmailDeliveryAttempt.findFirst({
+          where: {
+            workspaceId,
+            clientId: resolution.client.id,
+            snapshotId: result.snapshot.id,
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            recipientDisplay: true,
+            providerMessageId: true,
+            failureCode: true,
+            createdAt: true,
+            finishedAt: true,
+          },
+        })
+      : null;
 
     return NextResponse.json({
       client: result.client,
@@ -156,6 +176,18 @@ export async function GET(req: Request) {
       approval: result.approval,
       lifecycle: result.lifecycle,
       lifecycleState: result.lifecycleState,
+      emailDelivery: latestEmailAttempt
+        ? {
+            id: latestEmailAttempt.id,
+            status: latestEmailAttempt.status,
+            recipient: latestEmailAttempt.recipientDisplay,
+            providerMessageId: latestEmailAttempt.providerMessageId,
+            failureCode: latestEmailAttempt.failureCode,
+            attemptedAt: latestEmailAttempt.createdAt.toISOString(),
+            finishedAt: latestEmailAttempt.finishedAt?.toISOString() ?? null,
+          }
+        : null,
+      canEmailApprovedReports: workspaceAccess.membership.role !== "viewer",
     });
   } catch (error: unknown) {
     return blueprintErrorResponse(error);

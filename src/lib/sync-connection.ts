@@ -37,7 +37,7 @@ import {
 } from "@/lib/connection-sync-lease";
 
 // Google imports
-import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
+import { googleAdsReportClient, isGoogleAdsAccessBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 import {
   assertGoogleRuntimeModeAllowed,
@@ -768,12 +768,12 @@ async function syncGoogleAds(opts: {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (isGoogleAdsDeveloperTokenBlocked(err)) {
-        // Application-level blocker: the developer token is not approved for
-        // this account. Every leaf query would fail identically — never mask
-        // it as per-account errors via the leaf fallback below.
+      if (isGoogleAdsAccessBlocked(err)) {
+        // Application-level blocker: Google Ads API access is not enabled for
+        // the Cloud project that owns the OAuth client. Every leaf query would
+        // fail identically — never mask it as per-account errors below.
         const result = makeFailedSyncResult(
-          `Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED). Check the production deployment configuration and Google Ads API Center status — selecting a different customer account will not resolve this application-level rejection.`,
+          `Google Ads API access is not enabled for the Google Cloud project that owns this OAuth client. Check the project's Google Ads API access level in Google Cloud Console. Selecting a different customer account will not resolve this application-level rejection.`,
           false,
         );
         await persistConnectionSyncOutcome(connectionId, result, lease);
@@ -802,7 +802,11 @@ async function syncGoogleAds(opts: {
   }
 
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
-  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId);
+  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId, {
+    // Old builds incorrectly quarantined accounts when project-level API access
+    // failed. Let Google retry those rows after the project configuration changes.
+    recoverableErrorPattern: /CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED|Google Ads API access is not enabled for the Google Cloud project/i,
+  });
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────
   for (const { customerId, mccId, descriptiveName } of leafAccounts) {
@@ -941,8 +945,8 @@ async function syncGoogleAds(opts: {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
-      const isBlockedDevToken = isGoogleAdsDeveloperTokenBlocked(error);
-      const isAuth = isBlockedDevToken || /developer.?token|unauthorized|permission.*denied/i.test(msg);
+      const isAccessBlocked = isGoogleAdsAccessBlocked(error);
+      const isAuth = isAccessBlocked || /unauthorized|permission.*denied/i.test(msg);
       const gRetryable = isRetryableSyncError(error) && !isAuth;
       children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: gRetryable });
       await recordAccountOutcome({
@@ -952,12 +956,14 @@ async function syncGoogleAds(opts: {
         accountId: customerId,
         accountName: descriptiveName,
         ok: false,
-        retryable: gRetryable,
-        authFailure: isAuth,
+        retryable: isAccessBlocked || gRetryable,
+        // Cloud-project access is application configuration, not a revoked
+        // customer authorization. Keep it retryable after project access is fixed.
+        authFailure: isAuth && !isAccessBlocked,
         error: msg,
       });
 
-      if (isBlockedDevToken) {
+      if (isAccessBlocked) {
         break; // every remaining customer fails identically
       }
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);

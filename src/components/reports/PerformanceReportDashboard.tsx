@@ -1,7 +1,10 @@
 "use client";
 
+import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
 import React, { useState, useMemo } from "react";
 import useSWR from "swr";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import { validRecoveryWindow } from "@/lib/console-recovery";
 import Link from "next/link";
 import {
   DollarSign,
@@ -59,6 +62,11 @@ export function PerformanceReportDashboard({
   selectedClientId,
   onClientChange,
 }: PerformanceReportDashboardProps) {
+  const { searchParams } = useClientContextNavigation();
+  const recoveryWindow = validRecoveryWindow(searchParams.get("startDate"), searchParams.get("endDate"));
+  const [dismissedWindow, setDismissedWindow] = useState("");
+  const windowKey = `${selectedClientId}:${recoveryWindow?.start}:${recoveryWindow?.end}`;
+  const useRecoveryWindow = Boolean(recoveryWindow && dismissedWindow !== windowKey);
   const [presetDays, setPresetDays] = useState<number>(7);
   const [campaignSearch, setCampaignSearch] = useState("");
   const [hoveredDay, setHoveredDay] = useState<DailyTrendPoint | null>(null);
@@ -66,13 +74,14 @@ export function PerformanceReportDashboard({
 
   // Compute dates based on preset
   const { startDateStr, endDateStr } = useMemo(() => {
+    if (useRecoveryWindow && recoveryWindow) return { startDateStr: recoveryWindow.start, endDateStr: recoveryWindow.end };
     const end = new Date();
     const start = new Date(end.getTime() - (presetDays - 1) * 24 * 60 * 60 * 1000);
     return {
       startDateStr: start.toISOString().split("T")[0],
       endDateStr: end.toISOString().split("T")[0],
     };
-  }, [presetDays]);
+  }, [presetDays, useRecoveryWindow, recoveryWindow]);
 
   const endpoint = useMemo(() => {
     if (!workspaceId) return null;
@@ -185,10 +194,10 @@ export function PerformanceReportDashboard({
               <button
                 key={p.days}
                 type="button"
-                onClick={() => setPresetDays(p.days)}
+                onClick={() => { setDismissedWindow(windowKey); setPresetDays(p.days); }}
                 className={cn(
                   "rounded-md px-2.5 py-1 transition-colors cursor-pointer",
-                  presetDays === p.days
+                  !useRecoveryWindow && presetDays === p.days
                     ? "bg-white/[0.12] text-ink font-semibold shadow-xs"
                     : "text-ink-mute hover:text-ink"
                 )}
@@ -208,7 +217,7 @@ export function PerformanceReportDashboard({
             className="rounded-lg border border-line bg-canvas p-2 text-ink-mute hover:text-ink hover:bg-white/[0.04] transition-colors"
             title="Refresh Data"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isValidating && "animate-spin")} />
+            <ConsoleSyncLabel active={isValidating} idleLabel="Refresh Data" activeLabel="Refreshing data" iconOnly idleIcon={<RefreshCw className="h-3.5 w-3.5" />} />
           </button>
           <button
             type="button"
@@ -277,7 +286,7 @@ export function PerformanceReportDashboard({
           <div className="mt-4 flex items-center justify-center gap-2">
             <button
               type="button"
-              onClick={() => setPresetDays(30)}
+              onClick={() => { setDismissedWindow(windowKey); setPresetDays(30); }}
               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white text-black hover:bg-neutral-200 transition"
             >
               View Last 30 Days
@@ -295,7 +304,7 @@ export function PerformanceReportDashboard({
           {/* ─── 1. PRIMARY KPI SUMMARY CARDS ─── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {/* Total Ad Spend */}
-            <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
+            <div className="console-scorecard rounded-xl border border-line bg-panel p-4 shadow-xs">
               <span className="text-[11px] font-medium text-ink-mute flex items-center gap-1">
                 <DollarSign className="h-3.5 w-3.5" /> Total Spend
               </span>
@@ -310,7 +319,7 @@ export function PerformanceReportDashboard({
             </div>
 
             {/* Total Revenue */}
-            <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
+            <div className="console-scorecard rounded-xl border border-line bg-panel p-4 shadow-xs">
               <span className="text-[11px] font-medium text-ink-mute flex items-center gap-1">
                 <ShoppingCart className="h-3.5 w-3.5" /> Total Revenue
               </span>
@@ -325,7 +334,7 @@ export function PerformanceReportDashboard({
             </div>
 
             {/* Blended ROAS */}
-            <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
+            <div className="console-scorecard rounded-xl border border-line bg-panel p-4 shadow-xs">
               <span className="text-[11px] font-medium text-ink-mute flex items-center gap-1">
                 <TrendingUp className="h-3.5 w-3.5" /> Blended ROAS
               </span>
@@ -349,7 +358,7 @@ export function PerformanceReportDashboard({
             </div>
 
             {/* Blended CPA */}
-            <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
+            <div className="console-scorecard rounded-xl border border-line bg-panel p-4 shadow-xs">
               <span className="text-[11px] font-medium text-ink-mute flex items-center gap-1">
                 <Target className="h-3.5 w-3.5" /> Blended CPA
               </span>
@@ -360,7 +369,7 @@ export function PerformanceReportDashboard({
             </div>
 
             {/* Conversions */}
-            <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
+            <div className="console-scorecard rounded-xl border border-line bg-panel p-4 shadow-xs">
               <span className="text-[11px] font-medium text-ink-mute flex items-center gap-1">
                 <ShoppingCart className="h-3.5 w-3.5" /> Conversions
               </span>
@@ -371,7 +380,7 @@ export function PerformanceReportDashboard({
             </div>
 
             {/* Clicks & CTR */}
-            <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
+            <div className="console-scorecard rounded-xl border border-line bg-panel p-4 shadow-xs">
               <span className="text-[11px] font-medium text-ink-mute flex items-center gap-1">
                 <MousePointer className="h-3.5 w-3.5" /> CTR / Traffic
               </span>

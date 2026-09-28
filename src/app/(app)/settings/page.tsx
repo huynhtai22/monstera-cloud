@@ -230,7 +230,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
+        <div data-console-page="true" data-console-section="settings" className="console-page w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
             <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
                     <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />
@@ -241,10 +241,10 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            <div className="rounded-lg border border-line bg-panel">
+            <div data-console-settings-panel="true" className="rounded-lg border border-line bg-panel">
                 <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
                     <div className="border-b border-line bg-canvas px-3 py-4 lg:border-b-0 lg:border-r">
-                        <nav className="space-y-0.5 lg:sticky lg:top-8">
+                        <nav data-console-settings-nav="true" className="space-y-0.5 lg:sticky lg:top-8">
                             {[
                                 { id: 'workspace', label: 'Workspace', icon: Building2 },
                                 { id: 'clients', label: 'Clients', icon: Briefcase },
@@ -256,6 +256,7 @@ export default function SettingsPage() {
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
+                                    aria-pressed={activeTab === tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
                                     className={cn(
                                         "flex items-center w-full px-3 py-2.5 rounded-md text-sm transition-colors",
