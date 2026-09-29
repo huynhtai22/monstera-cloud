@@ -118,6 +118,7 @@ export async function GET(request: Request) {
             connectionId: connection.id,
             workspaceId: workspace.id,
             provider: connection.provider,
+            credentials: connection.credentials,
             error: message,
           });
         } catch (persistError) {

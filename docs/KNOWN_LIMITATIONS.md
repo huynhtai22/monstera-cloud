@@ -15,7 +15,7 @@ The August evidence is historical, not blanket approval of newer billing/AI/port
 
 ### 1. Overlapping connection sync protection
 
-**Status:** Implemented (2026-08-24, PR pending merge at time of writing) — verified by real-PostgreSQL concurrency suites.
+**Status:** Implemented (2026-08-24) — verified by real-PostgreSQL concurrency suites.
 
 Connection-scoped PostgreSQL lease with fencing token is implemented in `src/lib/connection-sync-lease.ts` (advisory xact lock + `SyncLock` lease row + monotonic `fencingToken`, 20-minute lease with heartbeat renewal). All execution paths (manual sync, cron warehouse refresh, batch import, OAuth backfill, pipeline pre-sync) funnel through `syncConnectionData`, which acquires the lease and fences outcome persistence.
 
