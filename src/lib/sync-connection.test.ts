@@ -21,6 +21,7 @@ async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
 async function withSyncHarness<T>(
   fetchImpl: typeof fetch,
   run: (updates: Array<{ data: Record<string, unknown> }>) => Promise<T>,
+  options: { leaseBusy?: boolean } = {},
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
   const originalConnection = (prisma as any).connection;
@@ -51,7 +52,7 @@ async function withSyncHarness<T>(
   };
   (prisma as any).$transaction = async (fn: any) =>
     fn({
-      $queryRawUnsafe: async () => [{ locked: true }],
+      $queryRawUnsafe: async () => [{ locked: !options.leaseBusy }],
       syncLock: {
         findUnique: async () => null,
         upsert: async (args: any) => ({ ...args.update, ...validLease }),
@@ -96,6 +97,23 @@ describe("provider HTTP failures preserve sync correctness", () => {
       assert.equal(updates.length, 1);
       assert.deepEqual(updates[0].data, { lastError: "[failed] Credential decryption failed" });
     });
+  });
+
+  it("does not persist a pre-sync failure while another worker owns the lease", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-owned-by-active-worker",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { leaseBusy: true },
+    );
   });
 
   it("keeps mixed Google customer outcomes partial and does not advance lastSyncAt after a 429", async () => {
