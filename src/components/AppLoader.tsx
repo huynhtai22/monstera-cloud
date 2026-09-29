@@ -5,6 +5,7 @@ import { LogoMark } from "./Logo";
 import styles from "./AppLoader.module.css";
 
 const EXIT_DURATION_MS = 340;
+const CELL_SEQUENCE: Record<number, number> = { 0: 0, 1: 1, 2: 2, 5: 3, 8: 4, 7: 5, 6: 6, 3: 7 };
 
 /** Reusable console loading screen; the animation never represents task progress. */
 export function AppLoader({
@@ -56,12 +57,18 @@ export function AppLoader({
     <div className={styles.overlay} data-visible={shown} role="status" aria-live="polite" aria-label={`${title}. ${detail}.`}>
       <div className={styles.content}>
         <div className={styles.motion} aria-hidden="true">
-          <svg className={styles.orbit} viewBox="0 0 170 120" fill="none">
-            <circle className={styles.innerTrack} cx="85" cy="60" r="40" />
-            <ellipse className={styles.track} cx="85" cy="60" rx="68" ry="31" transform="rotate(-18 85 60)" />
-            <ellipse className={styles.arc} cx="85" cy="60" rx="68" ry="31" transform="rotate(-18 85 60)" pathLength="100" />
-          </svg>
-          <LogoMark className={styles.mark} />
+          <span className={styles.motionHalo} />
+          <span className={styles.matrix}>
+            {Array.from({ length: 9 }, (_, index) => index === 4 ? (
+              <span className={styles.centerCell} key={index}><LogoMark className={styles.mark} /></span>
+            ) : (
+              <span
+                className={styles.tile}
+                key={index}
+                style={{ animationDelay: `${CELL_SEQUENCE[index] * 0.42 - 0.28}s` }}
+              />
+            ))}
+          </span>
         </div>
         <p className={styles.wordmark} aria-hidden="true"><span />MONSTERA CLOUD</p>
         <h1>{title}</h1>
