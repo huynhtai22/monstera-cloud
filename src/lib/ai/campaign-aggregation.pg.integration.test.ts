@@ -16,6 +16,12 @@ describe("PostgreSQL Integration: Campaign Aggregation & Analyst Ranking Semanti
   const connGoogleId = `conn_camp_goog_${timestamp}`;
   const acctMeta = `act_meta_${timestamp}`;
   const acctGoog = `act_goog_${timestamp}`;
+  const dw = defaultWindow();
+  const day1 = new Date(`${dw.startDate}T12:00:00.000Z`);
+  const day2 = new Date(day1);
+  day2.setUTCDate(day2.getUTCDate() + 1);
+  const day1String = day1.toISOString().slice(0, 10);
+  const day2String = day2.toISOString().slice(0, 10);
 
   before(async () => {
     assertAllowedTestDatabase(process.env.DATABASE_URL);
@@ -141,10 +147,6 @@ describe("PostgreSQL Integration: Campaign Aggregation & Analyst Ranking Semanti
     //    Day 2: Spend 3,000, Revenue 25,000, Conv 60, Clicks 900, Imp 18000
     //    Total: Spend 6,000, Revenue 40,000, Conv 100
 
-    const day1 = new Date("2026-09-20T12:00:00.000Z");
-    const day2 = new Date("2026-09-21T12:00:00.000Z");
-
-    const dw = defaultWindow();
     const minStart = dw.startDate < "2026-09-18" ? dw.startDate : "2026-09-18";
     const maxEnd = dw.endDate > "2026-09-25" ? dw.endDate : "2026-09-25";
 
@@ -153,7 +155,7 @@ describe("PostgreSQL Integration: Campaign Aggregation & Analyst Ranking Semanti
     const endBound = new Date(`${maxEnd}T12:00:00.000Z`);
     while (cur <= endBound) {
       const dStr = cur.toISOString().slice(0, 10);
-      if (dStr !== "2026-09-20" && dStr !== "2026-09-21") {
+      if (dStr !== day1String && dStr !== day2String) {
         fillerDates.push(new Date(cur));
       }
       cur.setUTCDate(cur.getUTCDate() + 1);
@@ -354,8 +356,8 @@ describe("PostgreSQL Integration: Campaign Aggregation & Analyst Ranking Semanti
     const result = await queryMetricsAggregate({
       workspaceId,
       clientId,
-      startDateStr: "2026-09-18",
-      endDateStr: "2026-09-24",
+      startDateStr: dw.startDate,
+      endDateStr: dw.endDate,
       dimensions: ["campaignName", "platform"],
       metrics: ["revenue", "spend"],
       strictReporting: true,
@@ -396,18 +398,18 @@ describe("PostgreSQL Integration: Campaign Aggregation & Analyst Ranking Semanti
     const result = await queryMetricsAggregate({
       workspaceId,
       clientId,
-      startDateStr: "2026-09-18",
-      endDateStr: "2026-09-24",
+      startDateStr: dw.startDate,
+      endDateStr: dw.endDate,
       dimensions: ["date", "campaignName"],
       metrics: ["spend"],
       strictReporting: true,
     });
 
     assert.ok(result.rows.length >= 2);
-    // Top rows should have the latest date (2026-09-24)
+    // Top rows should have the latest date in the current reporting window.
     const dates = result.rows.map((r) => r.date as string);
-    assert.equal(dates[0], "2026-09-24");
-    assert.ok(dates.includes("2026-09-20"));
+    assert.equal(dates[0], dw.endDate);
+    assert.ok(dates.includes(day1String));
     for (let i = 0; i < dates.length - 1; i++) {
       assert.ok(dates[i] >= dates[i + 1], `Dates should be descending: ${dates[i]} >= ${dates[i + 1]}`);
     }
