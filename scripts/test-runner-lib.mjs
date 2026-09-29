@@ -1,5 +1,56 @@
 import { readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
+
+const REQUIRED_CI_POSTGRES_INTEGRATION_TESTS = [
+  "src/lib/connection-lifecycle.pg.integration.test.ts",
+  "src/lib/meta-sync-lock.pg.integration.test.ts",
+  "src/lib/sync-outcome-fencing.pg.integration.test.ts",
+  "src/lib/sync-lease-fencing-completion.pg.integration.test.ts",
+  "src/lib/connector-resilience/scheduler-postgres.pg.integration.test.ts",
+];
+
+/**
+ * Prevent the CI test command from passing after its PostgreSQL service or
+ * lease/concurrency integration tests have been removed from the test plan.
+ */
+export function assertPostgresTestSuiteConfigured(env, discoveredTests, plan) {
+  if (env.REQUIRE_POSTGRES_TESTS !== "1") return;
+
+  for (const [label, value] of [["DATABASE_URL", env.DATABASE_URL], ["DIRECT_URL", env.DIRECT_URL]]) {
+    let parsed;
+    try {
+      parsed = new URL(value);
+    } catch {
+      throw new Error(`CI requires ${label} to point to the isolated monstera_ci PostgreSQL database.`);
+    }
+    let database;
+    try {
+      database = decodeURIComponent(parsed.pathname).replace(/^\//, "");
+    } catch {
+      throw new Error(`CI requires ${label} to point to the isolated monstera_ci PostgreSQL database.`);
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (
+      !["postgres:", "postgresql:"].includes(parsed.protocol)
+      || !["localhost", "127.0.0.1", "postgres"].includes(host)
+      || database !== "monstera_ci"
+    ) {
+      throw new Error(`CI requires ${label} to point to the isolated monstera_ci PostgreSQL database.`);
+    }
+  }
+
+  const normalize = (path) => relative(process.cwd(), resolve(path)).replaceAll("\\", "/");
+  const discovered = new Set(discoveredTests.map(normalize));
+  const planned = new Set(
+    (plan.find((phase) => phase.name === "postgres")?.args ?? [])
+      .filter((arg) => arg.endsWith(".pg.integration.test.ts"))
+      .map(normalize),
+  );
+  const missing = REQUIRED_CI_POSTGRES_INTEGRATION_TESTS.filter((file) => !discovered.has(file) || !planned.has(file));
+  if (missing.length) {
+    throw new Error(`CI PostgreSQL integration tests are missing from the test run: ${missing.join(", ")}`);
+  }
+}
 
 export async function findTests(directory) {
   const entries = await readdir(directory, { withFileTypes: true });

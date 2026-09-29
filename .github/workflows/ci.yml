@@ -51,6 +51,7 @@ jobs:
       - name: Run Node tests
         env:
           CONNECTOR_RESILIENCE_TEST_DB: "1"
+          REQUIRE_POSTGRES_TESTS: "1"
         run: npm test
       - name: Production build
         env:
