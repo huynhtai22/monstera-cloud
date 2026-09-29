@@ -4,7 +4,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
-import { WorkspaceLoader } from './WorkspaceLoader';
+import { AppLoader } from './AppLoader';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
 import { SessionHeartbeat } from './SessionHeartbeat';
 import { DemoModeBanner } from './DemoModeBanner';
@@ -113,8 +113,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <PendingNavigationProvider>
         <WorkspaceSessionSync />
         <SessionHeartbeat />
-        {/* Keep mounted through the exit animation; WorkspaceLoader removes its overlay afterward. */}
-        <WorkspaceLoader visible={loading} />
+        {/* Keep mounted through the exit animation; AppLoader removes its overlay afterward. */}
+        <AppLoader visible={loading} detail="Checking your secure session" />
         <div data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
