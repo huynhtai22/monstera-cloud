@@ -8,7 +8,7 @@ import { DashboardHomePage } from "./DashboardHomePage";
  * This fixes "Cannot destructure property 'auth' of 'e' as it is undefined" error
  * that occurs when SWR hooks run before NextAuth session is fully initialized
  * 
- * Note: AppLayout already shows a GlobeLoader during session loading,
+ * Note: AppLayout already shows a WorkspaceLoader during session loading,
  * so we just return null here to avoid duplicate loaders.
  */
 export function DashboardSessionGuard() {
