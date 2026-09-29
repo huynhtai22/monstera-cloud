@@ -245,12 +245,29 @@ async function metaFetch(
   options?: RequestInit,
   maxRetries = 4,
 ): Promise<{ res: Response; throttle: MetaThrottleState | null }> {
+  // Build the final target from a fixed Graph API origin. Request dimensions
+  // may contain account/report identifiers, but cannot redirect server-side
+  // fetches to a caller-controlled host.
+  const graphOrigin = new URL(META_GRAPH_BASE).origin;
+  if (
+    url.protocol !== "https:" ||
+    url.origin !== graphOrigin ||
+    !url.pathname.startsWith(`/${META_API_VERSION}/`) ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error("Rejected invalid Meta Graph API destination");
+  }
+  const targetUrl = new URL(META_GRAPH_BASE);
+  targetUrl.pathname = url.pathname;
+  targetUrl.search = url.search;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const startMs = Date.now();
     const requestSignal = options?.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)])
       : AbortSignal.timeout(20_000);
-    const res = await fetch(url.toString(), { ...options, signal: requestSignal });
+    const res = await fetch(targetUrl.toString(), { ...options, redirect: "error", signal: requestSignal });
     const durationMs = Date.now() - startMs;
     const throttle = parseThrottleHeader(res);
 

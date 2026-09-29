@@ -39,22 +39,7 @@ async function processWarehouseQueue() {
 
 async function processWarehouseQueueUnsafe() {
   if (warehouseUsesDedicatedWorker()) {
-    const oldestQueued = await prisma.warehouseImportJob.findFirst({
-      where: { status: "queued" },
-      orderBy: { scheduledAt: "asc" },
-      select: { scheduledAt: true },
-    });
-    const oldestQueuedAgeMs = oldestQueued ? Math.max(0, Date.now() - oldestQueued.scheduledAt.getTime()) : 0;
-    const stalled = oldestQueuedAgeMs > 15 * 60 * 1000;
-    return NextResponse.json({
-      executionMode: "worker",
-      executedJobs: [],
-      processed: 0,
-      queuedJobs: oldestQueued ? 1 : 0,
-      oldestQueuedAgeMs,
-      failed: stalled ? 1 : 0,
-      failures: stalled ? [{ stage: "worker_backlog" }] : [],
-    }, { status: stalled ? 500 : 200 });
+    return NextResponse.json({ executionMode: "worker", executedJobs: [], processed: 0 });
   }
   const now = new Date();
   const failures: Array<{ jobId?: string; stage: string }> = [];
