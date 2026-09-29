@@ -1,12 +1,14 @@
 .overlay {
-  --loader-canvas: #f4f6f3;
-  --loader-ink: #24382c;
-  --loader-muted: #68766c;
-  --loader-mint: #418865;
-  --loader-pearl: #547d67;
-  --loader-blue: #658a9c;
-  --loader-amber: #c3893c;
-  --loader-aura: rgb(92 159 119 / 12%);
+  --loader-canvas: #f5f6f2;
+  --loader-ink: #21352b;
+  --loader-muted: #6b786e;
+  --loader-thread: #6d9a7e;
+  --loader-amber-deep: #9b632e;
+  --loader-amber: #d09649;
+  --loader-amber-light: #ffe1a9;
+  --loader-halo: rgb(76 148 101 / 10%);
+  --loader-tile: #eaf0e9;
+  --loader-tile-border: rgb(64 115 83 / 18%);
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -17,114 +19,112 @@
   background: var(--loader-canvas);
   color: var(--loader-ink);
   isolation: isolate;
-  transition: opacity 340ms cubic-bezier(.2, .8, .2, 1);
+  transition: opacity 380ms cubic-bezier(.22, 1, .36, 1);
 }
 
 :global(.dark) .overlay {
-  --loader-canvas: #080b0a;
-  --loader-ink: #e8efeb;
-  --loader-muted: #8b9b92;
-  --loader-mint: #8dd5af;
-  --loader-pearl: #dcf4e5;
-  --loader-blue: #849da9;
-  --loader-amber: #efc38b;
-  --loader-aura: rgb(110 189 143 / 10%);
+  --loader-canvas: #080d0b;
+  --loader-ink: #e9f2e9;
+  --loader-muted: #94a49a;
+  --loader-thread: #a5dabc;
+  --loader-amber-deep: #a96c31;
+  --loader-amber: #e6ab5d;
+  --loader-amber-light: #fff0ca;
+  --loader-halo: rgb(71 157 105 / 11%);
+  --loader-tile: #14211a;
+  --loader-tile-border: rgb(174 222 185 / 21%);
 }
 
 .overlay::before {
   content: "";
   position: absolute;
-  width: min(760px, 150vw);
-  height: min(700px, 100vh);
-  background: radial-gradient(ellipse at 46% 41%, var(--loader-aura), transparent 64%);
+  inset: 0;
+  background: radial-gradient(ellipse 390px 300px at 50% 45%, var(--loader-halo), transparent 78%);
   pointer-events: none;
 }
 
-.overlay[data-visible="false"] { opacity: 0; }
+.overlay[data-visible="false"] { opacity: 0; pointer-events: none; }
 
 .content {
   position: relative;
   display: grid;
   justify-items: center;
-  width: min(100%, 360px);
+  width: min(100%, 440px);
   text-align: center;
-  transform: translateY(-12px);
-  transition: opacity 340ms cubic-bezier(.2, .8, .2, 1), transform 340ms cubic-bezier(.2, .8, .2, 1);
+  transform: translateY(-6px);
+  transition: opacity 380ms cubic-bezier(.22, 1, .36, 1), transform 380ms cubic-bezier(.22, 1, .36, 1);
 }
 
-.overlay[data-visible="false"] .content {
-  opacity: 0;
-  transform: translateY(-18px) scale(.98);
-}
+.overlay[data-visible="false"] .content { opacity: 0; transform: translateY(-14px) scale(.985); }
 
-.scene {
-  position: relative;
-  width: min(100%, 320px);
-  aspect-ratio: 320 / 250;
-  margin-bottom: 24px;
-}
-
-.aura {
+.scene { position: relative; width: min(100%, 420px); aspect-ratio: 320 / 170; margin-bottom: -10px; }
+.halo {
   position: absolute;
-  inset: 17% 15% 13% 16%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at 34% 62%, var(--loader-aura), transparent 70%);
-  filter: blur(17px);
-  animation: breathe 8s ease-in-out infinite;
+  width: 164px;
+  height: 145px;
+  left: 85px;
+  top: 45px;
+  background: radial-gradient(ellipse at 58% 48%, var(--loader-halo), transparent 70%);
+  filter: blur(15px);
+  animation: haloPulse 4.6s ease-in-out infinite;
 }
-
-.sculpture { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.shell { transform-origin: 160px 135px; animation: turn 24s linear infinite; }
-.shellBloom { stroke-width: 12; opacity: .15; filter: blur(7px); }
-.contour { stroke-width: .7; }
-.rim { stroke-width: .85; opacity: .6; }
-.signalTrail { stroke: var(--loader-amber); stroke-width: 1.2; stroke-linecap: round; opacity: .5; }
+.artwork { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.threadGlow { stroke-width: 7; opacity: .2; filter: blur(5px); }
+.thread { stroke-width: .95; opacity: .76; }
+.echo { stroke: var(--loader-thread); stroke-width: .55; opacity: .17; }
+.echoSoft { stroke: var(--loader-thread); stroke-width: .5; opacity: .14; }
+.signalGlow { stroke: var(--loader-amber); stroke-width: 8; stroke-linecap: round; opacity: .32; filter: blur(5px); }
+.signalTrail { stroke: var(--loader-amber-light); stroke-width: 1.8; stroke-linecap: round; opacity: .78; }
+.signalBlock { filter: drop-shadow(0 0 7px var(--loader-amber)); }
 .staticSignal { display: none; }
 
-.core {
+.emblem {
   position: absolute;
-  top: 54%;
   left: 50%;
+  top: 51%;
   display: grid;
   place-items: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
+  width: 82px;
+  height: 82px;
+  transform: translate(-50%, -50%) rotate(-5deg);
+  border: 1px solid var(--loader-tile-border);
+  border-radius: 21px;
+  background: var(--loader-tile);
+  box-shadow: 0 10px 35px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 10%);
+  animation: emblemBreathe 4.6s cubic-bezier(.22, 1, .36, 1) infinite;
 }
-
-.mark { display: block; width: 48px; height: 48px; }
+.mark { display: block; width: 48px; height: 48px; transform: rotate(5deg); }
 .mark > rect { fill: none; stroke: none; }
-.mark > path { stroke: var(--loader-ink); stroke-width: 1.7; }
+.mark > path { stroke: var(--loader-ink); stroke-width: 1.7; animation: markIgnite 4.6s ease-in-out infinite; }
+.spark { position: absolute; top: 28%; right: 15%; width: 2px; height: 2px; border-radius: 50%; background: var(--loader-amber-light); opacity: .5; box-shadow: 0 0 7px var(--loader-amber); }
 
-.starOne, .starTwo { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: var(--loader-mint); opacity: .4; }
-.starOne { top: 16%; left: 73%; box-shadow: 0 0 7px var(--loader-mint); }
-.starTwo { top: 74%; left: 18%; opacity: .22; }
-
-.brand { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -.025em; line-height: 1.5; }
-.content h1 { margin: 8px 0 0; color: var(--loader-muted); font-size: 12px; font-weight: 400; letter-spacing: .015em; line-height: 1.5; }
+.brand { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -.035em; line-height: 1.45; }
+.content h1 { margin: 7px 0 0; color: var(--loader-muted); font-size: 12px; font-weight: 400; letter-spacing: .015em; line-height: 1.5; }
 .detail { margin: 5px 0 0; color: var(--loader-muted); font-size: 12px; line-height: 1.5; }
 
-@keyframes turn { to { transform: rotate(360deg); } }
-@keyframes breathe { 0%, 100% { opacity: .7; transform: scale(.97); } 50% { opacity: 1; transform: scale(1.04); } }
-
-@media (max-width: 560px) {
-  .scene { width: min(100%, 286px); }
-  .core { width: 64px; height: 64px; }
-  .mark { width: 44px; height: 44px; }
+@keyframes haloPulse { 0%, 100% { opacity: .55; transform: scale(.96); } 46% { opacity: 1; transform: scale(1.08); } }
+@keyframes emblemBreathe {
+  0%, 38%, 65%, 100% { border-color: var(--loader-tile-border); box-shadow: 0 10px 35px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 10%); }
+  49% { border-color: var(--loader-amber); box-shadow: 0 13px 45px rgb(0 0 0 / 8%), 0 0 27px var(--loader-halo), 0 0 17px rgb(208 150 73 / 18%), inset 0 1px 0 rgb(255 255 255 / 16%); }
+}
+@keyframes markIgnite {
+  0%, 38%, 65%, 100% { stroke: var(--loader-ink); filter: none; }
+  49% { stroke: var(--loader-amber); filter: drop-shadow(0 0 3px var(--loader-amber)); }
 }
 
+@media (max-width: 560px) { .scene { width: min(100%, 320px); } .emblem { width: 72px; height: 72px; } .mark { width: 44px; height: 44px; } }
 @media (prefers-reduced-motion: reduce) {
   .overlay, .content { transition: none; }
-  .shell, .aura { animation: none; }
-  .motionSignal { display: none; }
+  .halo, .emblem, .mark > path { animation: none; }
+  .signal { display: none; }
   .staticSignal { display: initial; }
 }
-
 @media (forced-colors: active) {
-  .overlay, .core { background: Canvas; color: CanvasText; }
+  .overlay, .emblem { background: Canvas; color: CanvasText; }
   .brand, .content h1, .detail { color: CanvasText; }
-  .rim, .signalTrail, .mark > path { stroke: Highlight; }
-  .motionSignal rect, .staticSignal { fill: Highlight; }
-  .overlay::before, .aura, .shellBloom, .shellSurface, .contour, .starOne, .starTwo { display: none; }
+  .emblem { border-color: CanvasText; }
+  .mark > path, .thread { stroke: Highlight; }
+  .mark > path { animation: none; }
+  .staticSignal, .signalBlock rect { fill: Highlight; }
+  .overlay::before, .halo, .threadGlow, .echo, .echoSoft, .signalGlow, .spark { display: none; }
 }
