@@ -2,7 +2,6 @@
   --loader-canvas: #f5f7f4;
   --loader-panel: #eef3ee;
   --loader-line: #cbd9ce;
-  --loader-grid: rgb(34 73 46 / 5%);
   --loader-ink: #202622;
   --loader-muted: #707a73;
   --loader-mint: #39764c;
@@ -29,7 +28,6 @@
   --loader-canvas: #090b09;
   --loader-panel: #111813;
   --loader-line: #304436;
-  --loader-grid: rgb(190 228 198 / 4%);
   --loader-ink: #ededed;
   --loader-muted: #9aa49d;
   --loader-mint: #86c99b;
@@ -45,10 +43,6 @@
   z-index: -1;
   inset: 0;
   overflow: hidden;
-  background-image:
-    linear-gradient(to right, var(--loader-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--loader-grid) 1px, transparent 1px);
-  background-size: 72px 72px;
   mask-image: radial-gradient(ellipse at 50% 43%, #000 7%, transparent 76%);
   pointer-events: none;
 }
@@ -90,109 +84,80 @@
 .motion {
   position: relative;
   display: grid;
-  width: min(100%, 430px);
-  height: 252px;
+  width: min(100%, 400px);
+  height: 238px;
   place-items: center;
   margin-bottom: 24px;
 }
 
-.chartCard {
-  position: relative;
-  width: 100%;
-  padding: 16px 16px 13px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 23%, var(--loader-line));
-  border-radius: 17px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 6%, var(--loader-panel)), var(--loader-panel) 68%);
-  box-shadow: 0 34px 90px rgb(0 0 0 / 27%), inset 0 1px rgb(255 255 255 / 8%), 0 0 70px color-mix(in srgb, var(--loader-mint) 7%, transparent);
-}
-
-.chartCard::before {
+.motion::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--loader-mint) 45%, transparent), transparent);
-}
-
-:global(.dark) .chartCard {
-  box-shadow: 0 38px 100px rgb(0 0 0 / 48%), inset 0 1px rgb(255 255 255 / 7%), 0 0 70px rgb(171 235 198 / 6%);
-}
-
-.chartToolbar,
-.chartIdentity,
-.toolbarControls {
-  display: flex;
-  align-items: center;
-}
-
-.chartToolbar {
-  justify-content: space-between;
-  min-height: 29px;
-  margin-bottom: 13px;
-}
-
-.chartIdentity { gap: 10px; }
-.chartMark { width: 25px; height: 25px; }
-
-.toolbarLine {
-  display: block;
-  width: 102px;
-  height: 5px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--loader-ink) 18%, transparent), color-mix(in srgb, var(--loader-ink) 5%, transparent));
-}
-
-.toolbarControls { gap: 5px; }
-.toolbarControls span { width: 4px; height: 4px; border-radius: 50%; background: color-mix(in srgb, var(--loader-muted) 55%, transparent); }
-
-.chartSurface {
-  position: relative;
-  height: 145px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--loader-line) 70%, transparent);
-  border-radius: 10px;
-  background-color: color-mix(in srgb, var(--loader-canvas) 74%, var(--loader-panel));
-  background-image:
-    linear-gradient(to bottom, color-mix(in srgb, var(--loader-ink) 7%, transparent) 1px, transparent 1px),
-    linear-gradient(to right, color-mix(in srgb, var(--loader-ink) 5%, transparent) 1px, transparent 1px);
-  background-size: 100% 25%, 14.285% 100%;
-}
-
-.chartSurface::before {
-  content: "";
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 22%, color-mix(in srgb, white 3%, transparent) 50%, transparent 76%);
+  inset: 22px 36px;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 12%, transparent);
+  border-radius: 50%;
+  transform: rotate(-12deg);
   pointer-events: none;
 }
 
-.chart { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.chartFill { opacity: .76; }
+.ribbonGlow {
+  position: absolute;
+  inset: 16px 10px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--loader-mint) 24%, transparent), transparent 67%);
+  filter: blur(28px);
+  pointer-events: none;
+}
 
-.chartLine {
+.ribbon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ribbonHalo {
   fill: none;
-  stroke: #9de8c5;
-  stroke-width: 2.3;
-  vector-effect: non-scaling-stroke;
-  stroke-dasharray: 1100;
-  stroke-dashoffset: 1100;
-  filter: drop-shadow(0 0 5px rgb(141 226 183 / 28%));
-  animation: chartDraw 4.8s cubic-bezier(.2,.8,.2,1) infinite;
+  stroke: var(--loader-mint);
+  stroke-width: 34;
+  stroke-linecap: round;
+  opacity: .08;
+  filter: blur(14px);
+}
+
+.ribbonEdge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--loader-mint) 24%, transparent);
+  stroke-width: 1;
+}
+
+.ribbonTrace {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: .32;
+  filter: blur(5px);
 }
 
 .motionSignal { filter: url(#loader-amber-glow); }
-.staticSignal { display: none; filter: drop-shadow(0 0 9px rgb(237 184 103 / 75%)); }
+.staticSignal { display: none; filter: drop-shadow(0 0 8px rgb(237 184 103 / 70%)); }
 
-.chartFooter {
-  display: flex;
-  justify-content: space-between;
-  padding: 9px 2px 0;
+.brandCore {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 78px;
+  height: 78px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 36%, var(--loader-line));
+  border-radius: 24px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 23%, var(--loader-panel)), var(--loader-panel) 72%);
+  box-shadow: 0 22px 55px rgb(0 0 0 / 22%), inset 0 1px rgb(255 255 255 / 14%), 0 0 40px color-mix(in srgb, var(--loader-mint) 14%, transparent);
+  transform: rotate(-8deg);
 }
 
-.chartFooter span { width: 1px; height: 5px; background: color-mix(in srgb, var(--loader-muted) 34%, transparent); }
-.chartFooter span:nth-child(3) { height: 7px; background: color-mix(in srgb, var(--loader-amber) 75%, transparent); }
+.mark { width: 46px; height: 46px; transform: rotate(8deg); }
 
 .wordmark {
   display: inline-flex;
@@ -228,12 +193,6 @@
   line-height: 1.5;
 }
 
-@keyframes chartDraw {
-  0%, 12% { stroke-dashoffset: 1100; opacity: .35; }
-  82% { stroke-dashoffset: 0; opacity: 1; }
-  94%, 100% { stroke-dashoffset: 1100; opacity: .35; }
-}
-
 @keyframes ambientDrift {
   from { opacity: .72; transform: scale(1); }
   to { opacity: 1; transform: scale(1.08); }
@@ -241,24 +200,23 @@
 
 @media (max-width: 560px) {
   .overlay { padding: 16px; }
-  .motion { height: 220px; margin-bottom: 18px; }
-  .chartCard { padding: 12px 12px 10px; border-radius: 14px; }
-  .chartSurface { height: 128px; }
-  .chartToolbar { margin-bottom: 10px; }
-  .toolbarLine { width: 78px; }
+  .motion { height: 212px; margin-bottom: 18px; }
+  .motion::before { inset: 20px 20px; }
+  .brandCore { width: 68px; height: 68px; border-radius: 21px; }
+  .mark { width: 40px; height: 40px; }
   .content h1 { font-size: 21px; }
 }
 
 @media (min-width: 1500px) and (min-height: 800px) {
-  .motion { width: min(100%, 500px); height: 286px; margin-bottom: 28px; }
-  .chartSurface { height: 172px; }
+  .motion { width: min(100%, 470px); height: 270px; margin-bottom: 28px; }
+  .brandCore { width: 90px; height: 90px; border-radius: 28px; }
+  .mark { width: 52px; height: 52px; }
   .content h1 { font-size: 26px; }
   .detail { font-size: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .content { transition: none; }
-  .chartLine { animation: none; stroke-dashoffset: 0; }
   .motionSignal { display: none; }
   .staticSignal { display: initial; }
   .atmosphere::before { animation: none; }
@@ -266,8 +224,8 @@
 
 @media (forced-colors: active) {
   .overlay { background: Canvas; color: CanvasText; }
-  .chartCard, .chartSurface { background: Canvas; border-color: CanvasText; }
-  .chartLine { stroke: Highlight; }
+  .brandCore { background: Canvas; border-color: CanvasText; }
+  .ribbonEdge, .ribbonTrace { stroke: Highlight; }
   .motionSignal, .staticSignal { fill: Highlight; }
   .atmosphere { display: none; }
 }
