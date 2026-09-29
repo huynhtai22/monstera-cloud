@@ -2,6 +2,7 @@
   --loader-canvas: #f5f7f4;
   --loader-panel: #eef3ee;
   --loader-line: #cbd9ce;
+  --loader-grid: rgb(34 73 46 / 5%);
   --loader-ink: #202622;
   --loader-muted: #707a73;
   --loader-mint: #39764c;
@@ -16,7 +17,7 @@
   padding: 24px;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 500px 380px at 50% 43%, var(--loader-atmosphere), transparent 75%),
+    radial-gradient(ellipse 840px 620px at 50% 42%, var(--loader-atmosphere), transparent 76%),
     var(--loader-canvas);
   color: var(--loader-ink);
   opacity: 1;
@@ -28,6 +29,7 @@
   --loader-canvas: #090b09;
   --loader-panel: #111813;
   --loader-line: #304436;
+  --loader-grid: rgb(190 228 198 / 4%);
   --loader-ink: #ededed;
   --loader-muted: #9aa49d;
   --loader-mint: #86c99b;
@@ -38,19 +40,41 @@
 
 .overlay[data-visible="false"] { opacity: 0; }
 
-.overlay::before {
-  content: "";
+.atmosphere {
   position: absolute;
   z-index: -1;
-  top: calc(50% + 172px);
-  left: -10%;
-  width: 120%;
-  height: 390px;
+  inset: 0;
+  overflow: hidden;
+  background-image:
+    linear-gradient(to right, var(--loader-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--loader-grid) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse at 50% 43%, #000 7%, transparent 76%);
+  pointer-events: none;
+}
+
+.atmosphere::before,
+.atmosphere::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.atmosphere::before {
+  inset: 0;
+  background:
+    radial-gradient(ellipse 490px 400px at 50% 38%, color-mix(in srgb, var(--loader-mint) 11%, transparent), transparent 72%),
+    radial-gradient(ellipse 330px 250px at 50% 59%, color-mix(in srgb, var(--loader-amber) 5%, transparent), transparent 76%);
+  animation: ambientDrift 18s ease-in-out infinite alternate;
+}
+
+.atmosphere::after {
+  inset: auto -18% -36% -18%;
+  height: 52%;
   border-top: 1px solid var(--loader-horizon);
   border-radius: 50%;
-  box-shadow: 0 -18px 85px var(--loader-atmosphere);
-  transform: rotate(-9deg);
-  pointer-events: none;
+  box-shadow: 0 -18px 90px var(--loader-atmosphere);
+  transform: rotate(-7deg);
 }
 
 .content {
@@ -66,73 +90,145 @@
 .motion {
   position: relative;
   display: grid;
-  width: 216px;
-  height: 216px;
+  width: 324px;
+  height: 300px;
   place-items: center;
   margin-bottom: 22px;
+}
+
+.motionAura {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--loader-mint) 24%, transparent), transparent 70%);
+  filter: blur(30px);
+  transform: scale(1.2);
+  pointer-events: none;
 }
 
 .motion::before {
   content: "";
   position: absolute;
-  inset: 4px;
+  inset: 4px 28px;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 12%, transparent);
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--loader-mint) 16%, transparent), transparent 68%);
-  filter: blur(18px);
+  transform: rotate(-25deg);
   pointer-events: none;
 }
 
-.motionHalo {
+.track {
   position: absolute;
-  inset: 14px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 19%, transparent);
-  border-radius: 39px;
-  transform: rotate(-10deg);
+  border-radius: 50%;
   pointer-events: none;
 }
 
-.matrix {
+.trackRear {
+  width: 256px;
+  height: 136px;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 29%, transparent);
+  transform: rotate(-27deg);
+  box-shadow: 0 0 35px color-mix(in srgb, var(--loader-mint) 5%, transparent);
+}
+
+.trackFront {
+  width: 226px;
+  height: 184px;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 19%, transparent);
+  transform: rotate(34deg);
+}
+
+.orbitMotion {
+  position: absolute;
+  top: calc(50% - 68px);
+  left: calc(50% - 128px);
+  width: 256px;
+  height: 136px;
+  border-radius: 50%;
+  animation: orbitTravelRear 5.2s linear infinite;
+  pointer-events: none;
+}
+
+.orbitAmber { animation-duration: 5.2s; }
+.orbitMint {
+  top: calc(50% - 92px);
+  left: calc(50% - 113px);
+  width: 226px;
+  height: 184px;
+  animation-name: orbitTravelFront;
+  animation-duration: 7.8s;
+  animation-direction: reverse;
+}
+
+.signalBlock {
+  position: absolute;
+  top: -11px;
+  left: calc(50% - 9px);
+  width: 20px;
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--loader-amber) 82%, white);
+  border-radius: 5px;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--loader-amber) 80%, white), var(--loader-amber) 55%, color-mix(in srgb, var(--loader-amber) 78%, black));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--loader-amber) 65%, transparent), 0 0 40px color-mix(in srgb, var(--loader-amber) 26%, transparent);
+}
+
+.signalBlock::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  right: calc(100% - 2px);
+  width: 48px;
+  height: 7px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--loader-amber) 54%, transparent));
+  filter: blur(3px);
+  transform: translateY(-50%);
+}
+
+.signalBlock::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border: 1px solid color-mix(in srgb, var(--loader-amber) 28%, transparent);
+  border-radius: 8px;
+  animation: signalBloom 2.6s ease-in-out infinite;
+}
+
+.signalDot {
+  position: absolute;
+  top: -3px;
+  left: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--loader-mint);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--loader-mint) 85%, transparent), 0 0 28px color-mix(in srgb, var(--loader-mint) 35%, transparent);
+}
+
+.core {
   position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: repeat(3, 34px);
-  grid-template-rows: repeat(3, 34px);
-  gap: 10px;
-  padding: 21px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 29%, var(--loader-line));
-  border-radius: 25px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 7%, var(--loader-panel)), var(--loader-panel));
-  box-shadow: 0 25px 65px rgb(0 0 0 / 8%), inset 0 1px rgb(255 255 255 / 7%);
-  transform: rotate(-10deg);
-}
-
-:global(.dark) .matrix {
-  box-shadow: 0 30px 75px rgb(0 0 0 / 38%), 0 0 34px rgb(89 181 117 / 10%), inset 0 1px rgb(255 255 255 / 5%);
-}
-
-.tile,
-.centerCell {
-  display: grid;
-  width: 34px;
-  height: 34px;
+  width: 76px;
+  height: 76px;
   place-items: center;
-  border: 1px solid var(--loader-line);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--loader-mint) 7%, var(--loader-panel));
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 40%, var(--loader-line));
+  border-radius: 23px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 18%, var(--loader-panel)), var(--loader-panel) 72%);
+  box-shadow: 0 22px 55px rgb(0 0 0 / 20%), inset 0 1px rgb(255 255 255 / 14%), 0 0 36px color-mix(in srgb, var(--loader-mint) 12%, transparent);
+  transform: rotate(-8deg);
 }
 
-.tile {
-  opacity: .55;
-  transform: scale(.94);
-  animation: tileSignal 3.36s ease-in-out infinite both;
-}
+.mark { width: 44px; height: 44px; transform: rotate(8deg); }
 
-.centerCell {
-  border-color: color-mix(in srgb, var(--loader-mint) 42%, var(--loader-line));
-  background: color-mix(in srgb, var(--loader-mint) 11%, var(--loader-panel));
-  transform: rotate(10deg);
+.coreHalo {
+  position: absolute;
+  width: 104px;
+  height: 104px;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 11%, transparent);
+  border-radius: 30px;
+  transform: rotate(-8deg);
+  pointer-events: none;
 }
-
-.mark { width: 30px; height: 30px; }
 
 .wordmark {
   display: inline-flex;
@@ -155,10 +251,10 @@
 
 .content h1 {
   margin: 0;
-  font-size: 21px;
-  font-weight: 500;
+  font-size: 24px;
+  font-weight: 450;
   line-height: 1.35;
-  letter-spacing: -.035em;
+  letter-spacing: -.045em;
 }
 
 .detail {
@@ -168,59 +264,51 @@
   line-height: 1.5;
 }
 
-@keyframes tileSignal {
-  0%, 75%, 100% {
-    opacity: .55;
-    transform: scale(.94);
-    border-color: var(--loader-line);
-    background: color-mix(in srgb, var(--loader-mint) 7%, var(--loader-panel));
-    box-shadow: none;
-  }
-  8% {
-    opacity: 1;
-    transform: scale(1.08);
-    border-color: color-mix(in srgb, var(--loader-amber) 70%, white);
-    background: var(--loader-amber);
-    box-shadow: 0 0 20px color-mix(in srgb, var(--loader-amber) 48%, transparent), 0 0 40px color-mix(in srgb, var(--loader-amber) 18%, transparent);
-  }
-  24% {
-    opacity: .9;
-    transform: scale(1);
-    border-color: var(--loader-mint);
-    background: color-mix(in srgb, var(--loader-mint) 52%, var(--loader-panel));
-    box-shadow: 0 0 18px color-mix(in srgb, var(--loader-mint) 29%, transparent);
-  }
-  43% { opacity: .63; transform: scale(.97); }
+@keyframes orbitTravelRear { from { transform: rotate(-27deg); } to { transform: rotate(333deg); } }
+@keyframes orbitTravelFront { from { transform: rotate(34deg); } to { transform: rotate(394deg); } }
+
+@keyframes signalBloom {
+  0%, 100% { opacity: .2; transform: scale(.82); }
+  50% { opacity: .75; transform: scale(1.08); }
+}
+
+@keyframes ambientDrift {
+  from { opacity: .72; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.08); }
 }
 
 @media (max-width: 560px) {
   .overlay { padding: 16px; }
-  .motion { width: 190px; height: 190px; margin-bottom: 20px; }
-  .motionHalo { inset: 7px; }
-  .overlay::before { top: calc(50% + 178px); }
+  .motion { width: 280px; height: 250px; margin-bottom: 18px; }
+  .trackRear { width: 224px; height: 120px; }
+  .trackFront { width: 202px; height: 164px; }
+  .orbitAmber { top: calc(50% - 60px); left: calc(50% - 112px); width: 224px; height: 120px; }
+  .orbitMint { top: calc(50% - 82px); left: calc(50% - 101px); width: 202px; height: 164px; }
+  .content h1 { font-size: 21px; }
 }
 
 @media (min-width: 1500px) and (min-height: 800px) {
-  .motion { width: 258px; height: 258px; margin-bottom: 26px; }
-  .matrix { transform: rotate(-10deg) scale(1.16); }
-  .content h1 { font-size: 23px; }
+  .motion { width: 380px; height: 340px; margin-bottom: 27px; }
+  .trackRear { width: 294px; height: 156px; }
+  .trackFront { width: 264px; height: 212px; }
+  .orbitAmber { top: calc(50% - 78px); left: calc(50% - 147px); width: 294px; height: 156px; }
+  .orbitMint { top: calc(50% - 106px); left: calc(50% - 132px); width: 264px; height: 212px; }
+  .content h1 { font-size: 26px; }
   .detail { font-size: 14px; }
-}
-
-@media (min-height: 900px) {
-  .overlay::before { top: calc(50% + 220px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .content { transition: none; }
-  .tile { animation: none; }
-  .tile:first-child { background: var(--loader-amber); border-color: var(--loader-amber); opacity: 1; }
-  .overlay::before { box-shadow: none; }
+  .orbitMotion, .signalBlock::after { animation: none; }
+  .orbitAmber { transform: rotate(48deg); }
+  .orbitMint { transform: rotate(124deg); }
+  .atmosphere::before { animation: none; }
 }
 
 @media (forced-colors: active) {
   .overlay { background: Canvas; color: CanvasText; }
-  .matrix, .tile, .centerCell { background: Canvas; border-color: CanvasText; }
-  .tile:first-child { background: Highlight; }
-  .motionHalo, .overlay::before { display: none; }
+  .track, .core, .coreHalo { background: Canvas; border-color: CanvasText; }
+  .signalBlock, .signalDot { background: Highlight; border-color: Highlight; }
+  .signalBlock::before, .signalBlock::after { display: none; }
+  .atmosphere, .motion::before, .motionAura { display: none; }
 }
