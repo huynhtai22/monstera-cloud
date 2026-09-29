@@ -6,8 +6,12 @@
   --loader-muted: #707a73;
   --loader-mint: #39764c;
   --loader-amber: #b9772f;
-  --loader-atmosphere: rgb(88 153 108 / 13%);
+  --loader-star: rgb(48 101 75 / 32%);
+  --loader-atmosphere: rgb(88 153 108 / 16%);
   --loader-horizon: rgb(57 118 76 / 19%);
+  --loader-strand-start: #427e5e;
+  --loader-strand-mint: #4e926e;
+  --loader-strand-cool: #667eaa;
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -17,6 +21,7 @@
   overflow: hidden;
   background:
     radial-gradient(ellipse 840px 620px at 50% 42%, var(--loader-atmosphere), transparent 76%),
+    radial-gradient(ellipse 500px 430px at 63% 39%, rgb(110 115 177 / 7%), transparent 76%),
     var(--loader-canvas);
   color: var(--loader-ink);
   opacity: 1;
@@ -32,8 +37,12 @@
   --loader-muted: #9aa49d;
   --loader-mint: #86c99b;
   --loader-amber: #f2bd75;
-  --loader-atmosphere: rgb(88 173 117 / 10%);
+  --loader-star: rgb(215 248 232 / 65%);
+  --loader-atmosphere: rgb(88 173 117 / 13%);
   --loader-horizon: rgb(154 232 187 / 20%);
+  --loader-strand-start: #82bca4;
+  --loader-strand-mint: #b3e8d0;
+  --loader-strand-cool: #a5b7dc;
 }
 
 .overlay[data-visible="false"] { opacity: 0; }
@@ -57,8 +66,9 @@
 .atmosphere::before {
   inset: 0;
   background:
-    radial-gradient(ellipse 490px 400px at 50% 38%, color-mix(in srgb, var(--loader-mint) 11%, transparent), transparent 72%),
-    radial-gradient(ellipse 330px 250px at 50% 59%, color-mix(in srgb, var(--loader-amber) 5%, transparent), transparent 76%);
+    radial-gradient(ellipse 560px 440px at 49% 40%, color-mix(in srgb, var(--loader-mint) 18%, transparent), transparent 72%),
+    radial-gradient(ellipse 430px 310px at 59% 52%, rgb(113 123 192 / 9%), transparent 76%),
+    radial-gradient(ellipse 310px 240px at 43% 59%, color-mix(in srgb, var(--loader-amber) 5%, transparent), transparent 76%);
   animation: ambientDrift 18s ease-in-out infinite alternate;
 }
 
@@ -69,6 +79,25 @@
   border-radius: 50%;
   box-shadow: 0 -18px 90px var(--loader-atmosphere);
   transform: rotate(-7deg);
+}
+
+.stars {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 15% 24%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 26% 57%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 35% 18%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 43% 73%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 55% 14%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 61% 61%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 73% 27%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 66%, var(--loader-star) 0 1px, transparent 2px),
+    radial-gradient(circle at 89% 40%, var(--loader-star) 0 1px, transparent 2px);
+  mask-image: radial-gradient(ellipse at 50% 43%, #000 16%, transparent 78%);
+  animation: starBreath 11s ease-in-out infinite alternate;
+  pointer-events: none;
 }
 
 .content {
@@ -84,17 +113,17 @@
 .motion {
   position: relative;
   display: grid;
-  width: min(100%, 400px);
-  height: 238px;
+  width: min(100%, 480px);
+  height: 270px;
   place-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .motion::before {
   content: "";
   position: absolute;
-  inset: 22px 36px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 12%, transparent);
+  inset: 23px 45px;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 11%, transparent);
   border-radius: 50%;
   transform: rotate(-12deg);
   pointer-events: none;
@@ -102,10 +131,12 @@
 
 .ribbonGlow {
   position: absolute;
-  inset: 16px 10px;
+  inset: 13px 7px;
   border-radius: 50%;
-  background: radial-gradient(ellipse, color-mix(in srgb, var(--loader-mint) 24%, transparent), transparent 67%);
-  filter: blur(28px);
+  background:
+    radial-gradient(ellipse at 42% 52%, color-mix(in srgb, var(--loader-mint) 27%, transparent), transparent 65%),
+    radial-gradient(ellipse at 69% 44%, rgb(102 116 198 / 17%), transparent 62%);
+  filter: blur(31px);
   pointer-events: none;
 }
 
@@ -117,13 +148,23 @@
   overflow: visible;
 }
 
+.ribbonStart { stop-color: var(--loader-strand-start); stop-opacity: .18; }
+.ribbonMint { stop-color: var(--loader-strand-mint); stop-opacity: .72; }
+.ribbonCool { stop-color: var(--loader-strand-cool); stop-opacity: .64; }
+
 .ribbonHalo {
   fill: none;
   stroke: var(--loader-mint);
-  stroke-width: 34;
+  stroke-width: 30;
   stroke-linecap: round;
-  opacity: .08;
-  filter: blur(14px);
+  opacity: .09;
+  filter: blur(16px);
+}
+
+.ribbonFar {
+  fill: none;
+  stroke: color-mix(in srgb, var(--loader-mint) 24%, transparent);
+  stroke-width: .8;
 }
 
 .ribbonEdge {
@@ -134,30 +175,33 @@
 
 .ribbonTrace {
   fill: none;
-  stroke-width: 10;
+  stroke-width: 9;
   stroke-linecap: round;
-  opacity: .32;
-  filter: blur(5px);
+  opacity: .38;
+  filter: blur(4px);
+  animation: strandBreathe 5.2s ease-in-out infinite;
 }
 
-.motionSignal { filter: url(#loader-amber-glow); }
+.mintSignal { opacity: .9; }
+.threadStar { fill: #d6fbe7; filter: drop-shadow(0 0 5px rgb(176 242 205 / 75%)); }
 .staticSignal { display: none; filter: drop-shadow(0 0 8px rgb(237 184 103 / 70%)); }
 
 .brandCore {
   position: relative;
   z-index: 1;
   display: grid;
-  width: 78px;
-  height: 78px;
+  width: 86px;
+  height: 86px;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--loader-mint) 36%, var(--loader-line));
-  border-radius: 24px;
+  border-radius: 27px;
   background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 23%, var(--loader-panel)), var(--loader-panel) 72%);
   box-shadow: 0 22px 55px rgb(0 0 0 / 22%), inset 0 1px rgb(255 255 255 / 14%), 0 0 40px color-mix(in srgb, var(--loader-mint) 14%, transparent);
   transform: rotate(-8deg);
+  animation: coreFloat 7s ease-in-out infinite;
 }
 
-.mark { width: 46px; height: 46px; transform: rotate(8deg); }
+.mark { width: 50px; height: 50px; transform: rotate(8deg); }
 
 .wordmark {
   display: inline-flex;
@@ -198,34 +242,49 @@
   to { opacity: 1; transform: scale(1.08); }
 }
 
+@keyframes starBreath {
+  from { opacity: .48; transform: translateY(2px); }
+  to { opacity: .83; transform: translateY(-3px); }
+}
+
+@keyframes strandBreathe {
+  0%, 100% { opacity: .3; }
+  50% { opacity: .46; }
+}
+
+@keyframes coreFloat {
+  0%, 100% { transform: translateY(1px) rotate(-8deg); }
+  50% { transform: translateY(-3px) rotate(-7deg); }
+}
+
 @media (max-width: 560px) {
   .overlay { padding: 16px; }
-  .motion { height: 212px; margin-bottom: 18px; }
-  .motion::before { inset: 20px 20px; }
-  .brandCore { width: 68px; height: 68px; border-radius: 21px; }
-  .mark { width: 40px; height: 40px; }
+  .motion { height: 220px; margin-bottom: 18px; }
+  .motion::before { inset: 20px 24px; }
+  .brandCore { width: 72px; height: 72px; border-radius: 22px; }
+  .mark { width: 42px; height: 42px; }
   .content h1 { font-size: 21px; }
 }
 
 @media (min-width: 1500px) and (min-height: 800px) {
-  .motion { width: min(100%, 470px); height: 270px; margin-bottom: 28px; }
-  .brandCore { width: 90px; height: 90px; border-radius: 28px; }
-  .mark { width: 52px; height: 52px; }
+  .motion { width: min(100%, 540px); height: 310px; margin-bottom: 24px; }
+  .brandCore { width: 96px; height: 96px; border-radius: 29px; }
+  .mark { width: 56px; height: 56px; }
   .content h1 { font-size: 26px; }
   .detail { font-size: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .content { transition: none; }
-  .motionSignal { display: none; }
+  .motionSignal, .mintSignal { display: none; }
   .staticSignal { display: initial; }
-  .atmosphere::before { animation: none; }
+  .atmosphere::before, .stars, .ribbonTrace, .brandCore { animation: none; }
 }
 
 @media (forced-colors: active) {
   .overlay { background: Canvas; color: CanvasText; }
   .brandCore { background: Canvas; border-color: CanvasText; }
-  .ribbonEdge, .ribbonTrace { stroke: Highlight; }
-  .motionSignal, .staticSignal { fill: Highlight; }
-  .atmosphere { display: none; }
+  .ribbonEdge, .ribbonTrace, .ribbonFar { stroke: Highlight; }
+  .motionSignal rect, .staticSignal, .mintSignal, .threadStar { fill: Highlight; }
+  .atmosphere, .stars { display: none; }
 }
