@@ -8,10 +8,8 @@
 .frame[data-reveal="true"] > .real :global([data-console-section="dashboard"]) > :nth-child(4) { animation-delay: 180ms; }
 .frame[data-reveal="true"] > .real :global([data-console-section="dashboard"]) > :nth-child(n + 5) { animation-delay: 240ms; }
 .frame[data-ready="true"][data-reveal="true"] > .skeleton { animation: fadeOut 320ms ease-in-out both; }
-.snapshot, .snapshot * { animation: none !important; opacity: 1 !important; transform: none !important; color: transparent !important; text-shadow: none !important; }
-.snapshot :is(svg, img) { visibility: hidden; }
-.snapshot :is(h1, h2, h3, p, strong) { background: linear-gradient(var(--color-line), var(--color-line)) left center / 70% .65em no-repeat; }
-.snapshot :is(button, a) { color: transparent !important; pointer-events: none; }
+.snapshot { width: 100%; height: 100%; }
+.snapshot > svg { display: block; width: 100%; height: 100%; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { to { opacity: 0; } }
 @keyframes settle { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

@@ -14,14 +14,38 @@ export function DashboardHandoff({ ready, children }: { ready: boolean; children
   // including optional onboarding panels, source counts and multi-currency rows.
   useLayoutEffect(() => {
     if (!ready || !real.current || !snapshot.current) return;
-    const clone = real.current.cloneNode(true) as HTMLElement;
-    clone.removeAttribute("data-workspace-content");
-    clone.querySelectorAll("[id], [role], [data-workspace-content]").forEach(node => {
-      node.removeAttribute("id");
-      node.removeAttribute("role");
-      node.removeAttribute("data-workspace-content");
-    });
-    snapshot.current.replaceChildren(clone);
+    const bounds = real.current.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("aria-hidden", "true");
+    const rectangle = (box: DOMRect, line: boolean) => {
+      if (!box.width || !box.height) return;
+      const shape = document.createElementNS(svg.namespaceURI, "rect");
+      shape.setAttribute("x", String(box.x - bounds.x));
+      shape.setAttribute("y", String(box.y - bounds.y + (line ? box.height * .25 : 0)));
+      shape.setAttribute("width", String(box.width));
+      shape.setAttribute("height", String(box.height * (line ? .5 : 1)));
+      shape.setAttribute("rx", line ? "3" : "8");
+      shape.setAttribute("fill", line ? "var(--color-line)" : "var(--color-panel)");
+      if (!line) shape.setAttribute("stroke", "var(--color-line)");
+      svg.appendChild(shape);
+    };
+    // Copy geometry only: no headings, text, IDs, links or live controls are duplicated.
+    for (const element of real.current.querySelectorAll<HTMLElement>("*")) {
+      const style = getComputedStyle(element);
+      if (parseFloat(style.borderTopWidth) > 0 || style.backgroundImage !== "none") {
+        rectangle(element.getBoundingClientRect(), false);
+      }
+      for (const node of element.childNodes) {
+        if (node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const box of range.getClientRects()) rectangle(box, true);
+      }
+    }
+    snapshot.current.replaceChildren(svg);
   }, [ready]);
   useEffect(() => {
     if (!ready || !handoff) return;
