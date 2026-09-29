@@ -37,6 +37,7 @@ export interface BatchImportJobResult {
   upserted?: number;
   error?: string;
   retryable?: boolean;
+  retryAfterMs?: number;
   retryItems?: BatchImportItem[];
 }
 
@@ -618,6 +619,7 @@ export async function retryPartialImportJob(
   results: BatchImportJobResult[],
   approximateRows: number,
   errorMsg: string,
+  requestedRetryAfterMs?: number,
 ): Promise<BatchImportJobState> {
   const now = new Date();
   const current = await prisma.warehouseImportJob.findFirst({
@@ -637,7 +639,10 @@ export async function retryPartialImportJob(
     );
   }
 
-  const delayMs = computeBackoffMs(current.retryCount);
+  const delayMs = Math.min(
+    Math.max(computeBackoffMs(current.retryCount), requestedRetryAfterMs ?? 0),
+    6 * 60 * 60 * 1000,
+  );
   const updated = await prisma.warehouseImportJob.updateMany({
     where: { id: jobId, leaseId, status: "running", leaseExpiresAt: { gte: now } },
     data: {
