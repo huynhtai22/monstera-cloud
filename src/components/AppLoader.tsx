@@ -56,13 +56,14 @@ export function AppLoader({
     <div className={styles.overlay} data-visible={shown} role="status" aria-live="polite" aria-label={`${title}. ${detail}.`}>
       <div className={styles.content}>
         <div className={styles.motion} aria-hidden="true">
-          <svg className={styles.orbit} viewBox="0 0 88 88" fill="none">
-            <circle className={styles.track} cx="44" cy="44" r="38" />
-            <circle className={styles.arc} cx="44" cy="44" r="38" pathLength="100" />
+          <svg className={styles.orbit} viewBox="0 0 170 120" fill="none">
+            <circle className={styles.innerTrack} cx="85" cy="60" r="40" />
+            <ellipse className={styles.track} cx="85" cy="60" rx="68" ry="31" transform="rotate(-18 85 60)" />
+            <ellipse className={styles.arc} cx="85" cy="60" rx="68" ry="31" transform="rotate(-18 85 60)" pathLength="100" />
           </svg>
           <LogoMark className={styles.mark} />
         </div>
-        <p className={styles.wordmark} aria-hidden="true">MONSTERA</p>
+        <p className={styles.wordmark} aria-hidden="true"><span />MONSTERA CLOUD</p>
         <h1>{title}</h1>
         <p className={styles.detail}>{detail}</p>
       </div>
