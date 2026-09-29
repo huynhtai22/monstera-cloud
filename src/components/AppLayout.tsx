@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
@@ -58,6 +58,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [introRevealing, setIntroRevealing] = useState(false);
+    const revealWorkspace = useCallback(() => setIntroRevealing(true), []);
+    useEffect(() => {
+        if (!introRevealing) return;
+        const timer = setTimeout(() => setIntroRevealing(false), 700);
+        return () => clearTimeout(timer);
+    }, [introRevealing]);
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
     const themeReady = useRef(false);
 
@@ -114,8 +121,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <WorkspaceSessionSync />
         <SessionHeartbeat />
         {/* Keep mounted through the exit animation; AppLoader removes its overlay afterward. */}
-        <AppLoader visible={loading} />
-        <div data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
+        <AppLoader visible={loading} onExitStart={revealWorkspace} />
+        <div data-console-theme={isDarkMode ? "dark" : "light"} data-loader-reveal={introRevealing} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
