@@ -152,5 +152,10 @@ export async function deliverPendingAgencyAlerts(limit = 25) {
   await withSystemScope(() => prisma.agencyAlertDelivery.deleteMany({
     where: { status: "sent", deliveredAt: { lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } },
   }));
-  return { ...results, pending, dead };
+  return { ...results, pending, dead, deadLettered: results.dead };
+}
+
+/** Dead letters fail the health tick only on the tick that creates them. */
+export function shouldFailHealthTickForAlertDelivery(result: { pending: number; deadLettered: number }): boolean {
+  return result.pending > 0 || result.deadLettered > 0;
 }

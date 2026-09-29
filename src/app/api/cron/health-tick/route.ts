@@ -3,7 +3,7 @@ import { evaluateStaleHealth } from "@/lib/ingestion/stale-health";
 import { emitHealthMonitorsAndStaleAlerts } from "@/lib/ingestion/health-monitors";
 import { requireCronSecret } from "@/lib/request-auth";
 import { monitorReportFreshness } from "@/lib/ingestion/report-freshness-monitor";
-import { deliverPendingAgencyAlerts } from "@/lib/alerts";
+import { deliverPendingAgencyAlerts, shouldFailHealthTickForAlertDelivery } from "@/lib/alerts";
 
 /**
  * GET/POST /api/cron/health-tick
@@ -25,7 +25,7 @@ async function runHealthTick() {
     monitors,
     reportFreshness,
     alertDelivery,
-  }, { status: alertDelivery.pending > 0 || alertDelivery.dead > 0 ? 500 : 200 });
+  }, { status: shouldFailHealthTickForAlertDelivery(alertDelivery) ? 500 : 200 });
 }
 
 export async function GET(request: Request) {

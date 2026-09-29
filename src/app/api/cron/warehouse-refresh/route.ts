@@ -44,25 +44,36 @@ export async function GET(request: Request) {
     },
   });
 
-  const jobs = workspaces.flatMap((workspace) => {
+  const schedules = workspaces.flatMap((workspace) => {
     const cadence = getPlanLimits(workspace.plan).scheduledRefresh;
     if (cadence === "none") return [];
     const enabled = new Set(workspace.providerAccess.map((access) => access.provider));
-    return workspace.connections
-      .filter((connection) => PILOT_PROVIDERS.has(connection.provider) && enabled.has(connection.provider))
-      .map((connection) => ({ workspace, connection, cadence }));
+    const connections = workspace.connections.filter(
+      (connection) => PILOT_PROVIDERS.has(connection.provider) && enabled.has(connection.provider),
+    );
+    if (connections.length === 0) return [];
+
+    // One durable job per workspace/slot avoids multiplying the global queue
+    // load by the number of connected sources. A job keeps per-connection
+    // outcomes and retries, while the worker processes its item list.
+    const hourly = cadence === "hourly";
+    const slot = `hourly:${untilDate}T${now.toISOString().slice(11, 13)}`;
+    return [{
+      workspace,
+      connections,
+      cadence,
+      windows: hourly
+        ? [
+            { slot, days: 9 },
+            { slot: `daily-repair:${untilDate}`, days: lookbackDays },
+          ]
+        : [{ slot: `daily:${untilDate}`, days: lookbackDays }],
+    }];
   });
 
-  const results: Array<{ workspaceId: string; connectionId: string; provider: string; cadence: string; queued: boolean; jobId?: string; error?: string }> = [];
-  for (const { workspace, connection, cadence } of jobs) {
-    // High-cadence plans use a smaller frequent overlap plus a daily repair
-    // sweep. Meta's frequent window covers delayed attribution updates; the
-    // daily 30-day sweep also repairs older conversion adjustments.
-    const hourly = cadence === "hourly";
-    const frequent = hourly ? { slot: `hourly:${untilDate}T${now.toISOString().slice(11, 13)}`, days: connection.provider === "meta_ads" ? 9 : 3 } : null;
-    const dailyRepair = hourly ? { slot: `daily-repair:${untilDate}`, days: lookbackDays } : null;
-    const daily = cadence === "daily" ? { slot: `daily:${untilDate}`, days: lookbackDays } : null;
-    for (const schedule of [frequent, dailyRepair, daily].filter((value): value is { slot: string; days: number } => value !== null)) {
+  const results: Array<{ workspaceId: string; cadence: string; connectionCount: number; queued: boolean; jobId?: string; error?: string }> = [];
+  for (const { workspace, connections, cadence, windows } of schedules) {
+    for (const schedule of windows) {
       const since = isoDate(-(schedule.days - 1), now);
       try {
         const job = await createImportJob({
@@ -71,22 +82,21 @@ export async function GET(request: Request) {
           plan: workspace.plan,
           since,
           until: untilDate,
-          items: [{ connectionId: connection.id }],
-          idempotencyKey: `scheduled:${connection.id}:${schedule.slot}`,
+          items: connections.map((connection) => ({ connectionId: connection.id })),
+          idempotencyKey: `scheduled:${workspace.id}:${schedule.slot}`,
         });
         const accepted = job.status !== "failed" && job.status !== "partial";
         results.push({
           workspaceId: workspace.id,
-          connectionId: connection.id,
-          provider: connection.provider,
           cadence,
+          connectionCount: connections.length,
           queued: accepted,
           jobId: job.id,
           ...(!accepted ? { error: `Prior scheduled job ended as ${job.status}` } : {}),
         });
       } catch (error) {
-        logger.error("[WAREHOUSE_REFRESH][QUEUE]", { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider }, error);
-        results.push({ workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider, cadence, queued: false, error: "Could not queue scheduled refresh" });
+        logger.error("[WAREHOUSE_REFRESH][QUEUE]", { workspaceId: workspace.id, cadence, connectionCount: connections.length }, error);
+        results.push({ workspaceId: workspace.id, cadence, connectionCount: connections.length, queued: false, error: "Could not queue scheduled refresh" });
       }
     }
   }
