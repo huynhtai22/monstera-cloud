@@ -4,9 +4,10 @@ import React, { useState, useCallback } from "react";
 import useSWR from "swr";
 import { AlertTriangle } from "lucide-react";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
+import { DashboardHandoff } from "./DashboardHandoff";
+import { useWorkspaceStartup } from "../WorkspaceStartup";
 import { PageShell } from "@/components/ui/PageShell";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
-import { ConsoleActivityLabel } from "./ConsoleActivityLabel";
 import { ConsoleSyncLabel } from "./ConsoleSyncLabel";
 import { ConsoleOverview } from "./ConsoleOverview";
 import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
@@ -19,56 +20,9 @@ const fetcher = async (url: string) => {
   return data;
 };
 
-function DashboardSkeleton() {
-  return (
-    <PageShell>
-      <section
-        aria-busy="true"
-        aria-label="Loading dashboard"
-        className="space-y-6"
-      >
-        <p className="sr-only" role="status">
-          Loading your workspace dashboard
-        </p>
-        <ConsoleActivityLabel
-          label="Preparing your dashboard"
-          className="text-xs text-ink-mute"
-        />
-        <div className="flex items-center justify-between border-b border-line pb-4">
-          <div className="space-y-2">
-            <div className="console-skeleton-shimmer h-5 w-28 rounded bg-panel" />
-            <div className="console-skeleton-shimmer h-3 w-56 rounded bg-panel/80" />
-          </div>
-          <div className="console-skeleton-shimmer h-8 w-24 rounded-md bg-panel" />
-        </div>
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="rounded-lg border border-line bg-panel p-3.5"
-            >
-              <div className="console-skeleton-shimmer h-3 w-16 rounded bg-canvas" />
-              <div className="console-skeleton-shimmer mt-3 h-5 w-24 rounded bg-canvas" />
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="space-y-6 xl:col-span-7">
-            <div className="console-skeleton-shimmer h-56 rounded-lg border border-line bg-panel" />
-            <div className="console-skeleton-shimmer h-40 rounded-lg border border-line bg-panel" />
-          </div>
-          <div className="space-y-6 xl:col-span-5">
-            <div className="console-skeleton-shimmer h-44 rounded-lg border border-line bg-panel" />
-            <div className="console-skeleton-shimmer h-52 rounded-lg border border-line bg-panel" />
-          </div>
-        </div>
-      </section>
-    </PageShell>
-  );
-}
-
 export function DashboardHomePage() {
-  const { workspaceId, isLoading: workspaceLoading } = useResolvedWorkspaceId();
+  const { workspaceId, isLoading: workspaceLoading, error: workspaceError, mutate: retryWorkspaces } = useResolvedWorkspaceId();
+  const completeDashboard = useWorkspaceStartup()?.completeDashboard;
   const [fixTarget, setFixTarget] = useState<{
     id: string;
     name: string;
@@ -183,15 +137,17 @@ export function DashboardHomePage() {
   }, [mutate, overview?.pilotActivation.status, workspaceId]);
 
   const isLoading = workspaceLoading || (dataLoading && !overview);
+  const settled = !workspaceLoading && (Boolean(workspaceError) || !workspaceId || Boolean(overview) || Boolean(error));
+  React.useEffect(() => { if (settled) completeDashboard?.(); }, [settled, completeDashboard]);
   const isUpdating = isRefreshing || isValidating;
 
   // ── Loading Skeleton ────────────────────────────────────────────────────────
   if (isLoading) {
-    return <DashboardSkeleton />;
+    return <DashboardHandoff ready={false}>{null}</DashboardHandoff>;
   }
 
   // ── Error State ─────────────────────────────────────────────────────────────
-  if (error && !overview) {
+  if ((error || workspaceError) && !overview) {
     return (
       <PageShell>
         <div className="rounded-lg border border-line bg-panel p-6 text-center">
@@ -205,7 +161,7 @@ export function DashboardHomePage() {
           </p>
           <button
             type="button"
-            onClick={() => mutate()}
+            onClick={() => workspaceError ? retryWorkspaces() : mutate()}
             disabled={isValidating}
             className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:cursor-wait disabled:opacity-50"
           >
@@ -220,10 +176,11 @@ export function DashboardHomePage() {
     );
   }
 
-  if (!overview) return <DashboardSkeleton />;
+  if (!workspaceId && !workspaceLoading) return <PageShell><h1 className="text-xl">Create your workspace</h1><p className="mt-2 text-ink-mute">Choose a workspace to start connecting sources and reporting.</p><a href="/settings" className="mt-4 inline-block underline">Open workspace settings</a></PageShell>;
+  if (!overview) return <DashboardHandoff ready={false}>{null}</DashboardHandoff>;
 
   return (
-    <>
+    <DashboardHandoff ready>
       <ConsoleOverview
         overview={overview}
         isUpdating={isUpdating}
@@ -268,6 +225,6 @@ export function DashboardHomePage() {
           }}
         />
       )}
-    </>
+    </DashboardHandoff>
   );
 }

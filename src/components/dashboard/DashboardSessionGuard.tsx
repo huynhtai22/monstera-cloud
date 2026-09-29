@@ -1,23 +1,16 @@
 "use client";
 
 import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { DashboardSkeleton } from "./DashboardSkeleton";
 import { DashboardHomePage } from "./DashboardHomePage";
 
-/**
- * P1: Session guard to prevent dashboard loading before auth is ready
- * This fixes "Cannot destructure property 'auth' of 'e' as it is undefined" error
- * that occurs when SWR hooks run before NextAuth session is fully initialized
- * 
- * Note: AppLayout already shows an AppLoader during session loading,
- * so we just return null here to avoid duplicate loaders.
- */
 export function DashboardSessionGuard() {
     const { status } = useSession();
 
-    // Wait for session to be fully loaded before rendering dashboard
-    // AppLayout already shows a loader, so we return null here
+    // Keep the real layout structure present while session verification runs.
     if (status === "loading") {
-        return null;
+        return <DashboardSkeleton />;
     }
 
     // Only render dashboard when authenticated
@@ -25,6 +18,5 @@ export function DashboardSessionGuard() {
         return <DashboardHomePage />;
     }
 
-    // Unauthenticated - will be redirected by middleware
-    return null;
+    return <div className="p-8"><h1 className="text-xl text-ink">Your session has ended</h1><Link className="mt-4 inline-block underline" href="/login">Sign in to your workspace</Link></div>;
 }

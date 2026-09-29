@@ -75,7 +75,7 @@ export default function RootLayout({
     };
 
     return (
-        <html lang="en" className="antialiased dark">
+        <html lang="en" className="antialiased dark" suppressHydrationWarning>
             <head>
                 <style>{`:root{background:var(--color-canvas,#050505);color:var(--color-ink,#ededed)}`}</style>
                 <meta name="theme-color" content="#050505" />

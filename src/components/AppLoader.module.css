@@ -9,7 +9,7 @@
   isolation: isolate;
   background: var(--color-canvas);
   color: var(--color-ink);
-  animation: screenEnter 200ms cubic-bezier(.22, 1, .36, 1) both;
+
 }
 .content {
   display: grid;
@@ -17,11 +17,12 @@
   width: min(100%, 440px);
   text-align: center;
   transform: translateY(-12px);
+  animation: screenEnter 200ms 200ms cubic-bezier(.22, 1, .36, 1) both;
 }
 .emblem {
   position: relative;
   margin-bottom: 28px;
-  animation: markEnter 500ms cubic-bezier(.22, 1, .36, 1) both;
+  animation: markEnter 500ms 200ms cubic-bezier(.22, 1, .36, 1) both;
 }
 .emblem::before {
   content: "";
@@ -29,23 +30,20 @@
   inset: -28px;
   background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 12%, transparent), transparent 68%);
   opacity: 0;
-  animation: softFill 500ms 140ms cubic-bezier(.22, 1, .36, 1) forwards;
+  animation: softFill 500ms 340ms cubic-bezier(.22, 1, .36, 1) forwards;
 }
 .mark { position: relative; display: block; width: 112px; height: 112px; }
 .mark > rect {
   fill: var(--color-panel);
-  fill-opacity: 0;
+  fill-opacity: 1;
   stroke: var(--console-motion-accent);
   stroke-width: .8;
-  stroke-dasharray: 120;
-  stroke-dashoffset: 120;
-  animation: outlineDraw 500ms cubic-bezier(.22, 1, .36, 1) forwards, softFill 400ms 140ms cubic-bezier(.22, 1, .36, 1) forwards;
+
 }
 .mark > path {
   stroke: var(--color-ink);
   stroke-width: 2.3;
-  opacity: 0;
-  animation: softFill 400ms 140ms cubic-bezier(.22, 1, .36, 1) forwards;
+  opacity: 1;
 }
 .wordmark {
   margin: 0;
@@ -53,14 +51,14 @@
   font-weight: 500;
   line-height: 1.35;
   letter-spacing: -.04em;
-  animation: wordmarkEnter 440ms 140ms cubic-bezier(.22, 1, .36, 1) both;
+  animation: wordmarkEnter 440ms 340ms cubic-bezier(.22, 1, .36, 1) both;
 }
 .status {
   margin: 12px 0 0;
-  color: var(--color-ink-mute);
+  color: var(--color-ink);
   font-size: 14px;
   line-height: 1.5;
-  animation: statusEnter 400ms 210ms cubic-bezier(.22, 1, .36, 1) both;
+  animation: statusEnter 400ms 400ms cubic-bezier(.22, 1, .36, 1) both;
 }
 .readiness {
   width: 216px;
@@ -68,7 +66,7 @@
   margin-top: 27px;
   overflow: hidden;
   background: var(--color-line);
-  animation: statusEnter 400ms 280ms cubic-bezier(.22, 1, .36, 1) both;
+  animation: statusEnter 400ms 460ms cubic-bezier(.22, 1, .36, 1) both;
 }
 .readiness > span {
   display: block;
@@ -80,26 +78,24 @@
 }
 .overlay[data-phase="exit"] {
   pointer-events: none;
-  animation: screenExit 480ms ease-in-out forwards;
+  animation: simpleExit 320ms ease-in-out forwards;
 }
-.overlay[data-phase="exit"] .content { animation: contentExit 360ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .content { animation: contentExit 320ms ease-in-out forwards; }
 @keyframes screenEnter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes markEnter { from { opacity: 0; transform: scale(.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-@keyframes outlineDraw { to { stroke-dashoffset: 0; } }
-@keyframes softFill { to { opacity: 1; fill-opacity: 1; } }
+@keyframes softFill { to { opacity: 1; } }
 @keyframes wordmarkEnter { from { opacity: 0; transform: translateY(10px); filter: blur(3px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
 @keyframes statusEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes contentExit { to { opacity: 0; transform: translateY(-28px) scale(.97); } }
-@keyframes screenExit { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 0 100% 0); } }
+@keyframes contentExit { from { opacity: 1; transform: translateY(-12px) scale(1); } to { opacity: 0; transform: translateY(-12px) scale(.96); } }
 @media (max-width: 560px) { .mark { width: 96px; height: 96px; } .wordmark { font-size: 24px; } .status { font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) {
   .emblem, .emblem::before, .mark > rect, .mark > path, .wordmark, .status, .readiness { animation: none; }
   .mark > rect { stroke-dashoffset: 0; fill-opacity: 1; }
   .mark > path, .emblem::before { opacity: 1; }
   .readiness > span { transition: none; }
-  .overlay { animation: screenEnter 150ms ease-in-out both; }
+  .content { animation: screenEnter 150ms 200ms ease-in-out both; }
   .overlay[data-phase="exit"] { animation: simpleExit 150ms ease-in-out forwards; }
-  .overlay[data-phase="exit"] .content { animation: none; }
+  .overlay[data-phase="exit"] .content { animation: simpleExit 150ms ease-in-out forwards; }
 }
 @keyframes simpleExit { to { opacity: 0; } }
 @media (forced-colors: active) {
@@ -110,3 +106,11 @@
   .readiness > span { background: Highlight; }
   .emblem::before { display: none; }
 }
+
+:global(html[data-monstera-startup="skip"]) .overlay { display: none; }
+.readiness[data-measurable="false"] > span {
+  width: 40%;
+  animation: shimmer 1600ms ease-in-out infinite;
+}
+@keyframes shimmer { from { transform: translateX(-110%); } to { transform: translateX(360%); } }
+@media (prefers-reduced-motion: reduce) { .readiness[data-measurable="false"] > span { animation: none; } }

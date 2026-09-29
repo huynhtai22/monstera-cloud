@@ -1,4 +1,7 @@
 import { Suspense } from "react";
+import { WorkspaceStartup } from "@/components/WorkspaceStartup";
+import { workspaceStartupScript } from "@/components/workspace-startup-script";
+import { WorkspaceShellSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { AppLayout } from "@/components/AppLayout";
 
 export default function AppLayoutGroup({
@@ -7,8 +10,13 @@ export default function AppLayoutGroup({
     children: React.ReactNode;
 }>) {
     return (
-        <Suspense fallback={null}>
-            <AppLayout>{children}</AppLayout>
-        </Suspense>
+        <>
+            <script dangerouslySetInnerHTML={{ __html: workspaceStartupScript }} />
+            <WorkspaceStartup>
+                <Suspense fallback={<WorkspaceShellSkeleton />}>
+                    <AppLayout>{children}</AppLayout>
+                </Suspense>
+            </WorkspaceStartup>
+        </>
     );
 }
