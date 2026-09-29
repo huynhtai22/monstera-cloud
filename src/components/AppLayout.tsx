@@ -114,7 +114,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <WorkspaceSessionSync />
         <SessionHeartbeat />
         {/* Keep mounted through the exit animation; AppLoader removes its overlay afterward. */}
-        <AppLoader visible={loading} detail="Checking your secure session" />
+        <AppLoader visible={loading} />
         <div data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">

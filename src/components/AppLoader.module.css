@@ -80,7 +80,7 @@
 .content {
   display: grid;
   justify-items: center;
-  width: min(100%, 420px);
+  width: min(100%, 500px);
   text-align: center;
   transition: transform 340ms cubic-bezier(.2,.8,.2,1);
 }
@@ -90,145 +90,109 @@
 .motion {
   position: relative;
   display: grid;
-  width: 324px;
-  height: 300px;
+  width: min(100%, 430px);
+  height: 252px;
   place-items: center;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 
-.motionAura {
-  position: absolute;
-  inset: 18px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, color-mix(in srgb, var(--loader-mint) 24%, transparent), transparent 70%);
-  filter: blur(30px);
-  transform: scale(1.2);
-  pointer-events: none;
-}
-
-.motion::before {
-  content: "";
-  position: absolute;
-  inset: 4px 28px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 12%, transparent);
-  border-radius: 50%;
-  transform: rotate(-25deg);
-  pointer-events: none;
-}
-
-.track {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.trackRear {
-  width: 256px;
-  height: 136px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 29%, transparent);
-  transform: rotate(-27deg);
-  box-shadow: 0 0 35px color-mix(in srgb, var(--loader-mint) 5%, transparent);
-}
-
-.trackFront {
-  width: 226px;
-  height: 184px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 19%, transparent);
-  transform: rotate(34deg);
-}
-
-.orbitMotion {
-  position: absolute;
-  top: calc(50% - 68px);
-  left: calc(50% - 128px);
-  width: 256px;
-  height: 136px;
-  border-radius: 50%;
-  animation: orbitTravelRear 5.2s linear infinite;
-  pointer-events: none;
-}
-
-.orbitAmber { animation-duration: 5.2s; }
-.orbitMint {
-  top: calc(50% - 92px);
-  left: calc(50% - 113px);
-  width: 226px;
-  height: 184px;
-  animation-name: orbitTravelFront;
-  animation-duration: 7.8s;
-  animation-direction: reverse;
-}
-
-.signalBlock {
-  position: absolute;
-  top: -11px;
-  left: calc(50% - 9px);
-  width: 20px;
-  height: 26px;
-  border: 1px solid color-mix(in srgb, var(--loader-amber) 82%, white);
-  border-radius: 5px;
-  background: linear-gradient(150deg, color-mix(in srgb, var(--loader-amber) 80%, white), var(--loader-amber) 55%, color-mix(in srgb, var(--loader-amber) 78%, black));
-  box-shadow: 0 0 16px color-mix(in srgb, var(--loader-amber) 65%, transparent), 0 0 40px color-mix(in srgb, var(--loader-amber) 26%, transparent);
-}
-
-.signalBlock::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: 50%;
-  right: calc(100% - 2px);
-  width: 48px;
-  height: 7px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--loader-amber) 54%, transparent));
-  filter: blur(3px);
-  transform: translateY(-50%);
-}
-
-.signalBlock::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
-  border: 1px solid color-mix(in srgb, var(--loader-amber) 28%, transparent);
-  border-radius: 8px;
-  animation: signalBloom 2.6s ease-in-out infinite;
-}
-
-.signalDot {
-  position: absolute;
-  top: -3px;
-  left: calc(50% - 3px);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--loader-mint);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--loader-mint) 85%, transparent), 0 0 28px color-mix(in srgb, var(--loader-mint) 35%, transparent);
-}
-
-.core {
+.chartCard {
   position: relative;
-  z-index: 1;
-  display: grid;
-  width: 76px;
-  height: 76px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 40%, var(--loader-line));
-  border-radius: 23px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 18%, var(--loader-panel)), var(--loader-panel) 72%);
-  box-shadow: 0 22px 55px rgb(0 0 0 / 20%), inset 0 1px rgb(255 255 255 / 14%), 0 0 36px color-mix(in srgb, var(--loader-mint) 12%, transparent);
-  transform: rotate(-8deg);
+  width: 100%;
+  padding: 16px 16px 13px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--loader-mint) 23%, var(--loader-line));
+  border-radius: 17px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--loader-mint) 6%, var(--loader-panel)), var(--loader-panel) 68%);
+  box-shadow: 0 34px 90px rgb(0 0 0 / 27%), inset 0 1px rgb(255 255 255 / 8%), 0 0 70px color-mix(in srgb, var(--loader-mint) 7%, transparent);
 }
 
-.mark { width: 44px; height: 44px; transform: rotate(8deg); }
-
-.coreHalo {
+.chartCard::before {
+  content: "";
   position: absolute;
-  width: 104px;
-  height: 104px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 11%, transparent);
-  border-radius: 30px;
-  transform: rotate(-8deg);
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--loader-mint) 45%, transparent), transparent);
+}
+
+:global(.dark) .chartCard {
+  box-shadow: 0 38px 100px rgb(0 0 0 / 48%), inset 0 1px rgb(255 255 255 / 7%), 0 0 70px rgb(171 235 198 / 6%);
+}
+
+.chartToolbar,
+.chartIdentity,
+.toolbarControls {
+  display: flex;
+  align-items: center;
+}
+
+.chartToolbar {
+  justify-content: space-between;
+  min-height: 29px;
+  margin-bottom: 13px;
+}
+
+.chartIdentity { gap: 10px; }
+.chartMark { width: 25px; height: 25px; }
+
+.toolbarLine {
+  display: block;
+  width: 102px;
+  height: 5px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--loader-ink) 18%, transparent), color-mix(in srgb, var(--loader-ink) 5%, transparent));
+}
+
+.toolbarControls { gap: 5px; }
+.toolbarControls span { width: 4px; height: 4px; border-radius: 50%; background: color-mix(in srgb, var(--loader-muted) 55%, transparent); }
+
+.chartSurface {
+  position: relative;
+  height: 145px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--loader-line) 70%, transparent);
+  border-radius: 10px;
+  background-color: color-mix(in srgb, var(--loader-canvas) 74%, var(--loader-panel));
+  background-image:
+    linear-gradient(to bottom, color-mix(in srgb, var(--loader-ink) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--loader-ink) 5%, transparent) 1px, transparent 1px);
+  background-size: 100% 25%, 14.285% 100%;
+}
+
+.chartSurface::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 22%, color-mix(in srgb, white 3%, transparent) 50%, transparent 76%);
   pointer-events: none;
 }
+
+.chart { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.chartFill { opacity: .76; }
+
+.chartLine {
+  fill: none;
+  stroke: #9de8c5;
+  stroke-width: 2.3;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1100;
+  stroke-dashoffset: 1100;
+  filter: drop-shadow(0 0 5px rgb(141 226 183 / 28%));
+  animation: chartDraw 4.8s cubic-bezier(.2,.8,.2,1) infinite;
+}
+
+.motionSignal { filter: url(#loader-amber-glow); }
+.staticSignal { display: none; filter: drop-shadow(0 0 9px rgb(237 184 103 / 75%)); }
+
+.chartFooter {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 2px 0;
+}
+
+.chartFooter span { width: 1px; height: 5px; background: color-mix(in srgb, var(--loader-muted) 34%, transparent); }
+.chartFooter span:nth-child(3) { height: 7px; background: color-mix(in srgb, var(--loader-amber) 75%, transparent); }
 
 .wordmark {
   display: inline-flex;
@@ -264,12 +228,10 @@
   line-height: 1.5;
 }
 
-@keyframes orbitTravelRear { from { transform: rotate(-27deg); } to { transform: rotate(333deg); } }
-@keyframes orbitTravelFront { from { transform: rotate(34deg); } to { transform: rotate(394deg); } }
-
-@keyframes signalBloom {
-  0%, 100% { opacity: .2; transform: scale(.82); }
-  50% { opacity: .75; transform: scale(1.08); }
+@keyframes chartDraw {
+  0%, 12% { stroke-dashoffset: 1100; opacity: .35; }
+  82% { stroke-dashoffset: 0; opacity: 1; }
+  94%, 100% { stroke-dashoffset: 1100; opacity: .35; }
 }
 
 @keyframes ambientDrift {
@@ -279,36 +241,33 @@
 
 @media (max-width: 560px) {
   .overlay { padding: 16px; }
-  .motion { width: 280px; height: 250px; margin-bottom: 18px; }
-  .trackRear { width: 224px; height: 120px; }
-  .trackFront { width: 202px; height: 164px; }
-  .orbitAmber { top: calc(50% - 60px); left: calc(50% - 112px); width: 224px; height: 120px; }
-  .orbitMint { top: calc(50% - 82px); left: calc(50% - 101px); width: 202px; height: 164px; }
+  .motion { height: 220px; margin-bottom: 18px; }
+  .chartCard { padding: 12px 12px 10px; border-radius: 14px; }
+  .chartSurface { height: 128px; }
+  .chartToolbar { margin-bottom: 10px; }
+  .toolbarLine { width: 78px; }
   .content h1 { font-size: 21px; }
 }
 
 @media (min-width: 1500px) and (min-height: 800px) {
-  .motion { width: 380px; height: 340px; margin-bottom: 27px; }
-  .trackRear { width: 294px; height: 156px; }
-  .trackFront { width: 264px; height: 212px; }
-  .orbitAmber { top: calc(50% - 78px); left: calc(50% - 147px); width: 294px; height: 156px; }
-  .orbitMint { top: calc(50% - 106px); left: calc(50% - 132px); width: 264px; height: 212px; }
+  .motion { width: min(100%, 500px); height: 286px; margin-bottom: 28px; }
+  .chartSurface { height: 172px; }
   .content h1 { font-size: 26px; }
   .detail { font-size: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .content { transition: none; }
-  .orbitMotion, .signalBlock::after { animation: none; }
-  .orbitAmber { transform: rotate(48deg); }
-  .orbitMint { transform: rotate(124deg); }
+  .chartLine { animation: none; stroke-dashoffset: 0; }
+  .motionSignal { display: none; }
+  .staticSignal { display: initial; }
   .atmosphere::before { animation: none; }
 }
 
 @media (forced-colors: active) {
   .overlay { background: Canvas; color: CanvasText; }
-  .track, .core, .coreHalo { background: Canvas; border-color: CanvasText; }
-  .signalBlock, .signalDot { background: Highlight; border-color: Highlight; }
-  .signalBlock::before, .signalBlock::after { display: none; }
-  .atmosphere, .motion::before, .motionAura { display: none; }
+  .chartCard, .chartSurface { background: Canvas; border-color: CanvasText; }
+  .chartLine { stroke: Highlight; }
+  .motionSignal, .staticSignal { fill: Highlight; }
+  .atmosphere { display: none; }
 }
