@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 const REQUIRED_CI_POSTGRES_INTEGRATION_TESTS = [
   "src/lib/connection-lifecycle.pg.integration.test.ts",
@@ -39,7 +39,7 @@ export function assertPostgresTestSuiteConfigured(env, discoveredTests, plan) {
     }
   }
 
-  const normalize = (path) => path.replaceAll("\\", "/");
+  const normalize = (path) => relative(process.cwd(), resolve(path)).replaceAll("\\", "/");
   const discovered = new Set(discoveredTests.map(normalize));
   const planned = new Set(
     (plan.find((phase) => phase.name === "postgres")?.args ?? [])
