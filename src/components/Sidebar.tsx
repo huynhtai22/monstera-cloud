@@ -204,7 +204,7 @@ export function Sidebar({
                     aria-label={collapsed ? `Active workspace: ${activeWorkspace?.name || "Workspace"}` : undefined}
                     className="group relative flex h-10 w-full items-center rounded-lg border border-line bg-panel transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas"
                 >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                    <div data-workspace-mark className="flex h-10 w-10 shrink-0 items-center justify-center">
                         <LogoMark className="h-6 w-6 shrink-0" />
                     </div>
 

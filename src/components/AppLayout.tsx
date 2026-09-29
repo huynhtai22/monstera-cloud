@@ -118,7 +118,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <PendingNavigationProvider>
         <WorkspaceSessionSync />
         <SessionHeartbeat />
-        <div data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
+        <div data-workspace-shell data-startup-reveal={Boolean(startup?.handoff && startup?.animateHandoff)} data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">

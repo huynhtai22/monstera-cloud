@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { AlertTriangle } from "lucide-react";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { DashboardHandoff } from "./DashboardHandoff";
-import { useWorkspaceStartup } from "../WorkspaceStartup";
+import { useWorkspaceStartupActions } from "../WorkspaceStartup";
 import { PageShell } from "@/components/ui/PageShell";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConsoleSyncLabel } from "./ConsoleSyncLabel";
@@ -22,7 +22,10 @@ const fetcher = async (url: string) => {
 
 export function DashboardHomePage() {
   const { workspaceId, isLoading: workspaceLoading, error: workspaceError, mutate: retryWorkspaces } = useResolvedWorkspaceId();
-  const completeDashboard = useWorkspaceStartup()?.completeDashboard;
+  const startup = useWorkspaceStartupActions();
+  const completeDashboard = startup?.completeDashboard;
+  const completeWorkspace = startup?.completeWorkspace;
+  React.useEffect(() => { if (!workspaceLoading && workspaceId) completeWorkspace?.(); }, [workspaceLoading, workspaceId, completeWorkspace]);
   const [fixTarget, setFixTarget] = useState<{
     id: string;
     name: string;
@@ -34,7 +37,7 @@ export function DashboardHomePage() {
   } | null>(null);
 
   const {
-    data: overview,
+    data: receivedOverview,
     error,
     isLoading: dataLoading,
     isValidating,
@@ -44,6 +47,10 @@ export function DashboardHomePage() {
     fetcher,
     { refreshInterval: 30000, revalidateOnFocus: true },
   );
+  // Allow the initial dashboard render to yield to the loader's compositor motion.
+  // Readiness follows the committed destination, rather than the network callback.
+  const deferredOverview = React.useDeferredValue(receivedOverview);
+  const overview = deferredOverview?.workspace.id === workspaceId ? deferredOverview : undefined;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [manualRefreshFailed, setManualRefreshFailed] = useState(false);
@@ -136,9 +143,9 @@ export function DashboardHomePage() {
     return () => observer.disconnect();
   }, [mutate, overview?.pilotActivation.status, workspaceId]);
 
-  const isLoading = workspaceLoading || (dataLoading && !overview);
+  const isLoading = workspaceLoading || (!overview && !error && Boolean(workspaceId)) || (dataLoading && !overview);
   const settled = !workspaceLoading && (Boolean(workspaceError) || !workspaceId || Boolean(overview) || Boolean(error));
-  React.useEffect(() => { if (settled) completeDashboard?.(); }, [settled, completeDashboard]);
+  React.useEffect(() => { if (settled) completeDashboard?.(Boolean(overview)); }, [settled, overview, completeDashboard]);
   const isUpdating = isRefreshing || isValidating;
 
   // ── Loading Skeleton ────────────────────────────────────────────────────────
