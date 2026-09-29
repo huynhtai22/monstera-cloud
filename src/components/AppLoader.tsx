@@ -22,6 +22,7 @@ export function AppLoader({
   const visualId = useId().replace(/:/g, "");
   const threadId = `loader-thread-${visualId}`;
   const glintId = `loader-glint-${visualId}`;
+  const tailId = `loader-tail-${visualId}`;
   const [mounted, setMounted] = useState(visible);
   const [shown, setShown] = useState(visible);
   const shownAt = useRef(visible ? Date.now() : 0);
@@ -65,9 +66,9 @@ export function AppLoader({
             <defs>
               <linearGradient id={threadId} x1="27" y1="164" x2="290" y2="63" gradientUnits="userSpaceOnUse">
                 <stop stopColor="var(--loader-thread)" stopOpacity="0" />
-                <stop offset=".26" stopColor="var(--loader-thread)" stopOpacity=".22" />
-                <stop offset=".48" stopColor="var(--loader-thread)" stopOpacity=".7" />
-                <stop offset=".7" stopColor="var(--loader-thread)" stopOpacity=".32" />
+                <stop offset=".26" stopColor="var(--loader-thread)" stopOpacity=".35" />
+                <stop offset=".48" stopColor="var(--loader-thread)" stopOpacity=".84" />
+                <stop offset=".7" stopColor="var(--loader-thread)" stopOpacity=".42" />
                 <stop offset="1" stopColor="var(--loader-thread)" stopOpacity="0" />
               </linearGradient>
               <linearGradient id={glintId} x1="0" y1="-5" x2="7" y2="5" gradientUnits="userSpaceOnUse">
@@ -75,29 +76,29 @@ export function AppLoader({
                 <stop offset=".5" stopColor="var(--loader-amber)" />
                 <stop offset="1" stopColor="var(--loader-amber-light)" />
               </linearGradient>
+              <linearGradient id={tailId} x1="-29" y1="0" x2="0" y2="0" gradientUnits="userSpaceOnUse">
+                <stop stopColor="var(--loader-amber)" stopOpacity="0" />
+                <stop offset=".58" stopColor="var(--loader-amber)" stopOpacity=".22" />
+                <stop offset="1" stopColor="var(--loader-amber-light)" stopOpacity=".9" />
+              </linearGradient>
             </defs>
             <path className={styles.threadGlow} d={SIGNAL_PATH} stroke={`url(#${threadId})`} />
             <path className={styles.thread} d={SIGNAL_PATH} stroke={`url(#${threadId})`} />
             <path className={styles.echo} d="M67 174 C112 154 122 130 159 118" />
             <path className={styles.echoSoft} d="M184 107 C224 92 235 75 276 71" />
             <g className={styles.signal}>
-              <path className={styles.signalGlow} d={SIGNAL_PATH} pathLength="100" strokeDasharray="11 89">
-                <animate attributeName="stroke-dashoffset" values="11;-89" dur="4.6s" repeatCount="indefinite" />
-              </path>
-              <path className={styles.signalTrail} d={SIGNAL_PATH} pathLength="100" strokeDasharray="7 93">
-                <animate attributeName="stroke-dashoffset" values="7;-93" dur="4.6s" repeatCount="indefinite" />
-              </path>
               <g className={styles.signalBlock}>
+                <rect className={styles.tailGlow} x="-32" y="-4" width="32" height="8" rx="4" fill={`url(#${tailId})`} />
+                <rect className={styles.tailLine} x="-29" y="-1" width="29" height="2" rx="1" fill={`url(#${tailId})`} />
                 <rect x="-4.5" y="-4.5" width="9" height="9" rx="2.3" fill={`url(#${glintId})`} />
                 <rect x="-1.6" y="-1.6" width="3.2" height="3.2" rx=".6" fill="var(--loader-amber-light)" opacity=".75" />
-                <animateMotion dur="4.6s" repeatCount="indefinite" rotate="auto" path={SIGNAL_PATH} />
+                <animateMotion dur="5.4s" repeatCount="indefinite" rotate="auto" path={SIGNAL_PATH} keyPoints="0;.03;.91;1;1" keyTimes="0;.12;.72;.88;1" keySplines=".3 0 .7 1;.35 0 .3 1;.25 0 .65 1;0 0 1 1" calcMode="spline" />
               </g>
-              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.84;1" dur="4.6s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.12;.72;.88;1" dur="5.4s" repeatCount="indefinite" />
             </g>
             <rect className={styles.staticSignal} x="248" y="71" width="9" height="9" rx="2.3" fill="var(--loader-amber)" />
           </svg>
           <div className={styles.emblem}><LogoMark className={styles.mark} /></div>
-          <span className={styles.spark} />
         </div>
         <p className={styles.brand} aria-hidden="true">Monstera Cloud</p>
         <h1>{title}</h1>

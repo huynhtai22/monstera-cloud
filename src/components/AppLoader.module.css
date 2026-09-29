@@ -39,7 +39,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 390px 300px at 50% 45%, var(--loader-halo), transparent 78%);
+  background: radial-gradient(ellipse 540px 400px at 50% 45%, var(--loader-halo), transparent 78%);
   pointer-events: none;
 }
 
@@ -49,7 +49,7 @@
   position: relative;
   display: grid;
   justify-items: center;
-  width: min(100%, 440px);
+  width: min(100%, 600px);
   text-align: center;
   transform: translateY(-6px);
   transition: opacity 380ms cubic-bezier(.22, 1, .36, 1), transform 380ms cubic-bezier(.22, 1, .36, 1);
@@ -57,25 +57,25 @@
 
 .overlay[data-visible="false"] .content { opacity: 0; transform: translateY(-14px) scale(.985); }
 
-.scene { position: relative; width: min(100%, 420px); aspect-ratio: 320 / 170; margin-bottom: -10px; }
+.scene { position: relative; width: min(100%, 560px); aspect-ratio: 320 / 170; margin-bottom: -43px; }
 .halo {
   position: absolute;
-  width: 164px;
-  height: 145px;
-  left: 85px;
-  top: 45px;
+  width: 52%;
+  height: 78%;
+  left: 25%;
+  top: 12%;
   background: radial-gradient(ellipse at 58% 48%, var(--loader-halo), transparent 70%);
-  filter: blur(15px);
-  animation: haloPulse 4.6s ease-in-out infinite;
+  filter: blur(20px);
+  animation: haloPulse 5.4s ease-in-out infinite;
 }
 .artwork { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.threadGlow { stroke-width: 7; opacity: .2; filter: blur(5px); }
-.thread { stroke-width: .95; opacity: .76; }
-.echo { stroke: var(--loader-thread); stroke-width: .55; opacity: .17; }
-.echoSoft { stroke: var(--loader-thread); stroke-width: .5; opacity: .14; }
-.signalGlow { stroke: var(--loader-amber); stroke-width: 8; stroke-linecap: round; opacity: .32; filter: blur(5px); }
-.signalTrail { stroke: var(--loader-amber-light); stroke-width: 1.8; stroke-linecap: round; opacity: .78; }
-.signalBlock { filter: drop-shadow(0 0 7px var(--loader-amber)); }
+.threadGlow { stroke-width: 8; opacity: .27; filter: blur(6px); }
+.thread { stroke-width: 1.05; opacity: .86; }
+.echo { stroke: var(--loader-thread); stroke-width: .6; opacity: .24; }
+.echoSoft { stroke: var(--loader-thread); stroke-width: .55; opacity: .2; }
+.tailGlow { opacity: .65; filter: blur(4px); }
+.tailLine { opacity: .8; }
+.signalBlock { filter: drop-shadow(0 0 9px var(--loader-amber)); }
 .staticSignal { display: none; }
 
 .emblem {
@@ -84,35 +84,41 @@
   top: 51%;
   display: grid;
   place-items: center;
-  width: 82px;
-  height: 82px;
+  width: 112px;
+  height: 112px;
   transform: translate(-50%, -50%) rotate(-5deg);
   border: 1px solid var(--loader-tile-border);
-  border-radius: 21px;
+  border-radius: 27px;
   background: var(--loader-tile);
   box-shadow: 0 10px 35px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 10%);
-  animation: emblemBreathe 4.6s cubic-bezier(.22, 1, .36, 1) infinite;
+  animation: emblemBreathe 5.4s cubic-bezier(.22, 1, .36, 1) infinite;
 }
-.mark { display: block; width: 48px; height: 48px; transform: rotate(5deg); }
+.mark { display: block; width: 76px; height: 76px; transform: rotate(5deg); }
 .mark > rect { fill: none; stroke: none; }
-.mark > path { stroke: var(--loader-ink); stroke-width: 1.7; animation: markIgnite 4.6s ease-in-out infinite; }
-.spark { position: absolute; top: 28%; right: 15%; width: 2px; height: 2px; border-radius: 50%; background: var(--loader-amber-light); opacity: .5; box-shadow: 0 0 7px var(--loader-amber); }
+.mark > path { stroke: var(--loader-ink); stroke-width: 1.7; animation: markIgnite 5.4s ease-in-out infinite; }
 
-.brand { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -.035em; line-height: 1.45; }
-.content h1 { margin: 7px 0 0; color: var(--loader-muted); font-size: 12px; font-weight: 400; letter-spacing: .015em; line-height: 1.5; }
+.brand { margin: 0; font-size: 23px; font-weight: 500; letter-spacing: -.035em; line-height: 1.45; }
+.content h1 { margin: 7px 0 0; color: var(--loader-muted); font-size: 14px; font-weight: 400; letter-spacing: .015em; line-height: 1.5; }
 .detail { margin: 5px 0 0; color: var(--loader-muted); font-size: 12px; line-height: 1.5; }
 
-@keyframes haloPulse { 0%, 100% { opacity: .55; transform: scale(.96); } 46% { opacity: 1; transform: scale(1.08); } }
+@keyframes haloPulse { 0%, 100% { opacity: .5; transform: scale(.97); } 48% { opacity: 1; transform: scale(1.08); } }
 @keyframes emblemBreathe {
-  0%, 38%, 65%, 100% { border-color: var(--loader-tile-border); box-shadow: 0 10px 35px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 10%); }
-  49% { border-color: var(--loader-amber); box-shadow: 0 13px 45px rgb(0 0 0 / 8%), 0 0 27px var(--loader-halo), 0 0 17px rgb(208 150 73 / 18%), inset 0 1px 0 rgb(255 255 255 / 16%); }
+  0%, 38%, 65%, 100% { border-color: var(--loader-tile-border); box-shadow: 0 14px 44px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 10%); }
+  49% { border-color: var(--loader-amber); box-shadow: 0 18px 52px rgb(0 0 0 / 10%), 0 0 36px var(--loader-halo), 0 0 24px rgb(208 150 73 / 22%), inset 0 1px 0 rgb(255 255 255 / 16%); }
 }
 @keyframes markIgnite {
   0%, 38%, 65%, 100% { stroke: var(--loader-ink); filter: none; }
   49% { stroke: var(--loader-amber); filter: drop-shadow(0 0 3px var(--loader-amber)); }
 }
 
-@media (max-width: 560px) { .scene { width: min(100%, 320px); } .emblem { width: 72px; height: 72px; } .mark { width: 44px; height: 44px; } }
+@media (max-width: 560px) {
+  .overlay { padding: 16px; }
+  .scene { width: min(100%, 370px); margin-bottom: -20px; }
+  .emblem { width: 86px; height: 86px; border-radius: 22px; }
+  .mark { width: 58px; height: 58px; }
+  .brand { font-size: 20px; }
+  .content h1 { font-size: 13px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .overlay, .content { transition: none; }
   .halo, .emblem, .mark > path { animation: none; }
@@ -126,5 +132,5 @@
   .mark > path, .thread { stroke: Highlight; }
   .mark > path { animation: none; }
   .staticSignal, .signalBlock rect { fill: Highlight; }
-  .overlay::before, .halo, .threadGlow, .echo, .echoSoft, .signalGlow, .spark { display: none; }
+  .overlay::before, .halo, .threadGlow, .echo, .echoSoft, .tailGlow { display: none; }
 }
