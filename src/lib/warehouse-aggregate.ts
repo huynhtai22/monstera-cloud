@@ -24,16 +24,20 @@ export type WarehouseAggregateSpec = {
   dimensions?: string[];
   metrics?: string[];
   plan?: string;
+  strictReporting?: boolean;
 };
 
 export type WarehouseAggregateResult = {
   mode: "aggregate";
   columns: string[];
   rows: Record<string, unknown>[];
+  truncated?: boolean;
+  fullTotals?: Record<string, number | null>;
   limits: {
     plan: string;
     maxDateRangeDays: number;
     maxRowsPerQuery: number;
+    truncated?: boolean;
   };
   selection: { dimensions: string[]; metrics: string[] };
 };
@@ -155,15 +159,39 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
     sumFields.impressions = true;
   }
 
+  const orderBy = by.includes("date")
+    ? [
+        { date: "desc" as const },
+        ...by.filter((f) => f !== "date").map((f) => ({ [f]: "asc" as const })),
+      ]
+    : by.map((f) => ({ [f]: "asc" as const }));
+
   const rows = await prisma.campaignMetric.groupBy({
     where,
     by: by as ["date"],
     ...(Object.keys(sumFields).length ? { _sum: sumFields } : {}),
     take: limits.explorerMaxRowsPerQuery,
-    orderBy: [{ date: "desc" }],
+    orderBy: orderBy as unknown as { date?: "asc" | "desc" }[],
   });
 
-  const safeDiv = (num: number, den: number) => (den === 0 ? 0 : num / den);
+  const truncated = rows.length >= limits.explorerMaxRowsPerQuery;
+
+  let fullTotals: Record<string, number | null> | undefined;
+  if (spec.strictReporting) {
+    const agg = await prisma.campaignMetric.aggregate({
+      where,
+      _sum: sumFields,
+    });
+    fullTotals = {};
+    for (const [k, v] of Object.entries(agg._sum ?? {})) {
+      fullTotals[k] = v != null ? Number(v) : null;
+    }
+  }
+
+  const safeDiv = (num: number, den: number): number | null => {
+    if (den === 0) return spec.strictReporting ? null : 0;
+    return num / den;
+  };
   const outRows = rows.map((r) => {
     const obj: Record<string, unknown> = {};
     const rec = r as Record<string, unknown> & { _sum?: Record<string, number | null> };
@@ -180,7 +208,7 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
     for (const metricId of metrics) {
       const field = ADS_FIELDS_BY_ID[metricId] as { kind?: string; isCalculatedMetric?: boolean; prismaField?: string } | undefined;
       if (!field || field.kind !== "metric") {
-        obj[`metric:${metricId}`] = 0;
+        obj[`metric:${metricId}`] = spec.strictReporting ? null : 0;
         continue;
       }
       if (field.isCalculatedMetric) {
@@ -192,9 +220,11 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
           case "cpc":
             obj[`metric:${metricId}`] = safeDiv(sum("spend"), sum("clicks"));
             break;
-          case "cpm":
-            obj[`metric:${metricId}`] = safeDiv(sum("spend"), sum("impressions")) * 1000;
+          case "cpm": {
+            const ratio = safeDiv(sum("spend"), sum("impressions"));
+            obj[`metric:${metricId}`] = ratio != null ? ratio * 1000 : null;
             break;
+          }
           case "cvr":
             obj[`metric:${metricId}`] = safeDiv(sum("conversions"), sum("clicks"));
             break;
@@ -208,12 +238,13 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
             obj[`metric:${metricId}`] = safeDiv(sum("impressions"), sum("reach"));
             break;
           default:
-            obj[`metric:${metricId}`] = 0;
+            obj[`metric:${metricId}`] = spec.strictReporting ? null : 0;
         }
         continue;
       }
       const prismaField = field.prismaField;
-      obj[`metric:${metricId}`] = prismaField ? Number(rec._sum?.[prismaField] ?? 0) : 0;
+      const rawSum = rec._sum?.[prismaField ?? ""];
+      obj[`metric:${metricId}`] = rawSum != null ? Number(rawSum) : (spec.strictReporting ? null : 0);
     }
     return obj;
   });
@@ -222,10 +253,13 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
     mode: "aggregate",
     columns: [...dimensions, ...metrics.map((m) => `metric:${m}`)],
     rows: outRows,
+    truncated,
+    fullTotals,
     limits: {
       plan,
       maxDateRangeDays: limits.explorerMaxDateRangeDays,
       maxRowsPerQuery: limits.explorerMaxRowsPerQuery,
+      truncated,
     },
     selection: { dimensions, metrics },
   };

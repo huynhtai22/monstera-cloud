@@ -7,7 +7,7 @@ import {
 } from "./authenticated-session";
 
 const suffix = `ccx-e2e-${Date.now()}-${process.pid}`;
-const DATE = "2026-09-04";
+const DATE = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const ALICE = { email: "alice@alpha-agency.test", password: "Pilot_Alpha_2026!" };
 const BOB = { email: "bob@beta-media.test", password: "Pilot_Beta_2026!" };
 

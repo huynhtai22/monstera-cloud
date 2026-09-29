@@ -14,6 +14,12 @@ Google retired developer-token headers on 2026-09-09. API authorization now depe
 - **Partial child-account failure**: per-leaf try/catch marks failed leaves retryable without poisoning successful siblings; outcome summary drives connection state.
 - Unit suite: `src/lib/google-ads.test.ts` covers normalization, current headers/login-id, batch merge, date clauses, retry matrix, project-access classification, discovery fallback, and confirms the retired token setting is ignored.
 
+## Guarded live-certification runner
+
+The bounded evaluator is available at `POST /api/ad-certification/run` (merged in PR #186). It stores a sanitized evidence pack only after both the evidence and audit event are durable. It requires an authenticated platform `OPERATOR`, `AD_CERTIFICATION_LIVE_RUNS_ENABLED=true`, a clean deployed commit with matching schema metadata, and a reporting window no longer than seven days. The workspace owner must first record portal facts for the connected CID through `/api/ad-certification/portal-confirmation`.
+
+The runner evaluates an already connected account and imported warehouse data. It does not complete Google OAuth, trigger the import, perform the native Google Ads comparison, or retrieve data through Sheets/Looker. Those remain explicit operator/customer steps below. Current production probes establish API reachability only; no authorized account has completed this certification path yet.
+
 ## Manual validation checklist (requires an authorized live account)
 
 1. Connect from Sources → complete Google OAuth on a real account (expect consent screen requesting the `adwords` scope).
