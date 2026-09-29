@@ -18,6 +18,7 @@ jobs:
       - name: Hit warehouse jobs, token prefetch, Shopee refresh, health tick
         env:
           CRON_SECRET_WAREHOUSE_JOBS: ${{ secrets.CRON_SECRET_WAREHOUSE_JOBS || secrets.CRON_SECRET }}
+          CRON_SECRET_WAREHOUSE_REFRESH: ${{ secrets.CRON_SECRET_WAREHOUSE_REFRESH || secrets.CRON_SECRET }}
           CRON_SECRET_TOKEN_PREFETCH: ${{ secrets.CRON_SECRET_TOKEN_PREFETCH || secrets.CRON_SECRET }}
           CRON_SECRET_SHOPEE_REFRESH: ${{ secrets.CRON_SECRET_SHOPEE_REFRESH || secrets.CRON_SECRET }}
           CRON_SECRET_HEALTH_TICK: ${{ secrets.CRON_SECRET_HEALTH_TICK || secrets.CRON_SECRET }}
@@ -52,7 +53,22 @@ jobs:
             if [ "${code}" != "200" ]; then
               fail=1
             fi
+            case "${path}" in
+              /api/cron/warehouse-refresh*)
+                if ! jq -e '.failed == 0' /tmp/cron-body >/dev/null 2>&1; then
+                  echo "::error::Scheduled refresh could not queue every due source"
+                  fail=1
+                fi
+                ;;
+              /api/cron/warehouse-jobs*)
+                if ! jq -e '.failed == 0' /tmp/cron-body >/dev/null 2>&1; then
+                  echo "::error::Warehouse worker reported a terminal job failure"
+                  fail=1
+                fi
+                ;;
+            esac
           }
+          invoke /api/cron/warehouse-refresh "${CRON_SECRET_WAREHOUSE_REFRESH:-}"
           invoke /api/cron/warehouse-jobs "${CRON_SECRET_WAREHOUSE_JOBS:-}"
           invoke /api/cron/connections/token-prefetch "${CRON_SECRET_TOKEN_PREFETCH:-}"
           invoke /api/cron/shopee/refresh "${CRON_SECRET_SHOPEE_REFRESH:-}"

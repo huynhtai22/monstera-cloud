@@ -22,7 +22,7 @@ import { syncShopeeCatalogWarehouse } from "@/lib/sync-shopee-catalog-warehouse"
 
 // Meta imports
 import { ingestMetaRows, META_CANONICAL_METRIC_GRAIN } from "@/lib/meta-ingest";
-import { MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { MetaOAuthRevokedError, MetaRateLimitError } from "@/lib/meta-ads";
 import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
@@ -688,7 +688,14 @@ async function syncMetaAds(opts: {
       const isAuth = isRevoked || /error validating access token|token.*revoked|code 190|oauthexception/i.test(msg);
       const metaRetryable = isRetryableSyncError(error) && !isAuth;
       const childError = isRevoked ? `Meta authorization revoked — reconnect required. (${msg})` : msg;
-      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: childError, retryable: metaRetryable });
+      children.push({
+        id: String(accountId),
+        kind: "ad_account",
+        ok: false,
+        error: childError,
+        retryable: metaRetryable,
+        ...(error instanceof MetaRateLimitError ? { retryAfterMs: error.retryAfterMs } : {}),
+      });
       await recordAccountOutcome({
         workspaceId,
         connectionId,

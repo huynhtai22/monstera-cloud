@@ -30,5 +30,6 @@ export async function notifyWarehouseJobIfNeeded(job: {
     pipelineName: `Warehouse import ${job.id}`,
     errorMsg: formatLogError(classified),
     actionHint: describeNextAction(decision.action),
+    idempotencyKey: `warehouse-job:${job.id}:${decision.reason}`,
   });
 }

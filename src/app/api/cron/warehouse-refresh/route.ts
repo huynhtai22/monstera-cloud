@@ -1,21 +1,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { requireCronSecret } from "@/lib/request-auth";
-import { persistPreSyncConnectionFailure, syncConnectionData } from "@/lib/sync-connection";
-import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
-import { claimNextImportJob, createImportJob } from "@/lib/warehouse-import-job";
-import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
-import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
-import { workspaceAllowsScheduledRefresh } from "@/lib/plan-config";
+import { createImportJob } from "@/lib/warehouse-import-job";
+import { getPlanLimits } from "@/lib/plan-config";
 import { withSystemScope } from "@/lib/tenant-guard";
 
 const PILOT_PROVIDERS = new Set(["meta_ads", "google_ads", "tiktok_business", "shopee"]);
 
-function isoDate(offsetDays = 0) {
-  const date = new Date();
+function isoDate(offsetDays = 0, from = new Date()) {
+  const date = new Date(from.getTime());
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return date.toISOString().slice(0, 10);
 }
@@ -30,11 +24,11 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const startTime = Date.now();
+  const now = new Date();
   const url = new URL(request.url);
   const lookbackParam = parseInt(url.searchParams.get("lookbackDays") || "30", 10);
   const lookbackDays = Number.isFinite(lookbackParam) && lookbackParam > 0 ? Math.min(lookbackParam, 90) : 30;
-  const sinceDate = isoDate(-(lookbackDays - 1));
-  const untilDate = isoDate();
+  const untilDate = isoDate(0, now);
 
   const workspaces = await prisma.workspace.findMany({
     where: { status: { in: ["PILOT", "ACTIVE"] } },
@@ -45,114 +39,60 @@ export async function GET(request: Request) {
       providerAccess: { where: { enabled: true }, select: { provider: true } },
       connections: {
         where: { type: "source", status: "connected" },
-        select: { id: true, provider: true, credentials: true },
+        select: { id: true, provider: true },
       },
     },
   });
 
   const jobs = workspaces.flatMap((workspace) => {
-    if (!workspaceAllowsScheduledRefresh(workspace.plan)) return [];
+    const cadence = getPlanLimits(workspace.plan).scheduledRefresh;
+    if (cadence === "none") return [];
     const enabled = new Set(workspace.providerAccess.map((access) => access.provider));
     return workspace.connections
       .filter((connection) => PILOT_PROVIDERS.has(connection.provider) && enabled.has(connection.provider))
-      .map((connection) => ({ workspace, connection }));
+      .map((connection) => ({ workspace, connection, cadence }));
   });
 
-  const results: Array<{ workspaceId: string; connectionId: string; provider: string; ok: boolean; rows: number; error?: string }> = [];
-  if (warehouseUsesDedicatedWorker()) {
-    const queuedJobs: string[] = [];
-    for (const { workspace, connection } of jobs) {
-      const job = await createImportJob({
-        workspaceId: workspace.id,
-        userId: workspace.ownerId,
-        plan: workspace.plan,
-        since: sinceDate,
-        until: untilDate,
-        items: [{ connectionId: connection.id }],
-        idempotencyKey: `scheduled:${connection.id}:${sinceDate}:${untilDate}`,
-      });
-      queuedJobs.push(job.id);
-    }
-    return NextResponse.json({ executionMode: "worker", queuedJobs });
-  }
-  for (let index = 0; index < jobs.length; index += 3) {
-    const batch = jobs.slice(index, index + 3);
-    const settled = await Promise.all(batch.map(async ({ workspace, connection }) => {
+  const results: Array<{ workspaceId: string; connectionId: string; provider: string; cadence: string; queued: boolean; jobId?: string; error?: string }> = [];
+  for (const { workspace, connection, cadence } of jobs) {
+    // High-cadence plans use a smaller frequent overlap plus a daily repair
+    // sweep. Meta's frequent window covers delayed attribution updates; the
+    // daily 30-day sweep also repairs older conversion adjustments.
+    const hourly = cadence === "hourly";
+    const frequent = hourly ? { slot: `hourly:${untilDate}T${now.toISOString().slice(11, 13)}`, days: connection.provider === "meta_ads" ? 9 : 3 } : null;
+    const dailyRepair = hourly ? { slot: `daily-repair:${untilDate}`, days: lookbackDays } : null;
+    const daily = cadence === "daily" ? { slot: `daily:${untilDate}`, days: lookbackDays } : null;
+    for (const schedule of [frequent, dailyRepair, daily].filter((value): value is { slot: string; days: number } => value !== null)) {
+      const since = isoDate(-(schedule.days - 1), now);
       try {
-        const credentials = parseConnectionCredentialsJson(safeDecrypt(connection.credentials)) as Record<string, unknown>;
-        const result = await syncConnectionData({
+        const job = await createImportJob({
           workspaceId: workspace.id,
-          connectionId: connection.id,
-          provider: connection.provider,
-          credentials,
-          userPlan: workspace.plan,
-          since: sinceDate,
+          userId: workspace.ownerId,
+          plan: workspace.plan,
+          since,
           until: untilDate,
+          items: [{ connectionId: connection.id }],
+          idempotencyKey: `scheduled:${connection.id}:${schedule.slot}`,
         });
-        if (result.success) {
-          // lastSyncAt/lastError are persisted by the lease-fenced
-          // persistConnectionSyncOutcome inside syncConnectionData; this route
-          // must not write them again (an unfenced duplicate could misreport
-          // freshness after a lease steal).
-
-          // Await post-refresh data quality checks
-          try {
-            await runPostWarehouseRefreshQualityChecks(workspace.id, connection.id);
-          } catch (dqErr) {
-            logger.error("[WAREHOUSE_REFRESH][DATA_QUALITY]", { workspaceId: workspace.id, connectionId: connection.id }, dqErr);
-          }
-        }
-        return {
+        const accepted = job.status !== "failed" && job.status !== "partial";
+        results.push({
           workspaceId: workspace.id,
           connectionId: connection.id,
           provider: connection.provider,
-          ok: result.success,
-          rows: result.rowsIngested,
-          ...(result.error ? { error: result.error } : {}),
-        };
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Refresh failed";
-        logger.error("[WAREHOUSE_REFRESH]", { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider }, error);
-        try {
-          await persistPreSyncConnectionFailure({
-            connectionId: connection.id,
-            workspaceId: workspace.id,
-            provider: connection.provider,
-            credentials: connection.credentials,
-            error: message,
-          });
-        } catch (persistError) {
-          logger.error("[WAREHOUSE_REFRESH][PERSIST_FAILURE]", {
-            workspaceId: workspace.id,
-            connectionId: connection.id,
-          }, persistError);
-        }
-        return { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider, ok: false, rows: 0, error: message };
+          cadence,
+          queued: accepted,
+          jobId: job.id,
+          ...(!accepted ? { error: `Prior scheduled job ended as ${job.status}` } : {}),
+        });
+      } catch (error) {
+        logger.error("[WAREHOUSE_REFRESH][QUEUE]", { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider }, error);
+        results.push({ workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider, cadence, queued: false, error: "Could not queue scheduled refresh" });
       }
-    }));
-    results.push(...settled);
-  }
-
-  // Drain and process up to 3 queued/pending background import jobs
-  let processedImportJobs = 0;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const claim = await claimNextImportJob(60000, { excludePilotJobs: true });
-      if (claim.claimed && claim.job && claim.leaseId) {
-        await runDurableImportWorker(claim.job.id, claim.leaseId);
-        processedImportJobs++;
-      } else {
-        break;
-      }
-    } catch (jobErr) {
-      logger.error("[WAREHOUSE_REFRESH][JOB_DRAIN]", jobErr);
-      break;
     }
   }
 
   const durationMs = Date.now() - startTime;
-  const succeeded = results.filter((result) => result.ok).length;
-  const totalRows = results.reduce((sum, r) => sum + (r.rows || 0), 0);
+  const succeeded = results.filter((result) => result.queued).length;
 
   // Stale data canary: identify active connections that have not synced in > 26 hours
   let staleConnectionsCount = 0;
@@ -182,12 +122,10 @@ export async function GET(request: Request) {
     logger.warn("[WAREHOUSE_REFRESH_STALE_CANARY_FAIL]", canaryErr);
   }
 
-  logger.info("[WAREHOUSE_REFRESH_COMPLETE]", {
+  logger.info("[WAREHOUSE_REFRESH_QUEUED]", {
     total: results.length,
     succeeded,
     failed: results.length - succeeded,
-    totalRows,
-    processedImportJobs,
     staleConnectionsCount,
     durationMs,
     lookbackDays,
@@ -195,13 +133,12 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     total: results.length,
-    succeeded,
+    queued: succeeded,
     failed: results.length - succeeded,
-    totalRows,
-    processedImportJobs,
     staleConnectionsCount,
     durationMs,
-    window: { since: sinceDate, until: untilDate, lookbackDays },
+    until: untilDate,
+    window: { since: isoDate(-(lookbackDays - 1), now), until: untilDate, lookbackDays },
     results,
-  });
+  }, { status: results.some((result) => !result.queued) ? 207 : 200 });
 }

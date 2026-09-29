@@ -7,7 +7,7 @@ import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-ca
 import { hashApiKey, resolveApiKeyForRequest } from "@/lib/api-key-security";
 import { touchApiKeyUsage } from "@/lib/login-telemetry";
 import { recordUsage } from "@/lib/usage-meter";
-import { queryWarehouse } from "@/lib/warehouse-query";
+import { isSupportedReportLevel, queryWarehouse } from "@/lib/warehouse-query";
 import { createNodeRedis } from "@/lib/node-redis";
 import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
 import { retrieveClientDelivery } from "@/lib/report-delivery";
@@ -238,6 +238,12 @@ export async function GET(req: NextRequest) {
       ? normalizeMetaAccountIds(accountIdParams)
       : accountIdParams;
 
+    const requestedReportLevel = req.nextUrl.searchParams.get("reportLevel")?.trim().toLowerCase();
+    const reportLevel = requestedReportLevel || "all";
+    if (reportLevel !== "all" && !isSupportedReportLevel(reportLevel)) {
+      return NextResponse.json({ error: "Unsupported reportLevel", supported: ["all", "account", "campaign", "adset", "ad"] }, { status: 400 });
+    }
+
     const limitParam = parseInt(req.nextUrl.searchParams.get("limit") || "0", 10) || 0;
     const limit = Math.min(limitParam > 0 ? limitParam : 10000, MAX_ROWS_PER_REQUEST);
     const cursorParam = req.nextUrl.searchParams.get("cursor");
@@ -303,6 +309,7 @@ export async function GET(req: NextRequest) {
       startDate,
       endDate,
       platforms: platform && platform !== "all" ? [platform] : undefined,
+      level: reportLevel === "all" ? undefined : reportLevel,
       accountIds: warehouseAccountIds.length ? warehouseAccountIds : undefined,
       cursor: cursorParam,
       limit,
@@ -322,10 +329,14 @@ export async function GET(req: NextRequest) {
       campaignName: m.campaignName,
       adsetId: m.adsetId,
       adsetName: m.adsetName,
+      level: m.level,
+      entityId: m.entityId,
+      adId: m.adId,
+      adName: m.adName,
       impressions: m.impressions,
       clicks: m.clicks,
       spend: m.spend,
-      reach: m.reach ?? 0,
+      reach: m.reach,
       cpc: m.cpc ?? 0,
       ctr: m.ctr ?? 0,
       cpm: m.impressions
@@ -341,6 +352,9 @@ export async function GET(req: NextRequest) {
       data: formattedData,
       asOf: result.asOf,
       freshness: result.freshness,
+      reportLevel,
+      aggregated: "aggregatedLevel" in result && result.aggregatedLevel != null,
+      truncated: "aggregatedLevel" in result && result.aggregatedLevel != null && result.pagination.hasMore,
       receiptId: "receiptId" in result ? result.receiptId : null,
     };
     if (result.pagination.nextCursor) resObj.nextCursor = result.pagination.nextCursor;
@@ -349,7 +363,7 @@ export async function GET(req: NextRequest) {
     const queryDiagnostics = {
       workspaceId,
       platform: platform ?? "all",
-      reportLevel: req.nextUrl.searchParams.get("reportLevel") ?? "adset",
+      reportLevel,
       startDate: startDateParam,
       endDate: endDateParam,
       accountIds: accountIdParams,

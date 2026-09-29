@@ -39,9 +39,27 @@ async function processWarehouseQueue() {
 
 async function processWarehouseQueueUnsafe() {
   if (warehouseUsesDedicatedWorker()) {
-    return NextResponse.json({ executionMode: "worker", executedJobs: [], processed: 0 });
+    const oldestQueued = await prisma.warehouseImportJob.findFirst({
+      where: { status: "queued" },
+      orderBy: { scheduledAt: "asc" },
+      select: { scheduledAt: true },
+    });
+    const oldestQueuedAgeMs = oldestQueued ? Math.max(0, Date.now() - oldestQueued.scheduledAt.getTime()) : 0;
+    const stalled = oldestQueuedAgeMs > 15 * 60 * 1000;
+    return NextResponse.json({
+      executionMode: "worker",
+      executedJobs: [],
+      processed: 0,
+      queuedJobs: oldestQueued ? 1 : 0,
+      oldestQueuedAgeMs,
+      failed: stalled ? 1 : 0,
+      failures: stalled ? [{ stage: "worker_backlog" }] : [],
+    }, { status: stalled ? 500 : 200 });
   }
   const now = new Date();
+  const failures: Array<{ jobId?: string; stage: string }> = [];
+  const retryingJobs: string[] = [];
+  const terminalFailedJobs: string[] = [];
 
   // 1. Recover jobs whose worker lease expired (worker crashed/aborted).
   try {
@@ -65,6 +83,7 @@ async function processWarehouseQueueUnsafe() {
     }
   } catch (err) {
     logger.error("[WAREHOUSE_JOBS_CRON] Failed to recover expired lease jobs:", err);
+    failures.push({ stage: "lease_recovery" });
   }
 
   // 2. Claim and execute up to BATCH_SIZE jobs. Extended-pilot jobs are
@@ -80,8 +99,18 @@ async function processWarehouseQueueUnsafe() {
       executedJobs.push(claim.job.id);
       logger.info(`[WAREHOUSE_JOBS_CRON] Executing claimed job ${claim.job.id} (lease ${claim.leaseId})`);
       await runDurableImportWorker(claim.job.id, claim.leaseId);
+      const outcome = await prisma.warehouseImportJob.findUnique({
+        where: { id: claim.job.id },
+        select: { status: true },
+      });
+      if (!outcome || outcome.status === "running") {
+        failures.push({ jobId: claim.job.id, stage: "outcome_persistence" });
+      }
+      if (outcome?.status === "queued") retryingJobs.push(claim.job.id);
+      if (outcome?.status === "failed" || outcome?.status === "partial") terminalFailedJobs.push(claim.job.id);
     } catch (jobErr) {
       logger.error("[WAREHOUSE_JOBS_CRON] Error claiming or running job in queue loop:", jobErr);
+      failures.push({ jobId: executedJobs.at(-1), stage: "job_execution" });
       break;
     }
   }
@@ -90,6 +119,10 @@ async function processWarehouseQueueUnsafe() {
   return NextResponse.json({
     processed: executedJobs.length,
     jobs: executedJobs,
+    retryingJobs,
+    failedJobs: terminalFailedJobs,
+    failures,
+    failed: failures.length + terminalFailedJobs.length,
     timestamp: now.toISOString(),
-  });
+  }, { status: failures.length + terminalFailedJobs.length > 0 ? 500 : 200 });
 }

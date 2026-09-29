@@ -24,6 +24,8 @@ export interface SyncChildResult {
   rowsIngested?: number;
   error?: string;
   retryable?: boolean;
+  /** Provider requested delay before retrying this target. */
+  retryAfterMs?: number;
   /** Account intentionally not attempted (quarantined / reconnect required). */
   skipped?: string;
   /** Opaque provider continuation data persisted only by the internal worker. */
