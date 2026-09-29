@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import prisma from "@/lib/prisma";
-import { syncConnectionData, calculateInclusiveDataWindowDays } from "./sync-connection";
+import { syncConnectionData, calculateInclusiveDataWindowDays, persistPreSyncConnectionFailure } from "./sync-connection";
 
 const TEST_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -84,6 +84,20 @@ async function withSyncHarness<T>(
 const freshCredentials = { accessToken: "test-access-token", expiresAt: "2099-01-01T00:00:00.000Z" };
 
 describe("provider HTTP failures preserve sync correctness", () => {
+  it("persists pre-sync failures through the connection lease", async () => {
+    await withSyncHarness((async () => new Response("[]", { status: 200 })) as typeof fetch, async (updates) => {
+      await persistPreSyncConnectionFailure({
+        connectionId: "connection-with-invalid-credentials",
+        workspaceId: "workspace-1",
+        provider: "google_ads",
+        error: "Credential decryption failed",
+      });
+
+      assert.equal(updates.length, 1);
+      assert.deepEqual(updates[0].data, { lastError: "[failed] Credential decryption failed" });
+    });
+  });
+
   it("keeps mixed Google customer outcomes partial and does not advance lastSyncAt after a 429", async () => {
     let calls = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {

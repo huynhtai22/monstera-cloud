@@ -344,6 +344,36 @@ export async function persistConnectionSyncOutcome(
   }
 }
 
+/**
+ * Persist a failure discovered before provider sync starts (for example,
+ * credential decryption or validation failure) without overwriting an outcome
+ * from another worker that currently owns this connection.
+ */
+export async function persistPreSyncConnectionFailure(params: {
+  connectionId: string;
+  workspaceId: string;
+  provider: string;
+  error: string;
+}): Promise<void> {
+  const attempt = await acquireConnectionSyncLease(params);
+  if (!attempt.acquired) {
+    logger.warn(
+      `[syncConnectionData] Skipping pre-sync failure persistence for ${params.connectionId}; another worker owns the connection lease`,
+    );
+    return;
+  }
+
+  try {
+    await persistConnectionSyncOutcome(
+      params.connectionId,
+      { outcome: "failed", error: params.error },
+      attempt.lease,
+    );
+  } finally {
+    await releaseConnectionSyncLease(attempt.lease, false);
+  }
+}
+
 function defaultRollingRange(plan: string): { since: string; until: string } {
   const days = Math.min(30, getPlanLimits(plan).explorerMaxDateRangeDays);
   const until = new Date();

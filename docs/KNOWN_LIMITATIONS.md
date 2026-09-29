@@ -22,6 +22,7 @@ Connection-scoped PostgreSQL lease with fencing token is implemented in `src/lib
 Coverage as of this hardening pass:
 
 - Outcome persistence (`lastSyncAt`/`lastError`/`status`) is lease-fenced everywhere, including pipeline runs, which now hold source + destination leases across ETL.
+- Scheduled warehouse-refresh failures detected before provider sync (such as credential decryption errors) acquire the connection lease before persisting `lastError`; if another worker owns it, the diagnostic write is skipped. Regression coverage lives in `sync-connection.test.ts`.
 - Row-level ingestion is fenced for all providers: Meta per-ad-account leases, and Google Ads / TikTok / Shopee / Lazada via `upsertCampaignMetric` lease stamping + heartbeat self-abort.
 - Shopee fleet token refresh holds the connection lease (refresh tokens are single-use; overlapping refreshes are skipped until the next cycle).
 - Admin force-unlock expires lease rows instead of deleting them, preserving `fencingToken` monotonicity.
@@ -29,7 +30,6 @@ Coverage as of this hardening pass:
 **Remaining notes (accepted):**
 
 - `WarehouseImportJob` uses leaseId + expiry CAS fencing without a monotonic token column (safe; less forensic detail).
-- A non-fenced `lastError` write remains on the warehouse-refresh error path (best-effort diagnostics write).
 - Stale-worker protection is application-layer enforcement, not PostgreSQL RLS.
 
 ### 2. Deleted / missing provider row reconciliation

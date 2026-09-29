@@ -4,7 +4,7 @@ import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { requireCronSecret } from "@/lib/request-auth";
-import { syncConnectionData } from "@/lib/sync-connection";
+import { persistPreSyncConnectionFailure, syncConnectionData } from "@/lib/sync-connection";
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
 import { claimNextImportJob, createImportJob } from "@/lib/warehouse-import-job";
 import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
@@ -113,10 +113,19 @@ export async function GET(request: Request) {
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Refresh failed";
         logger.error("[WAREHOUSE_REFRESH]", { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider }, error);
-        await prisma.connection.updateMany({
-          where: { id: connection.id, workspaceId: workspace.id },
-          data: { lastError: message },
-        });
+        try {
+          await persistPreSyncConnectionFailure({
+            connectionId: connection.id,
+            workspaceId: workspace.id,
+            provider: connection.provider,
+            error: message,
+          });
+        } catch (persistError) {
+          logger.error("[WAREHOUSE_REFRESH][PERSIST_FAILURE]", {
+            workspaceId: workspace.id,
+            connectionId: connection.id,
+          }, persistError);
+        }
         return { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider, ok: false, rows: 0, error: message };
       }
     }));
