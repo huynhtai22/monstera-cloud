@@ -5,10 +5,10 @@ import { LogoMark } from "./Logo";
 import styles from "./AppLoader.module.css";
 
 const EXIT_DURATION_MS = 340;
-const SIGNAL_PATH = "M18 110 C76 12 150 12 220 110 S360 208 422 110";
-const COUNTER_PATH = "M18 110 C76 208 150 208 220 110 S360 12 422 110";
-const INNER_PATH = "M24 113 C91 40 158 34 220 110 S342 183 416 103";
-const OUTER_PATH = "M24 107 C91 180 158 186 220 110 S342 37 416 117";
+const SIGNAL_PATH = "M14 151 C75 160 91 45 175 55 C244 63 263 164 329 151 C380 141 402 91 430 45";
+const COUNTER_PATH = "M30 184 C93 160 103 102 149 112 C213 126 230 45 294 40 C356 35 374 103 423 96";
+const INNER_PATH = "M35 125 C97 111 109 28 179 35 C263 43 268 139 323 132 C381 124 389 81 414 67";
+const OUTER_PATH = "M23 174 C72 198 127 172 159 139 C217 78 261 53 307 68 C362 85 367 142 427 122";
 
 /** Reusable console loading screen; the animation never represents task progress. */
 export function AppLoader({
@@ -86,10 +86,10 @@ export function AppLoader({
             <path className={styles.ribbonEdge} d={COUNTER_PATH} />
             <path className={styles.ribbonTrace} d={SIGNAL_PATH} stroke={`url(#loader-ribbon-${visualId})`} />
             <path className={styles.ribbonTrace} d={COUNTER_PATH} stroke={`url(#loader-ribbon-${visualId})`} />
-            <circle className={styles.threadStar} cx="98" cy="50" r="2" />
-            <circle className={styles.threadStar} cx="344" cy="47" r="1.5" />
-            <circle className={styles.threadStar} cx="347" cy="169" r="1.7" />
-            <rect className={styles.staticSignal} x="110" y="30" width="20" height="20" rx="5" fill="#edb867" />
+            <circle className={styles.threadStar} cx="113" cy="84" r="2" />
+            <circle className={styles.threadStar} cx="291" cy="40" r="1.5" />
+            <circle className={styles.threadStar} cx="370" cy="133" r="1.7" />
+            <rect className={styles.staticSignal} x="100" y="77" width="20" height="20" rx="5" fill="#edb867" />
             <g className={styles.motionSignal} filter={`url(#${glowId})`}>
               <rect x="-10" y="-10" width="20" height="20" rx="5" fill="#eebd77" />
               <rect x="-3" y="-3" width="6" height="6" rx="1.5" fill="#fff2d5" opacity=".72" />

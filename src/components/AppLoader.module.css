@@ -122,10 +122,10 @@
 .motion::before {
   content: "";
   position: absolute;
-  inset: 23px 45px;
-  border: 1px solid color-mix(in srgb, var(--loader-mint) 11%, transparent);
+  inset: 32px 24px 50px 78px;
+  border-top: 1px solid color-mix(in srgb, var(--loader-mint) 13%, transparent);
   border-radius: 50%;
-  transform: rotate(-12deg);
+  transform: rotate(-18deg);
   pointer-events: none;
 }
 
@@ -260,7 +260,7 @@
 @media (max-width: 560px) {
   .overlay { padding: 16px; }
   .motion { height: 220px; margin-bottom: 18px; }
-  .motion::before { inset: 20px 24px; }
+  .motion::before { inset: 27px 18px 43px 54px; }
   .brandCore { width: 72px; height: 72px; border-radius: 22px; }
   .mark { width: 42px; height: 42px; }
   .content h1 { font-size: 21px; }
