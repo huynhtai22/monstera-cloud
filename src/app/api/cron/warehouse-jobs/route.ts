@@ -39,7 +39,7 @@ async function processWarehouseQueue() {
 
 async function processWarehouseQueueUnsafe() {
   if (warehouseUsesDedicatedWorker()) {
-    return NextResponse.json({ executionMode: "worker", executedJobs: [], processed: 0 });
+    return NextResponse.json({ executionMode: "worker", executedJobs: [], processed: 0, failed: 0 });
   }
   const now = new Date();
   const failures: Array<{ jobId?: string; stage: string }> = [];

@@ -23,7 +23,7 @@ it("worker-mode queue cron authenticates and returns without touching the databa
       headers: { authorization: `Bearer ${secret}` },
     }));
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { executionMode: "worker", executedJobs: [], processed: 0 });
+    assert.deepEqual(await response.json(), { executionMode: "worker", executedJobs: [], processed: 0, failed: 0 });
   } finally {
     if (oldMode === undefined) delete process.env.WAREHOUSE_EXECUTION_MODE;
     else process.env.WAREHOUSE_EXECUTION_MODE = oldMode;
