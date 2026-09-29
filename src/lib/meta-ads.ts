@@ -409,7 +409,7 @@ export class MetaReportClient {
       if (afterCursor) url.searchParams.set('after', afterCursor);
 
       const { res, throttle } = await metaFetch(url);
-      if (res.status === 429) throw new MetaRateLimitError("Meta returned HTTP 429", getRetryAfterMs(res, throttle));
+      if (res.status === 429) throw new MetaRateLimitError("Meta rate limit: HTTP 429", getRetryAfterMs(res, throttle));
       const json = await res.json() as {
         data: MetaInsightsRow[];
         paging?: { cursors?: { after?: string }; next?: string };
