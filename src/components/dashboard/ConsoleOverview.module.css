@@ -1,8 +1,8 @@
 .console {
   --console-accent: #ededed;
-  --console-muted: #969696;
-  --console-surface: #111111;
-  --console-line: #2a2a2a;
+  --console-muted: var(--color-ink-mute);
+  --console-surface: var(--color-panel);
+  --console-line: var(--color-line);
   max-width: 1600px;
   isolation: isolate;
   padding: 28px 36px 20px;
@@ -240,7 +240,7 @@
   flex-direction: column;
 }
 .featuredMetric {
-  border-color: #5d5d5d;
+  border-color: var(--color-ink-mute);
   background:
     radial-gradient(ellipse at top right, #b9b9b912, transparent 70%), #1b1b1b;
 }
@@ -323,7 +323,7 @@
   font-weight: 400;
 }
 .stackedBar {
-  height: 5px;
+  height: 10px;
   border-radius: 4px;
   display: flex;
   gap: 3px;
@@ -413,7 +413,7 @@
   margin-top: 5px;
 }
 .flowStep .flowArrow {
-  color: #595959;
+  color: var(--color-ink-mute);
   width: 14px;
 }
 .workGrid {
@@ -478,7 +478,7 @@
   overflow-wrap: anywhere;
 }
 .sourceName svg {
-  color: #6f6f6f;
+  color: var(--color-ink-mute);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -1417,3 +1417,21 @@
     padding-left: 0;
   }
 }
+
+.statusGroup { margin-bottom: 24px; border: 1px solid var(--color-line); border-radius: 14px; overflow: hidden; background: var(--color-panel); }
+.statusGroup .healthStrip { border: 0; border-radius: 0; margin: 0; }
+.statusGroup .attention { border: 0; border-top: 1px solid var(--color-line); border-radius: 0; margin: 0; }
+.guidedEmpty { padding: 24px; background: var(--color-surface-muted); border-radius: 12px; }
+.guidedEmpty h3 { font-size: 16px; font-weight: 600; }
+.guidedEmpty p { margin-top: 8px; color: var(--color-ink-mute); font-size: 13px; }
+.checklist { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0; margin: 20px 0 0; list-style: none; }
+.checklist a { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid var(--color-line); border-radius: 8px; font-size: 13px; }
+.checklist a > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-panel); }
+.checklist a > svg { margin-left: auto; }
+@media (max-width: 640px) { .checklist { grid-template-columns: 1fr 1fr; } }
+
+.console { --console-accent: var(--color-primary); }
+.panel, .performance { background: var(--color-panel); border-color: var(--color-line); }
+.metric, .sourceCard { background: var(--color-surface-muted); border-color: var(--color-line); }
+.primaryButton { background: var(--color-primary); color: var(--color-primary-foreground); border-color: var(--color-primary); border-radius: 8px; box-shadow: none; }
+.primaryButton:hover { background: var(--color-primary-hover); }

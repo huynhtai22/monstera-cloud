@@ -40,7 +40,7 @@ export function ConsoleSyncLabel({
       {!iconOnly && (
         <span className={styles.labels} aria-hidden="true">
           <span className={styles.idleText}>{idleLabel}</span>
-          <span className={cn(styles.busyText, "console-activity-text")}>
+          <span className={styles.busyText}>
             {activeLabel}
           </span>
         </span>

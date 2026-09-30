@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { ConsoleRouteTransition } from './console/ConsoleMotion';
+import { ConsoleSupportControl } from './LiveChatWidget';
 import { Sidebar } from './Sidebar';
 import { GlobeLoader } from './GlobeLoader';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
@@ -50,11 +52,11 @@ function mobileSectionTitle(pathname: string | null): string {
     return first ? first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, " ") : "Home";
 }
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export function AppLayout({ children, visualPreview = false, previewTitle = "Dashboard" }: { children: React.ReactNode; visualPreview?: boolean; previewTitle?: string }) {
     const pathname = usePathname();
     const { status } = useSession();
     const loading = status === 'loading';
-    const mobileTitle = useMemo(() => mobileSectionTitle(pathname), [pathname]);
+    const mobileTitle = useMemo(() => visualPreview ? previewTitle : mobileSectionTitle(pathname), [pathname, visualPreview, previewTitle]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -111,8 +113,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return (
         <KeyboardShortcutsProvider>
         <PendingNavigationProvider>
-        <WorkspaceSessionSync />
-        <SessionHeartbeat />
+        {!visualPreview && <WorkspaceSessionSync />}
+        {!visualPreview && <SessionHeartbeat />}
         {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
         {loading ? <GlobeLoader visible /> : null}
         <div data-console-theme={isDarkMode ? "dark" : "light"} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
@@ -135,6 +137,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
+                    <ConsoleSupportControl />
                     <NotificationCenter />
                     <button
                         type="button"
@@ -161,7 +164,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             >
                 <div className="h-14 shrink-0 lg:hidden" />
                 {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
-                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/90 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
+                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/70 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
                     <nav className="pointer-events-auto flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">Monstera</span>
                         <ChevronRight className="h-3.5 w-3.5 text-line" strokeWidth={1.5} aria-hidden />
@@ -169,14 +172,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     </nav>
                     <div className="pointer-events-auto flex items-center gap-2">
                         <CommandPaletteTrigger />
+                        <ConsoleSupportControl />
                         <NotificationCenter />
                     </div>
                 </div>
-                <UpgradeNudge />
-                <ClientContextBarGate />
+                {!visualPreview && <UpgradeNudge />}
+                {!visualPreview && <ClientContextBarGate />}
                 <main className="relative z-10 flex-1 overflow-x-hidden">
                     <DemoModeBanner />
-                    {children}
+                    <ConsoleRouteTransition pathname={pathname ?? ""}>{children}</ConsoleRouteTransition>
                 </main>
             </div>
 
