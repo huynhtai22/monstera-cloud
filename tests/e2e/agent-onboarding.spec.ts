@@ -51,13 +51,13 @@ test.describe("persisted agent onboarding (M2)", () => {
     await expect(page.getByText("Meta Ads agent", { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("sources-desktop.png"), fullPage: true });
     const taskIds = (await db.agentTask.findMany({ where: { workspaceId }, orderBy: { id: "asc" } })).map(t => t.id);
-    const tiktok = page.locator("details").filter({ hasText: "TikTok Ads agent" });
-    await tiktok.locator("summary").click();
+    const tiktok = page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" });
+    if (await tiktok.locator("button[aria-expanded]").getAttribute("aria-expanded") !== "true") await tiktok.locator("button[aria-expanded]").click();
     await expect(tiktok.getByRole("button", { name: "Connect TikTok Ads", exact: true })).toBeDisabled();
     await page.getByRole("textbox").fill("How does Google Ads work?");
     await page.getByRole("button", { name: "Send message" }).click();
     await expect(page.getByText(/Which advertising or shop source/)).toBeVisible();
-    await expect(tiktok).toHaveAttribute("open", "");
+    await expect(tiktok).toHaveAttribute("data-open", "true");
     await page.reload();
     await expect(page.getByText("TikTok Ads agent", { exact: true })).toBeVisible();
     expect((await db.user.findUniqueOrThrow({ where: { id: userId } })).workCategory).toBe("GROWTH_MARKETER");
@@ -68,9 +68,17 @@ test.describe("persisted agent onboarding (M2)", () => {
     await page.goto(`/onboarding?workspaceId=${workspaceId}`);
     await page.getByRole("button", { name: "Resume setup" }).click();
     await expect(page.getByText("Your setup is paused.", { exact: false })).not.toBeVisible();
-    await page.locator("details").filter({ hasText: "TikTok Ads agent" }).locator("summary").click();
-    await page.locator("details").filter({ hasText: "TikTok Ads agent" }).getByRole("button", { name: "Save this source for later" }).click();
+    await page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" }).locator("button[aria-expanded]").click();
+    await page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" }).getByRole("button", { name: "Save this source for later" }).click();
     await expect(page.getByText("Saved for later", { exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Tell Monstera which sources to connect" }).fill("TikTok Ads");
+    await page.getByRole("button", { name: "Send message" }).click();
+    const openAgent = page.getByRole("button", { name: "Open TikTok Ads agent", exact: true }).last();
+    await expect(openAgent).toBeEnabled();
+    await openAgent.click();
+    await expect(page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" })).toHaveAttribute("data-open", "true");
+    await expect(page.getByRole("button", { name: "TikTok Ads", exact: true })).toBeEnabled();
+    expect(await db.agentTask.count({ where: { workspaceId } })).toBe(2);
     expect(await db.warehouseImportJob.count({ where: { workspaceId } })).toBe(0);
   });
 

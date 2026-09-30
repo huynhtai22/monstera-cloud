@@ -41,3 +41,8 @@ export function SpecialistStack({ revision, children }: { revision: string; chil
   }, [revision]);
   return <div ref={outer} className={styles.stackFrame}><div ref={inner} className={styles.taskList}>{children}</div></div>;
 }
+
+/** The line draws once when completion is first rendered; polls preserve it. */
+export function CompletionCheck() {
+  return <span className={styles.completionCheck} aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="m4 10 4 4 8-8" pathLength="1" /></svg></span>;
+}
