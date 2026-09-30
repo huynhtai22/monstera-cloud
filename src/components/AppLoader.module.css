@@ -1,11 +1,11 @@
-.overlay { --loader-entrance: 450ms; --loader-exit: 480ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); isolation: isolate; overflow: hidden; }
+.overlay { --loader-entrance: 450ms; --loader-exit: 400ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); isolation: isolate; overflow: hidden; }
 .backdrop { position: absolute; inset: 0; background: var(--color-canvas); }
 .visual { position: absolute; width: 320px; top: 50%; left: 50%; transform: translate(-50%, -58%); text-align: center; }
 .scene { height: 260px; position: relative; }
 .connections { position: absolute; inset: 0; width: 320px; height: 260px; overflow: visible; }
 .connections > g { animation: enter 250ms cubic-bezier(.22,1,.36,1) both; }
 .track { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; opacity: .35; stroke-dasharray: 1; stroke-dashoffset: 1; animation: lineEnter 350ms 200ms cubic-bezier(.22,1,.36,1) forwards; }
-.branch { position: absolute; inset: 0; pointer-events: none; }
+.branch { position: absolute; inset: 0; pointer-events: none; animation: enter 250ms 200ms cubic-bezier(.22,1,.36,1) both; }
 .nodeShell { position: absolute; width: 28px; height: 28px; transform: translate(-50%, -50%); animation: nodeEnter 300ms cubic-bezier(.22,1,.36,1) both; }
 .nodeFace { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid var(--console-motion-accent); border-radius: 50%; background: var(--color-canvas); opacity: .75; transition: opacity 200ms ease-in-out; }
 .sourceGlyph { display: block; width: 16px; height: 16px; mask-size: contain; mask-position: center; mask-repeat: no-repeat; background: var(--color-ink); animation: enter 250ms ease-in-out both; }
@@ -33,8 +33,12 @@
 .status > span { grid-area: 1 / 1; display: block; animation: enter 250ms ease-in-out both; }
 .status > .outgoing { animation: leave 250ms ease-in-out forwards; }
 .overlay[data-phase="exit"] { pointer-events: none; }
-.overlay[data-phase="exit"] .backdrop { animation: leave 160ms ease-in-out forwards; }
-.overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .branch, .overlay[data-phase="exit"] .copy { animation: leave 100ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .backdrop { animation: leave 120ms ease-in-out forwards; }
+.overlay[data-phase="resolve"] .track { stroke-dashoffset: 0; animation: resolveLine 300ms var(--resolve-delay) ease-in-out both; }
+.overlay[data-phase="resolve"] .connections, .overlay[data-phase="resolve"] .branch, .overlay[data-phase="resolve"] .copy { animation: leave 120ms 480ms ease-in-out forwards; }
+.overlay[data-phase="resolve"] .emblem::before { animation: resolveGlow 600ms ease-in-out both; }
+.overlay[data-phase="resolve"] .innerGradient, .overlay[data-phase="resolve"] .topHighlight, .overlay[data-phase="resolve"] .outline { animation: leave 120ms 480ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .branch, .overlay[data-phase="exit"] .copy, .overlay[data-phase="exit"] .innerGradient, .overlay[data-phase="exit"] .topHighlight, .overlay[data-phase="exit"] .outline { visibility: hidden; }
 .overlay[data-phase="exit"] .emblem::before, .overlay[data-phase="exit"] .outline, .overlay[data-phase="exit"] .completionGlow { animation: leave 100ms ease-in-out forwards; }
 .timeoutNotice { position: fixed; right: 24px; bottom: 24px; z-index: 10000; max-width: min(360px, calc(100vw - 48px)); padding: 16px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink); font-size: 14px; }
 .timeoutNotice p { margin: 0 0 12px; }
@@ -51,6 +55,8 @@
 @keyframes glow { from, to { opacity: .4; transform: scale(.96); } 50% { opacity: .7; transform: scale(1.04); } }
 @keyframes completionPulse { from, to { opacity: 0; transform: scale(.92); } 40% { opacity: .8; transform: scale(1.05); } }
 @keyframes bootPacket { from { transform: translate3d(18px,65px,0); opacity: .3; } 50% { transform: translate3d(76px,98px,0); opacity: 1; } to { transform: translate3d(124px,130px,0); opacity: 0; } }
+@keyframes resolveLine { from, to { opacity: .35; } 45% { opacity: .9; } }
+@keyframes resolveGlow { from { opacity: .5; transform: scale(1); } 50%, 75% { opacity: 1; transform: scale(1.1); } to { opacity: 0; transform: scale(1.1); } }
 @keyframes leave { to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .connections > g, .nodeShell, .copy, .emblem { animation: enter 150ms 200ms ease-in-out both; }

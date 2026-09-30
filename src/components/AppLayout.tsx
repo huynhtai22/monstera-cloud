@@ -4,7 +4,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
-import { useWorkspaceStartup } from './WorkspaceStartup';
+import { useWorkspaceStartupActions } from './WorkspaceStartup';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
 import { SessionHeartbeat } from './SessionHeartbeat';
 import { DemoModeBanner } from './DemoModeBanner';
@@ -58,7 +58,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const startup = useWorkspaceStartup();
+    const startup = useWorkspaceStartupActions();
     const configureStartup = startup?.configure;
     useEffect(() => {
         configureStartup?.(status !== 'loading', Boolean(pathname?.endsWith('/console')), status === 'authenticated');
@@ -118,7 +118,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <PendingNavigationProvider>
         <WorkspaceSessionSync />
         <SessionHeartbeat />
-        <div data-workspace-shell data-startup-reveal={Boolean(startup?.handoff && startup?.animateHandoff)} data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
+        <div data-workspace-shell data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">

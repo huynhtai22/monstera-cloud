@@ -187,6 +187,7 @@ export function Sidebar({
     return (
         <aside
             aria-label="Application sidebar"
+            data-collapsed={collapsed}
             className={cn(
                 "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
                 collapsed ? "w-[68px]" : "w-64",

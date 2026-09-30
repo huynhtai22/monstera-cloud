@@ -9,9 +9,11 @@ const StartupContext = createContext<{
   completeDashboard: (success?: boolean, providers?: string[]) => void;
   completeWorkspace: (providers?: string[]) => void;
   handoff: boolean;
+  chrome: boolean;
+  fadeHandoff: boolean;
   animateHandoff: boolean;
 } | null>(null);
-const StartupActions = createContext<Pick<NonNullable<React.ContextType<typeof StartupContext>>, "completeDashboard" | "completeWorkspace"> | null>(null);
+const StartupActions = createContext<Pick<NonNullable<React.ContextType<typeof StartupContext>>, "configure" | "completeDashboard" | "completeWorkspace"> | null>(null);
 
 export function WorkspaceStartup({ children }: { children: ReactNode }) {
   const [workspace, setWorkspace] = useState(false);
@@ -24,7 +26,12 @@ export function WorkspaceStartup({ children }: { children: ReactNode }) {
   }, []);
   const [handoff, setHandoff] = useState(false);
   const [animateHandoff, setAnimateHandoff] = useState(false);
-  const beginHandoff = useCallback((animate = false) => { setAnimateHandoff(animate); setHandoff(true); }, []);
+  const [chrome, setChrome] = useState(false);
+  const [fadeHandoff, setFadeHandoff] = useState(false);
+  const beginChrome = useCallback((mode: "flight" | "fade" | "none" = "none") => {
+    setChrome(true); setAnimateHandoff(mode === "flight"); setFadeHandoff(mode === "fade");
+  }, []);
+  const beginContent = useCallback(() => setHandoff(true), []);
   const [session, setSession] = useState(false);
   const [verified, setVerified] = useState(false);
   const [configured, setConfigured] = useState(false);
@@ -40,13 +47,13 @@ export function WorkspaceStartup({ children }: { children: ReactNode }) {
     setDataReturned(true); setSuccess(ok);
     if (ok && known) { setSourcesChecked(true); setProviders([...new Set(known)].slice(0,4)); }
   }, []);
-  const actions = useMemo(() => ({ completeDashboard, completeWorkspace }), [completeDashboard, completeWorkspace]);
-  const context = useMemo(() => ({ configure, completeDashboard, completeWorkspace, handoff, animateHandoff }), [configure, completeDashboard, completeWorkspace, handoff, animateHandoff]);
+  const actions = useMemo(() => ({ configure, completeDashboard, completeWorkspace }), [configure, completeDashboard, completeWorkspace]);
+  const context = useMemo(() => ({ configure, completeDashboard, completeWorkspace, handoff, chrome, fadeHandoff, animateHandoff }), [configure, completeDashboard, completeWorkspace, handoff, chrome, fadeHandoff, animateHandoff]);
   const pending = !configured || !session || (verified && dashboard && !dataReturned);
   return (
     <StartupContext.Provider value={context}>
       <StartupActions.Provider value={actions}>
-      <AppLoader visible={pending} milestones={[verified, workspace, sourcesChecked, success]} providers={providers} measurable={dashboard} onExitStart={beginHandoff} />
+      <AppLoader visible={pending} milestones={[verified, workspace, sourcesChecked, success]} providers={providers} measurable={dashboard} onChromeReveal={beginChrome} onContentReveal={beginContent} />
       {children}
       </StartupActions.Provider>
     </StartupContext.Provider>
