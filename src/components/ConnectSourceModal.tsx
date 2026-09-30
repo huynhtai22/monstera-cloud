@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, CheckCircle2, ChevronRight, Copy, Check, Lock, ArrowRight, ShieldCheck, ExternalLink } from "lucide-react";
+import { X, CheckCircle2, ChevronRight, Copy, Check, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -346,7 +346,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     if (!shouldRender || !mounted) return null;
 
     const dialogMotion = cn(
-        "relative flex w-full max-h-[min(90vh,850px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-[0_32px_100px_#0009] outline-none",
+        "relative flex w-full h-[min(90dvh,680px)] max-h-[min(90dvh,680px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-[0_32px_100px_#0009] outline-none",
         "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none motion-reduce:transform-none",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
     );
@@ -381,7 +381,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 >
                     <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] px-6 pb-5 pt-6 sm:px-8 sm:pt-7">
                         <div className="min-w-0">
-                            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.17em] text-[#9fc6a9]">New connection</p>
+                            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.17em] text-[#5eead4]">New connection</p>
                             <h3 id="connect-source-picker-title" className="mt-2.5 text-[27px] font-medium tracking-[-0.045em] text-white sm:text-[31px]">
                                 Where is your data?
                             </h3>
@@ -435,7 +435,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         })}
                     </ul>
                     <div className="flex items-center gap-2 border-t border-white/[0.07] px-6 py-4 text-[11px] text-[#858b86] sm:px-8">
-                        <ShieldCheck size={14} className="text-[#9fc6a9]" aria-hidden />
+                        <ShieldCheck size={14} className="text-[#5eead4]" aria-hidden />
                         Your credentials stay with the provider. You can disconnect at any time.
                     </div>
                 </div>
@@ -451,79 +451,71 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     className={cn(dialogMotion, styles.surface, displayPhase && styles.connecting, "max-w-[590px]")}
                     style={{ transitionTimingFunction: PANEL_EASE, "--provider-accent": accent } as React.CSSProperties}
                 >
-                    <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4 sm:px-7">
+                    <div className="flex items-center justify-between px-6 pt-5 sm:px-8">
                         <div className="flex items-center gap-2.5">
-                            <LogoMark className="h-6 w-6 shrink-0" />
-                            <span className="text-[12px] font-medium tracking-[-0.01em] text-[#d3d6d3]">Monstera Cloud</span>
-                            <ChevronRight className="h-3 w-3 text-[#585b59]" aria-hidden="true" />
-                            <span className="text-[12px] text-[#929793]">New connection</span>
+                            <LogoMark className="h-5 w-5 shrink-0" />
+                            <span className="text-[11px] font-medium tracking-[0.01em] text-[#c9d0ca]">Monstera Cloud</span>
                         </div>
                         <button type="button" onClick={handleClose} aria-label="Close dialog" className="grid h-8 w-8 place-items-center rounded-lg text-[#969b97] transition-colors hover:bg-white/[0.07] hover:text-white">
                             <X className="h-4 w-4" strokeWidth={1.6} />
                         </button>
                     </div>
 
-                    <div className="overflow-y-auto overscroll-contain px-6 pb-5 sm:px-8">
-                        <div className={cn(styles.visual, "-mx-6 sm:-mx-8")} aria-hidden="true">
-                            <div className={cn(styles.node, styles.providerNode)}>
-                                <span className={styles.waitingRing} />
-                                <IntegrationMark src={logoSrc} alt="" size="md" />
-                            </div>
-                            <div className={styles.bridge}><span className={styles.pulse} /></div>
-                            <div className={cn(styles.node, styles.monsteraNode)}><LogoMark className="h-[62px] w-[62px]" /></div>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-5 sm:px-8">
+                        <div className={styles.visual} aria-hidden="true">
+                            <div className={styles.node}><IntegrationMark src={logoSrc} alt="" size="lg" /></div>
+                            <div className={styles.bridge}><span /><span /><span /></div>
+                            <div className={styles.node}><LogoMark className="h-11 w-11" /></div>
                         </div>
 
                         <div className={cn(styles.waitingPanel, displayPhase && styles.waitingPanelActive)} aria-hidden={!displayPhase} inert={!displayPhase} role={displayPhase ? "status" : undefined} aria-live={displayPhase ? "polite" : undefined}>
-                            <div className="pb-2 text-center">
-                                <p className="mb-3 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#a4d7b1]">Connecting to {name}</p>
-                                <h3 id={displayPhase ? "connect-source-modal-title" : undefined} className="text-[27px] font-medium tracking-[-0.045em] text-white">
-                                    {displayPhase === "preparing" ? "Getting your sign-in link" : `Opening ${name}`}
+                            <div className="pb-4 text-center">
+                                <p className={styles.statusBadge}><span className={styles.statusDot} aria-hidden="true" />{displayPhase === "preparing" ? "Preparing secure connection" : `Connecting to ${name}`}</p>
+                                <h3 id={displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white">
+                                    {displayPhase === "preparing" ? "Preparing your connection" : `Opening ${name}`}
                                 </h3>
-                                <p className="mx-auto mt-3 max-w-[390px] text-[13px] leading-[1.65] text-[#a0a5a1]">
+                                <p className="mx-auto mt-3 max-w-[390px] text-[14px] leading-[1.6] text-[#c6d0c8]">
                                     {displayPhase === "preparing"
-                                        ? `Monstera is getting a secure sign-in link from ${name}.`
-                                        : `Approve access on ${name}. You’ll return here to choose the accounts to sync.`}
+                                        ? `Getting a secure sign-in link from ${name}…`
+                                        : `Approve access with ${name}. You'll return here to choose the accounts to sync.`}
                                 </p>
-                                <div className="mx-auto mt-7 flex max-w-[340px] items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-[11px] text-[#aeb5af]">
-                                    <Lock className="h-3.5 w-3.5 shrink-0 text-[#a4d7b1]" aria-hidden="true" />
-                                    Sign-in happens on {name}.
-                                </div>
+                                <div className={styles.progressTrack} aria-hidden="true"><span className={styles.progressSweep} /></div>
+                                <p className="mt-5 text-[12px] text-[#aab5ac]">Your sign-in happens securely on {name}.</p>
                             </div>
                         </div>
 
                         <div className={cn(styles.idlePanel, displayPhase && styles.idlePanelHidden)} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
                                 <div className="text-center">
-                                    <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#a4d7b1]">Connect a source</p>
-                                    <h3 id={!displayPhase ? "connect-source-modal-title" : undefined} className="mt-2 text-[29px] font-medium tracking-[-0.05em] text-white sm:text-[32px]">Connect {name}</h3>
-                                    <p className="mx-auto mt-1.5 max-w-[420px] text-[13px] leading-[1.6] text-[#a0a5a1]">
+                                    <h3 id={!displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white sm:text-[30px]">Connect {name} to Monstera Cloud</h3>
+                                    <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-[1.6] text-[#afb8b0]">
                                         {connectDescription}
                                     </p>
                                 </div>
 
-                                <div className="mt-5 overflow-hidden rounded-xl border border-white/[0.09] bg-[#1a1c1b]">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] px-4 py-3">
-                                        <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#a4d7b1]" strokeWidth={1.7} aria-hidden="true" /><span className="text-[12px] font-medium text-[#e4e9e5]">What Monstera can read</span></div>
-                                        <span className="rounded-full border border-[#9dceab]/20 bg-[#9dceab]/[0.08] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[#abd8b8]">Read-only</span>
-                                    </div>
-                                    <ul className="grid gap-2 px-4 py-3 sm:grid-cols-1">
+                                <details className={styles.accessDetails}>
+                                    <summary className="flex cursor-pointer items-center justify-between gap-4 px-4 py-4 text-left">
+                                        <span className="flex items-center gap-3">
+                                            <span className={styles.accessIcon}><ShieldCheck className="h-4 w-4 text-[#b8b8b8]" strokeWidth={1.7} aria-hidden="true" /></span>
+                                            <span><span className="block text-[13px] font-medium text-white">Read-only access</span><span className="mt-0.5 block text-[12px] leading-relaxed text-[#aeb3af]">Can read your data · Can’t edit accounts or campaigns</span></span>
+                                        </span>
+                                        <ChevronRight className={styles.accessChevron} size={16} aria-hidden="true" />
+                                    </summary>
+                                    <ul className="grid gap-2 border-t border-white/[0.08] px-4 py-3">
                                         {step1Content.permissions.map((line) => (
                                             <li key={line} className="flex items-start gap-2.5 text-[11px] leading-[1.5] text-[#b7bcb8]"><CheckCircle2 className="mt-[1px] h-3.5 w-3.5 shrink-0 text-[#8ab99a]" strokeWidth={1.7} />{line}</li>
                                         ))}
+                                        <li className="pt-1 text-[11px] leading-relaxed text-[#8f9791]">{step1Content.footnote}</li>
                                     </ul>
-                                </div>
+                                </details>
 
                                 {id === "shopify" && (
                                     <div className="mt-5 space-y-2">
                                         <label htmlFor="shopify-domain" className="font-mono text-[10px] font-medium uppercase tracking-[0.13em] text-[#a0a5a1]">{uiConfig?.domainInputLabel ?? "Shopify store domain"}</label>
-                                        <input id="shopify-domain" type="text" placeholder={uiConfig?.domainInputPlaceholder ?? "mystore.myshopify.com"} value={shopDomain} onChange={(e) => setShopDomain(e.target.value)} disabled={isProcessing} className="w-full rounded-lg border border-white/[0.12] bg-[#0d0e0d] px-3.5 py-3 text-sm text-white placeholder:text-[#777d79] focus:border-[#a4d7b1]/60 focus:outline-none disabled:opacity-50" />
+                                        <input id="shopify-domain" type="text" placeholder={uiConfig?.domainInputPlaceholder ?? "mystore.myshopify.com"} value={shopDomain} onChange={(e) => setShopDomain(e.target.value)} disabled={isProcessing} className="w-full rounded-lg border border-white/[0.12] bg-[#0d0e0d] px-3.5 py-3 text-sm text-white placeholder:text-[#777d79] focus:border-[#b8b8b8]/60 focus:outline-none disabled:opacity-50" />
                                     </div>
                                 )}
 
-                                <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[11px] text-[#828b84]">
-                                    <span className="flex items-center gap-1.5"><Lock className="h-3 w-3" aria-hidden="true" /> Access tokens are encrypted. Disconnect anytime.</span>
-                                    {!integration && draftPick && <button type="button" onClick={() => setDraftPick(null)} className="text-[#a9cdb2] hover:text-white">Choose a different source</button>}
-                                </div>
-                                <p className="mt-2 text-[11px] leading-relaxed text-[#777e78]">{step1Content.footnote}</p>
+                                {!integration && draftPick && <button type="button" onClick={() => setDraftPick(null)} className="mt-4 text-[11px] text-[#5eead4] hover:text-white">Choose a different source</button>}
                                 {/* Developer: OAuth callback — collapsed by default */}
                         {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
                             <details className="group mt-3">
@@ -594,11 +586,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         </div>
                     </div>
 
-                    <div className={cn(styles.footer, displayPhase && styles.footerHidden, "flex flex-col gap-3 border-t border-white/[0.07] bg-[#171918] px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8")} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
-                            <span className="flex items-center gap-1.5 text-[11px] text-[#878f89]"><ExternalLink className="h-3 w-3" aria-hidden="true" /> Next: sign in to {name}</span>
-                            <button type="button" onClick={handleAuthenticate} disabled={isProcessing || oauthPrimaryDisabled} className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#d7e8d9] px-4 text-[12px] font-semibold text-[#102017] shadow-[0_2px_14px_#91c9a325] transition-[background,transform] hover:-translate-y-px hover:bg-[#e6f3e8] disabled:cursor-not-allowed disabled:opacity-50">
-                                Continue to {name}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
+                    <div className={cn(styles.footer, displayPhase && styles.footerHidden, "px-6 pb-7 sm:px-8")} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
+                            <button type="button" onClick={handleAuthenticate} aria-busy={isProcessing} disabled={isProcessing || oauthPrimaryDisabled} className="group inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#ededed] px-4 text-[13px] font-semibold text-[#171717] shadow-[0_8px_24px_#ffffff10] transition-[background,box-shadow] hover:bg-[#ffffff] hover:shadow-[0_10px_28px_#ffffff18] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b8b8b8] disabled:cursor-not-allowed disabled:opacity-50">
+                                {isProcessing ? `Opening ${name}…` : `Continue to ${name}`}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
                             </button>
+                            <button type="button" onClick={handleClose} className="mt-3 w-full py-2 text-center text-[12px] text-[#c3c8c3] hover:text-white">Cancel</button>
+                            <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-[#858d87]"><Lock className="h-3 w-3 shrink-0" aria-hidden="true" /> Sign in on {name}. Disconnect anytime in Monstera Cloud.</p>
                     </div>
                 </div>
             )}
