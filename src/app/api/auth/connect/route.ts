@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
         const searchParams = request.nextUrl.searchParams;
         const providerId = searchParams.get("provider");
         const workspaceId = searchParams.get("workspaceId");
+        const agentTaskId = searchParams.get("agentTaskId");
         
         if (!providerId) {
             return NextResponse.json(
@@ -54,6 +55,11 @@ export async function GET(request: NextRequest) {
             operation: "connect_source",
         });
         await assertWorkspaceProviderEnabled({ workspaceId, provider: providerId });
+
+        if (agentTaskId) {
+            const { validateAgentOAuthTask } = await import("@/lib/agent/execution");
+            await validateAgentOAuthTask({ userId: session.userId, workspaceId }, agentTaskId, providerId);
+        }
         
         // Get provider adapter
         const provider = getProvider(providerId);
@@ -66,6 +72,7 @@ export async function GET(request: NextRequest) {
             workspaceId,
             userId: session.userId,
             provider: providerId,
+            agentTaskId: agentTaskId || undefined,
         });
         
         // Build authorization URL
@@ -89,6 +96,8 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         logger.error("[OAuth Connect] Error:", error);
         
+        const { AgentError } = await import("@/lib/agent/contracts");
+        if (error instanceof AgentError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
         const providerDenied = toProviderAccessResponse(error);
         if (providerDenied) return providerDenied;
         const rbac = toRbacResponse(error);

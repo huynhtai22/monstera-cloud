@@ -262,6 +262,9 @@ export async function createImportJob(params: {
       : await db.warehouseImportJob.create({ data: jobData });
 
     const state = toState(created);
+    // An external transaction has not committed yet. Avoid publishing a
+    // phantom job or waiting on Redis while it holds database locks.
+    if (params.client) return state;
 
     emitConnectorTelemetry({
       eventCategory: "job_lifecycle",

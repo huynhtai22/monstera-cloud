@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { getAuthSession } from "@/lib/auth-session";
 import { buildCallbackUrl } from "@/lib/oauth-framework/session";
 import { getProvider, isProviderEnabled } from "@/lib/oauth-framework/registry";
 import { OAuthError } from "@/lib/oauth-framework/types";
@@ -75,15 +75,17 @@ export async function GET(request: NextRequest) {
     const origin = request.nextUrl.origin;
     const searchParams = request.nextUrl.searchParams;
     const providerId = searchParams.get("provider");
-    const code = searchParams.get("code");
+    const code = searchParams.get("code") || (providerId === "tiktok_business" ? searchParams.get("auth_code") : null);
     const state = searchParams.get("state");
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
     let reconnectConnectionId: string | undefined;
     let reconnectWorkspaceId: string | undefined;
     
-    // Handle provider errors
-    if (error) {
+    let agentCallback: { userId: string; workspaceId: string; taskId: string } | null = null;
+    // Ordinary Sources denial retains its existing recovery route. Task-linked
+    // denial is identified only after validating and consuming state.
+    if (error && !state && !request.cookies.get(oauthAttemptCookieName(providerId || ""))?.value) {
         const params = new URLSearchParams({
             error: "provider_error",
             provider: providerId || "unknown",
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
             throw new OAuthError("configuration_error", "Missing provider in callback");
         }
         
-        if (!code) {
+        if (!code && !error) {
             throw new OAuthError("provider_error", "Authorization code not received", providerId);
         }
 
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
             throw new OAuthError("configuration_error", "Provider not enabled", providerId);
         }
 
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession(authOptions);
         if (!session?.user?.id) {
             throw new OAuthError("unauthorized", "Sign in again before connecting a source", providerId);
         }
@@ -119,6 +121,12 @@ export async function GET(request: NextRequest) {
             provider: providerId,
             sessionUserId: session.user.id,
         });
+        if (attempt.agentTaskId) {
+            agentCallback = { userId: attempt.userId, workspaceId: attempt.workspaceId, taskId: attempt.agentTaskId };
+            const { validateAgentOAuthTask } = await import("@/lib/agent/execution");
+            await validateAgentOAuthTask({ userId: attempt.userId, workspaceId: attempt.workspaceId }, attempt.agentTaskId, providerId);
+        }
+        if (error) throw new OAuthError("user_denied", "Access was not approved. You can try again.", providerId);
         const workspaceId = attempt.workspaceId;
         const userId = attempt.userId;
         reconnectConnectionId = attempt.reconnectConnectionId ?? undefined;
@@ -152,7 +160,7 @@ export async function GET(request: NextRequest) {
             searchParams.get("shop_id") ||
             searchParams.get("shopId") ||
             searchParams.get("main_account_id");
-        const exchangeCode = shopId ? `${code}|${shopId}` : code;
+        const exchangeCode = shopId ? `${code!}|${shopId}` : code!;
         
         // Exchange code for credentials
         const callbackUrl = buildCallbackUrl(request, providerId);
@@ -453,6 +461,20 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        if (attempt.agentTaskId) {
+            const { attachTaskConnections } = await import("@/lib/agent/tasks");
+            const { discoverTaskAccounts } = await import("@/lib/agent/execution");
+            const task = await prisma.agentTask.findFirstOrThrow({ where: { id: attempt.agentTaskId, workspaceId } });
+            const linked = await attachTaskConnections({ userId, workspaceId }, task.id, connections.map(c => c.id), task.version);
+            after(async () => {
+                try { await discoverTaskAccounts({ userId, workspaceId }, linked.id, linked.version); }
+                catch { logger.warn("[OAuth Callback] Account discovery needs a user retry", { taskId: linked.id }); }
+            });
+            const response = NextResponse.redirect(new URL(`/onboarding?workspaceId=${encodeURIComponent(workspaceId)}`, origin));
+            response.cookies.delete(oauthAttemptCookieName(providerId));
+            return response;
+        }
+
         for (const createdConnection of connections) {
             try {
                 const backfill = await enqueueOauthWarehouseBackfill({
@@ -502,6 +524,15 @@ export async function GET(request: NextRequest) {
         return response;
         
     } catch (error) {
+        if (agentCallback) {
+            const { recordTaskAuthorizationFailure } = await import("@/lib/agent/execution");
+            const reason = error instanceof OAuthError && error.code === "user_denied" ? "authorization_denied" : "reconnect_required";
+            try { await recordTaskAuthorizationFailure({ userId: agentCallback.userId, workspaceId: agentCallback.workspaceId }, agentCallback.taskId, reason); }
+            catch { /* Paused/revoked tasks stay recoverable without new work. */ }
+            const response = NextResponse.redirect(new URL(`/onboarding?workspaceId=${encodeURIComponent(agentCallback.workspaceId)}`, origin));
+            if (providerId) response.cookies.delete(oauthAttemptCookieName(providerId));
+            return response;
+        }
         if (reconnectConnectionId && reconnectWorkspaceId && providerId) {
             const userFacingError = error instanceof OAuthError
                 ? error.message

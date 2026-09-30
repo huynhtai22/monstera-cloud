@@ -51,14 +51,14 @@ export async function syncShopeeWarehouseMetrics(opts: {
       sandbox: creds.sandbox === true,
     };
 
-    const daily = new Map<string, { revenue: number; orders: number }>();
+    const daily = new Map<string, { revenue: number; orders: number; currency: string | undefined }>();
     let recordedSchema = false;
 
     // Shopee get_order_list strictly enforces: time_to - time_from <= 15 days.
     // We iterate in 14-day windows across [rangeStart, rangeEnd].
     const WINDOW_SECONDS = 14 * 86400;
     for (let wStart = rangeStart; wStart <= rangeEnd; wStart += WINDOW_SECONDS) {
-      const wEnd = Math.min(wStart + WINDOW_SECONDS, rangeEnd);
+      const wEnd = Math.min(wStart + WINDOW_SECONDS - 1, rangeEnd);
       let cursor = "";
 
       for (;;) {
@@ -106,7 +106,10 @@ export async function syncShopeeWarehouseMetrics(opts: {
             if (ct < rangeStart || ct > rangeEnd) continue;
             const day = dayKeyFromUnixSeconds(ct);
             const amt = Number(o.total_amount ?? 0) || 0;
-            const cur = daily.get(day) ?? { revenue: 0, orders: 0 };
+            const currency = typeof o.currency === "string" && /^[A-Z]{3}$/.test(o.currency) ? o.currency : undefined;
+            const previous = daily.get(day);
+            if (previous && previous.currency !== currency) throw new Error("Shopee returned mixed or missing currencies for one daily order rollup");
+            const cur = previous ?? { revenue: 0, orders: 0, currency };
             cur.orders += 1;
             cur.revenue += amt;
             daily.set(day, cur);
@@ -148,7 +151,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
         conversions: agg.orders,
         revenue: agg.revenue,
         roas: agg.orders > 0 ? agg.revenue / agg.orders : 0,
-        currency: undefined,
+        currency: agg.currency,
         rawData: { source: "shopee_order_rollup", day: dayStr },
         syncJobId: jobId,
         lease: opts.lease,

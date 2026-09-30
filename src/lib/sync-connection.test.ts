@@ -167,6 +167,27 @@ describe("provider HTTP failures preserve sync correctness", () => {
     );
   });
 
+  it("resolves manager roots before filtering selected leaves and never queries unselected siblings", async () => {
+    const queried: string[] = [];
+    await withSyncHarness((async (input, init) => {
+      const root = String(input).match(/customers\/([^/]+)\//)?.[1];
+      const query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
+      if (query.includes("customer_client")) return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
+      queried.push(root!); return Response.json([]);
+    }) as typeof fetch, async () => {
+      const result = await syncConnectionData({ connectionId: "google-selected", provider: "google_ads", credentials: { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"], extraFields: { selectedCustomerIds: ["202"] } }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(result.success, true); assert.deepEqual(queried, ["101"]); assert.deepEqual(result.children.map(child => child.id), ["101"]);
+    });
+  });
+  it("does not query a selected leaf that disappeared from its manager", async () => {
+    await withSyncHarness((async (_input, init) => {
+      assert.ok(JSON.parse(String(init?.body)).query.includes("customer_client"), "must not query metrics for missing leaf");
+      return Response.json([{ results: [{ customerClient: { id: "202", manager: false, status: "ENABLED" } }] }]);
+    }) as typeof fetch, async () => {
+      const result = await syncConnectionData({ connectionId: "google-revoked", provider: "google_ads", credentials: { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(result.success, false); assert.equal(result.children[0].id, "101");
+    });
+  });
   it("keeps mixed Google customer outcomes partial and does not advance lastSyncAt after a 429", async () => {
     let calls = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {
