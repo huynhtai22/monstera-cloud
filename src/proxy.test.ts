@@ -65,6 +65,7 @@ describe("proxy page authentication (deny-by-default)", () => {
     const proxy = __createProxyForTests({ getSessionToken: async () => null });
     for (const path of [
       "/console",
+      "/onboarding?workspaceId=ws_123",
       "/sources/setup",
       "/explorer?tab=warehouse",
       "/admin/signal",
@@ -177,6 +178,20 @@ describe("proxy page authentication (deny-by-default)", () => {
       new NextRequest("http://localhost:3000/", { headers: { host: "localhost" } }),
     );
     assert.equal(anon.headers.get("x-monstera-agency-slug"), "acme", "public paths still rewrite");
+  });
+
+  it("authenticates and rewrites onboarding on agency hosts while preserving workspace context", async () => {
+    process.env.AGENCY_HOST_ROUTING_ENABLED = "1";
+    const request = new NextRequest("https://acme.monsteracloud.com/onboarding?workspaceId=ws_123", { headers: { host: "acme.monsteracloud.com" } });
+    const authenticated = __createProxyForTests({ getSessionToken: async () => ({ sub: "user" }) });
+    const response = await authenticated(request);
+    const rewrite = new URL(response.headers.get("x-middleware-rewrite")!);
+    assert.equal(rewrite.pathname, "/agencies/acme/onboarding");
+    assert.equal(rewrite.searchParams.get("workspaceId"), "ws_123");
+    assert.equal(response.headers.get("x-monstera-agency-slug"), "acme");
+    const anonymous = __createProxyForTests({ getSessionToken: async () => null });
+    assert.equal(new URL((await anonymous(request)).headers.get("location")!).pathname, "/login");
+    assert.equal((await authenticated(new NextRequest("https://app.example.test/agencies/acme/onboarding"))).headers.get("x-middleware-rewrite"), null);
   });
 
   it("rewrites /operations under agency tenant layout while preserving client context", async () => {

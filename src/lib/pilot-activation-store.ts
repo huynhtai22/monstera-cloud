@@ -4,6 +4,7 @@ import {
   dashboardReviewAuditId,
 } from "@/lib/pilot-activation";
 import prisma from "@/lib/prisma";
+import type { ScopedTransaction } from "@/lib/warehouse-query";
 
 export class PilotActivationConflictError extends Error {
   readonly statusCode = 409;
@@ -18,18 +19,20 @@ export async function recordDashboardReviewMilestone(input: {
   workspaceId: string;
   actorUserId: string;
   now?: Date;
+  client?: Pick<ScopedTransaction, "campaignMetric" | "auditEvent">;
 }): Promise<{ rows7d: number; createdAt: Date }> {
+  const db = input.client ?? prisma;
   const now = input.now ?? new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
   const [rows7d, dataThrough, existing] = await Promise.all([
-    prisma.campaignMetric.count({
+    db.campaignMetric.count({
       where: { workspaceId: input.workspaceId, date: { gte: sevenDaysAgo } },
     }),
-    prisma.campaignMetric.aggregate({
+    db.campaignMetric.aggregate({
       where: { workspaceId: input.workspaceId, date: { gte: sevenDaysAgo } },
       _max: { date: true },
     }),
-    prisma.auditEvent.findFirst({
+    db.auditEvent.findFirst({
       where: { workspaceId: input.workspaceId, action: DASHBOARD_REVIEWED_ACTION },
       orderBy: { createdAt: "asc" },
       select: { createdAt: true },
@@ -43,7 +46,7 @@ export async function recordDashboardReviewMilestone(input: {
   }
   if (existing) return { rows7d, createdAt: existing.createdAt };
 
-  const event = await prisma.auditEvent.upsert({
+  const event = await db.auditEvent.upsert({
     where: { id: dashboardReviewAuditId(input.workspaceId) },
     create: {
       id: dashboardReviewAuditId(input.workspaceId),

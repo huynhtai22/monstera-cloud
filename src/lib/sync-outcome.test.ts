@@ -10,6 +10,11 @@ import { isTikTokRetryableFailure } from "./tiktok-business";
 import { isGoogleAdsRetryableFailure } from "./google-ads";
 
 describe("sync outcome contract", () => {
+  it("keeps optional Ads failure visible without failing required orders or counting Ads rows", () => {
+    const summary = summarizeSyncOutcome([{ id: "orders", kind: "connection", ok: true, rowsIngested: 3 }, { id: "ads", kind: "connection", optional: true, ok: false, rowsIngested: 5, error: "permission denied" }]);
+    assert.equal(summary.success, true); assert.equal(summary.rowsIngested, 3);
+    assert.equal(summarizeSyncOutcome([{ id: "orders", kind: "connection", ok: false }, { id: "ads", kind: "connection", optional: true, ok: true, rowsIngested: 5 }]).success, false);
+  });
   it("records all-success only when every requested target completes", () => {
     const children: SyncChildResult[] = [
       { id: "act-1", kind: "ad_account", ok: true, rowsIngested: 3 },

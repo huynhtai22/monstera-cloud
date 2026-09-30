@@ -259,10 +259,10 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
           );
         }
         const children: SyncChildResult[] = [
-          { id: "campaign_catalog", kind: "connection", ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
-          { id: "product_catalog", kind: "connection", ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
+          { id: "campaign_catalog", kind: "connection", optional: true, ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
+          { id: "product_catalog", kind: "connection", optional: true, ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
           { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error, retryable: !orders.success && isRetryableSyncError(orders.error) },
-          { id: "ads_performance", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
+          { id: "ads_performance", kind: "connection", optional: true, ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
         ];
         const summary = summarizeSyncOutcome(children);
         await persistConnectionSyncOutcome(connectionId, summary, lease);
@@ -785,15 +785,12 @@ async function syncGoogleAds(opts: {
 
   logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
 
-  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedCustomerIds)
-    ? extraFields.selectedCustomerIds
-    : Array.isArray(credentials.selectedCustomerIds)
-      ? credentials.selectedCustomerIds
+  const selectedIds: string[] | undefined = Array.isArray(credentials.selectedCustomerIds)
+    ? credentials.selectedCustomerIds
+    : Array.isArray(extraFields.selectedCustomerIds)
+      ? extraFields.selectedCustomerIds
       : undefined;
-  if (selectedIds !== undefined) {
-    customerIds = customerIds.filter((id: string) => selectedIds.includes(id));
-    logger.info(`[syncGoogleAds] Filtered to ${customerIds.length} selected customers`);
-  }
+
 
   if (!customerIds.length) {
     const result = makeFailedSyncResult("No customer accounts selected or found on connection", false);
@@ -819,6 +816,7 @@ async function syncGoogleAds(opts: {
   type LeafAccount = { customerId: string; mccId: string; descriptiveName: string };
   const leafAccounts: LeafAccount[] = [];
   const seenLeafIds = new Set<string>();
+  const targetedHierarchyFailures: { rootId: string; error: string; retryable: boolean }[] = [];
 
   for (const rootId of customerIds) {
     try {
@@ -847,11 +845,19 @@ async function syncGoogleAds(opts: {
       if (isRetryableSyncError(err)) {
         // A quota/network failure while expanding an MCC means its child scope
         // is unknown; never substitute a zero-row root query for completion.
-        children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        if (selectedIds === undefined) {
+          children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        } else {
+          targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: true });
+        }
         logger.warn(`[syncGoogleAds] Deferring root=${rootId} after retryable hierarchy failure: ${msg}`);
         continue;
       }
       logger.warn(`[syncGoogleAds] Could not resolve hierarchy for root=${rootId}: ${msg} — trying direct query`);
+      if (selectedIds !== undefined) {
+        targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: false });
+        continue;
+      }
       // Fallback: treat root as leaf with itself as login-customer-id
       if (!seenLeafIds.has(rootId)) {
         seenLeafIds.add(rootId);
@@ -873,9 +879,23 @@ async function syncGoogleAds(opts: {
     recoverableErrorPattern: /CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED|Google Ads API access is not enabled for the Google Cloud project/i,
   });
 
+  // Selection refers to reportable leaves, not manager roots. Never expand consent.
+  const selectedLeaves = selectedIds === undefined ? leafAccounts : leafAccounts.filter(account => selectedIds.includes(account.customerId));
+  if (selectedIds !== undefined) {
+    for (const id of selectedIds) {
+      if (selectedLeaves.some(account => account.customerId === id)) continue;
+      // An unresolved hierarchy cannot prove revocation. Keep the approved leaf
+      // as the retry target; a manager ID must never become a report selection.
+      const transientFailure = targetedHierarchyFailures.find(failure => failure.retryable);
+      children.push({ id, kind: "customer", ok: false,
+        error: transientFailure ? `Could not resolve customer hierarchy: ${transientFailure.error}` : "Selected customer is no longer accessible under this connection",
+        retryable: Boolean(transientFailure) });
+    }
+  }
+
   // ── Step 2: Query each leaf account ────────────────────────────────────────
-  for (const { customerId, mccId, descriptiveName } of leafAccounts) {
-    if (skippedCustomers.has(customerId)) {
+  for (const { customerId, mccId, descriptiveName } of selectedLeaves) {
+    if (skippedCustomers.has(customerId) && selectedIds === undefined) {
       logger.info(`[syncGoogleAds] Skipping quarantined/reconnect-required customer ${customerId}`);
       children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0, skipped: "account_health" });
       continue;

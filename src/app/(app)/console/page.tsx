@@ -6,6 +6,8 @@ export const metadata: Metadata = {
     description: "Workspace dashboard — connections, sync health, and quick actions.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function ConsolePage() {
-    return <DashboardSessionGuard />;
+    return <DashboardSessionGuard onboardingEnabled={process.env.ENABLE_AGENT_ONBOARDING === "1"} />;
 }
