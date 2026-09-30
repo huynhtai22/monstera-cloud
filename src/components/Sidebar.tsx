@@ -187,6 +187,7 @@ export function Sidebar({
     return (
         <aside
             aria-label="Application sidebar"
+            data-collapsed={collapsed}
             className={cn(
                 "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
                 collapsed ? "w-[68px]" : "w-64",
@@ -204,7 +205,7 @@ export function Sidebar({
                     aria-label={collapsed ? `Active workspace: ${activeWorkspace?.name || "Workspace"}` : undefined}
                     className="group relative flex h-10 w-full items-center rounded-lg border border-line bg-panel transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas"
                 >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                    <div data-workspace-mark className="flex h-10 w-10 shrink-0 items-center justify-center">
                         <LogoMark className="h-6 w-6 shrink-0" />
                     </div>
 

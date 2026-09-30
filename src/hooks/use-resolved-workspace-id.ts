@@ -19,7 +19,7 @@ export function useResolvedWorkspaceId() {
     const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
     const setActiveWorkspaceId = useWorkspaceStore((s) => s.setActiveWorkspaceId);
 
-    const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
+    const { data: workspaces, error, isLoading, mutate } = useSWR("/api/workspaces", fetcher);
 
     const resolvedId = useMemo(() => {
         if (!Array.isArray(workspaces) || workspaces.length === 0) return null;
@@ -40,5 +40,6 @@ export function useResolvedWorkspaceId() {
         workspaces,
         error,
         isLoading,
+        mutate,
     };
 }

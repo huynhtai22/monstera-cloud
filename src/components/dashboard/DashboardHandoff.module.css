@@ -1,0 +1,4 @@
+.frame { position: relative; }
+.real { position: relative; }
+.outgoing { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.outgoing > svg { display: block; width: 100%; height: 100%; fill: var(--color-panel); stroke: var(--color-line); stroke-width: 1; }

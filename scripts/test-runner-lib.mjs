@@ -171,7 +171,9 @@ export function createTestPlan(argv, discoveredTests, cwd = process.cwd()) {
   if (postgres.length) {
     plan.push({
       name: "postgres",
-      args: ["--test", "--test-concurrency=4", ...withoutPostgresConcurrency(flags), ...postgres],
+      // Suites share schema-level fault-injection constraints. Serialize files;
+      // their Promise.all races still exercise concurrent leases/transactions.
+      args: ["--test", "--test-concurrency=1", ...withoutPostgresConcurrency(flags), ...postgres],
     });
   }
   return plan;
