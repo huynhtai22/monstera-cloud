@@ -7,8 +7,8 @@ import styles from "./AppLoader.module.css";
 
 const SESSION_KEY = "monstera-workspace-intro-seen";
 const MOTION = { delay: 200, hold: 600, exit: 480, backdrop: 160, reduced: 150 };
-const paths = ["M44 62C106 62 106 140 154 140", "M82 224C136 224 124 180 174 166", "M368 70C308 70 306 126 266 140", "M338 236C278 236 292 186 248 170"];
-const nodes = [[44,62], [82,224], [368,70], [338,236]];
+const paths = ["M18 65C80 65 76 130 124 130", "M59 227C115 227 109 174 141 158", "M306 82C238 82 247 130 196 130", "M284 224C220 224 225 174 178 158"];
+const nodes = [[18,65], [59,227], [306,82], [284,224]];
 const copy = {
   en: ["Verifying your session", "Loading your workspace", "Receiving source health", "Preparing dashboard data", "Your workspace is ready"],
   vi: ["Đang xác minh phiên đăng nhập", "Đang tải không gian làm việc", "Đang nhận trạng thái nguồn dữ liệu", "Đang chuẩn bị dữ liệu tổng quan", "Không gian làm việc đã sẵn sàng"],
@@ -98,13 +98,13 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
     <div className={styles.backdrop} />
     <div className={styles.visual} data-loader-visual>
       <div className={styles.scene} aria-hidden="true">
-        <svg className={styles.connections} viewBox="0 0 420 280">
-          {paths.map((d,i) => <g key={d} data-milestone={i+1} data-complete={completed[i]}>
+        <svg className={styles.connections} viewBox="0 0 320 260">
+          {paths.map((d,i) => <g key={d} style={{ animationDelay: `${200+i*50}ms` }} data-milestone={i+1} data-complete={completed[i]}>
             <path d={d} className={styles.track}/><path d={d} className={styles.signal}/>
-            <circle cx={nodes[i][0]} cy={nodes[i][1]} r="5" className={styles.node}/>
+            <circle cx={nodes[i][0]} cy={nodes[i][1]} r="13" className={styles.node}/>
           </g>)}
         </svg>
-        <div ref={tile} className={styles.emblem}><div className={styles.face}><LogoMark className={styles.mark}/><i className={styles.sweep}/></div></div>
+        <div ref={tile} className={styles.emblem}><div className={styles.face}><LogoMark className={styles.mark}/><i className={styles.innerGradient}/><i className={styles.topHighlight}/><svg className={styles.outline} viewBox="0 0 32 32"><rect x="1.5" y="1.5" width="29" height="29" rx="6.5" pathLength="1" /></svg></div></div>
       </div>
       <div className={styles.copy}>
         <p className={styles.wordmark} aria-hidden="true">Monstera Cloud</p>

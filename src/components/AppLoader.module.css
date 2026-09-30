@@ -1,24 +1,28 @@
 .overlay { --loader-entrance: 450ms; --loader-exit: 480ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); pointer-events: auto; isolation: isolate; }
 .backdrop { position: absolute; inset: 0; background: var(--color-canvas); }
 .backdrop::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(var(--console-motion-accent) .6px, transparent .6px); background-size: 20px 20px; opacity: .08; mask-image: radial-gradient(ellipse 360px 300px at 50% 44%, black, transparent); }
-.visual { position: absolute; width: min(420px, 94vw); top: 50%; left: 50%; transform: translate(-50%, -58%); text-align: center; }
-.scene { height: 280px; position: relative; }
+.visual { position: absolute; width: 320px; top: 50%; left: 50%; transform: translate(-50%, -58%); text-align: center; }
+.scene { height: 260px; position: relative; }
 .connections { position: absolute; width: 100%; height: 100%; overflow: visible; animation: enter var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) both; }
-.track, .signal { fill: none; stroke: var(--console-motion-accent); stroke-width: .8; }
-.track { opacity: .12; }
+.track, .signal { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; }
+.track { opacity: .35; }
 .signal { opacity: .22; animation: breathe 1600ms ease-in-out infinite; transition: opacity 300ms ease-in-out; }
 .node { fill: var(--color-panel); stroke: var(--console-motion-accent); stroke-width: 1; opacity: .5; transition: opacity 300ms ease-in-out; }
 .connections [data-complete="true"] .signal { opacity: .85; animation: none; }
 .connections [data-complete="true"] .node { fill: var(--console-motion-accent); opacity: 1; }
-.emblem { position: absolute; top: 50%; left: 50%; width: 112px; height: 112px; transform: translate(-50%, -50%); animation: tileEnter var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) both; will-change: transform; }
+.emblem { position: absolute; top: 50%; left: 50%; width: 72px; height: 72px; transform: translate(-50%, -50%); animation: tileEnter var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) both; will-change: transform; }
 .emblem::before { content: ""; position: absolute; inset: -65px; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 15%, transparent), transparent 68%); animation: glow 1600ms ease-in-out infinite; }
-.face { position: relative; width: 100%; height: 100%; border-radius: 23%; overflow: hidden; background: linear-gradient(145deg, color-mix(in srgb, var(--color-panel) 94%, var(--console-motion-accent)), var(--color-panel) 70%); }
-.face::before { content: ""; position: absolute; inset: 5px 16px auto; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-ink) 35%, transparent), transparent); }
+/* The brand SVG is identical to the sidebar. Effects are separate layers. */
+.face { position: relative; width: 100%; height: 100%; }
 .mark { position: relative; display: block; width: 100%; height: 100%; }
-.mark > rect { fill: transparent; stroke: var(--console-motion-accent); stroke-width: .3; stroke-dasharray: 110; stroke-dashoffset: 110; animation: outline var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) forwards, borderBreath 1600ms 650ms ease-in-out infinite; }
-.mark > path { stroke: var(--color-ink); stroke-width: 2.3; }
-.sweep { position: absolute; inset: 0; border: 1px solid transparent; border-radius: inherit; pointer-events: none; mask-image: linear-gradient(transparent 6%, black 9%, black 12%, transparent 15%, transparent 85%, black 88%, black 91%, transparent 94%); }
-.sweep::after { content: ""; position: absolute; inset: -40%; background: linear-gradient(100deg, transparent 42%, color-mix(in srgb, var(--console-motion-accent) 60%, transparent) 50%, transparent 58%); animation: sweep 500ms 600ms ease-in-out both; }
+.innerGradient { position: absolute; inset: 5px; border-radius: 10px; background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent) 10%, transparent), transparent 65%); pointer-events: none; }
+.topHighlight { position: absolute; inset: 5px 15px auto; height: 1px; background: linear-gradient(90deg, transparent, var(--console-motion-accent), transparent); opacity: .65; }
+.outline { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.outline rect { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: outline var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) forwards; }
+.connections > g { transform-box: fill-box; transform-origin: center; animation: nodeEnter 300ms cubic-bezier(.22,1,.36,1) both; }
+.signal { stroke-dasharray: 180; stroke-dashoffset: 180; animation: lineEnter 400ms 300ms cubic-bezier(.22,1,.36,1) forwards; }
+@keyframes lineEnter { to { stroke-dashoffset: 0; } }
+@keyframes nodeEnter { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
 .copy { animation: copyEnter var(--loader-entrance) 320ms cubic-bezier(.22,1,.36,1) both; }
 .wordmark { margin: -5px 0 20px; font-size: 27px; font-weight: 500; letter-spacing: -.04em; line-height: 1.3; }
 .eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; color: var(--color-ink-mute); margin: 0 0 10px; }
@@ -30,7 +34,7 @@
 .overlay[data-phase="exit"] .backdrop { animation: leave 160ms ease-in-out forwards; }
 .overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .copy { animation: leave 100ms ease-in-out forwards; }
 .overlay[data-phase="exit"] .emblem::before { animation: leave 100ms ease-in-out forwards; }
-.overlay[data-phase="exit"] .mark > rect { animation: none; stroke-dashoffset: 0; }
+.overlay[data-phase="exit"] .outline { animation: leave 100ms ease-in-out forwards; }
 :global(html[data-monstera-startup="skip"]) .overlay { display: none; }
 @keyframes enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes tileEnter { from { opacity: 0; transform: translate(-50%, -50%) scale(.94); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
@@ -44,8 +48,8 @@
 @media (max-width: 560px) { .wordmark { font-size: 24px; } }
 @media (prefers-reduced-motion: reduce) {
   .connections, .copy, .emblem { animation: enter 150ms 200ms ease-in-out both; }
-  .emblem::before, .signal, .sweep::after, .mark > rect { animation: none; }
-  .mark > rect { stroke-dashoffset: 0; }
+  .emblem::before, .signal, .connections > g, .outline rect { animation: none; }
+  .signal, .outline rect { stroke-dashoffset: 0; }
   .status > span { animation: enter 150ms ease-in-out; }
   .overlay[data-phase="exit"] .backdrop, .overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .copy { animation-duration: 150ms; }
 }
