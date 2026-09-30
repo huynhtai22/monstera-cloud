@@ -1,4 +1,4 @@
-.overlay { --loader-entrance: 450ms; --loader-exit: 400ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); isolation: isolate; overflow: hidden; }
+.overlay { --loader-entrance: 450ms; --loader-exit: 250ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); isolation: isolate; overflow: hidden; }
 .backdrop { position: absolute; inset: 0; background: var(--color-canvas); }
 .visual { position: absolute; width: 320px; top: 50%; left: 50%; transform: translate(-50%, -58%); text-align: center; }
 .scene { height: 260px; position: relative; }
@@ -32,11 +32,11 @@
 .step { animation: enter 150ms ease-in-out both; }
 .status { margin: 0; color: var(--color-ink); font-size: 14px; line-height: 1.5; min-height: 42px; }
 .overlay[data-phase="exit"] { pointer-events: none; }
-.overlay[data-phase="exit"] .backdrop { animation: leave 120ms ease-in-out forwards; }
-.overlay[data-phase="resolve"] .track { stroke-dashoffset: 0; animation: resolveLine 300ms var(--resolve-delay) ease-in-out both; }
-.overlay[data-phase="resolve"] .connections, .overlay[data-phase="resolve"] .branch, .overlay[data-phase="resolve"] .copy { animation: leave 120ms 480ms ease-in-out forwards; }
-.overlay[data-phase="resolve"] .emblem::before { animation: resolveGlow 600ms ease-in-out both; }
-.overlay[data-phase="resolve"] .innerGradient, .overlay[data-phase="resolve"] .topHighlight, .overlay[data-phase="resolve"] .outline { animation: leave 120ms 480ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .backdrop { animation: leave 80ms ease-in-out forwards; }
+.overlay[data-phase="resolve"] .track { stroke-dashoffset: 0; animation: resolveLine 125ms var(--resolve-delay) ease-in-out both; }
+.overlay[data-phase="resolve"] .connections, .overlay[data-phase="resolve"] .branch, .overlay[data-phase="resolve"] .copy { animation: leave 70ms 155ms ease-in-out forwards; }
+.overlay[data-phase="resolve"] .emblem::before { animation: resolveGlow 225ms ease-in-out both; }
+.overlay[data-phase="resolve"] .innerGradient, .overlay[data-phase="resolve"] .topHighlight, .overlay[data-phase="resolve"] .outline { animation: leave 70ms 155ms ease-in-out forwards; }
 .overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .branch, .overlay[data-phase="exit"] .copy, .overlay[data-phase="exit"] .innerGradient, .overlay[data-phase="exit"] .topHighlight, .overlay[data-phase="exit"] .outline { visibility: hidden; }
 .overlay[data-phase="exit"] .emblem::before, .overlay[data-phase="exit"] .outline, .overlay[data-phase="exit"] .completionGlow { animation: leave 100ms ease-in-out forwards; }
 .timeoutNotice { position: fixed; right: 24px; bottom: 24px; z-index: 10000; max-width: min(360px, calc(100vw - 48px)); padding: 16px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink); font-size: 14px; }

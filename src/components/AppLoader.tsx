@@ -6,7 +6,7 @@ import theme from "./ConsoleTheme.module.css";
 import styles from "./AppLoader.module.css";
 
 const SESSION_KEY = "monstera-workspace-intro-seen";
-const MOTION = { delay: 200, hold: 600, resolve: 600, exit: 400, backdrop: 120, reduced: 150 };
+const MOTION = { delay: 200, hold: 600, resolve: 225, exit: 250, backdrop: 80, reduced: 150 };
 const paths = ["M18 65C80 65 76 130 124 130", "M59 227C115 227 109 174 141 158", "M306 82C238 82 247 130 196 130", "M284 224C220 224 225 174 178 158"];
 const nodes = [[18,65], [59,227], [306,82], [284,224]];
 const curves = [[[18,65],[80,65],[76,130],[124,130]], [[59,227],[115,227],[109,174],[141,158]], [[306,82],[238,82],[247,130],[196,130]], [[284,224],[220,224],[225,174],[178,158]]];
@@ -73,6 +73,10 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
       remember(); setMounted(false); onChromeReveal?.(); onContentReveal?.();
     } else {
       remember();
+      const target = document.querySelector<SVGElement>("[data-workspace-mark] svg");
+      const expectedFlight = innerWidth >= 1024 && target && target.closest("aside")?.dataset.collapsed !== "true";
+      const plannedExit = matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? MOTION.reduced : MOTION.resolve + (expectedFlight ? MOTION.exit : 200);
       timers.push(setTimeout(() => {
         const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
         if (reduced) {
@@ -82,7 +86,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
           timers.push(setTimeout(() => setMounted(false), MOTION.reduced));
           return;
         }
-        // Keep all real completions visible for a full packet/glow beat before travel.
+        // Convergence and travel count toward the minimum hold, instead of adding a second wait.
         setPhase("resolve");
         timers.push(setTimeout(() => {
           const target = document.querySelector<SVGElement>("[data-workspace-mark] svg");
@@ -107,14 +111,14 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
           }
           setPhase("exit");
           onChromeReveal?.(canFly ? "flight" : "fade");
-          timers.push(setTimeout(() => onContentReveal?.(), canFly ? MOTION.exit * .6 : MOTION.backdrop));
+          timers.push(setTimeout(() => onContentReveal?.(), canFly ? 30 : MOTION.backdrop));
           timers.push(setTimeout(() => {
             delete document.documentElement.dataset.monsteraTileFlight;
             if (landingTarget.current) landingTarget.current.style.visibility = "";
             setMounted(false);
           }, canFly ? MOTION.exit : 200));
         }, MOTION.resolve));
-      }, Math.max(0, appearance + MOTION.hold - performance.now())));
+      }, Math.max(0, appearance + MOTION.hold - plannedExit - performance.now())));
     }
     return () => { timers.forEach(clearTimeout); delete document.documentElement.dataset.monsteraTileFlight;
             if (landingTarget.current) landingTarget.current.style.visibility = ""; };
@@ -146,7 +150,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
       <div className={styles.scene} aria-hidden="true">
         <div hidden>{completed.map((done,i) => <span key={i} data-milestone={i+1} data-complete={done}/>)}</div>
         <svg className={styles.connections} viewBox="0 0 320 260">
-          {slots.map((slot,i) => <g key={slot} style={{ animationDelay: `${200+i*50}ms`, "--resolve-delay": `${i*60}ms` } as CSSProperties}>
+          {slots.map((slot,i) => <g key={slot} style={{ animationDelay: `${200+i*50}ms`, "--resolve-delay": `${i*30}ms` } as CSSProperties}>
             <path d={paths[slot]} pathLength="1" className={styles.track}/>
           </g>)}
         </svg>
@@ -159,7 +163,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
               <span className={styles.nodePulse}/><span className={styles.nodeFace}>{asset && <i className={styles.sourceGlyph} style={{ maskImage: `url(/logos/${asset}.svg)` }}/>}</span>
             </div>
             {active && phase === "enter" && <Packet line={slot} loop />}
-            {phase === "resolve" && <Packet line={slot} duration={300} delay={i*60} />}
+            {phase === "resolve" && <Packet line={slot} duration={125} delay={i*30} />}
             {done && <Packet key={`done-${i}`} line={slot} />}
           </div>;
         })}

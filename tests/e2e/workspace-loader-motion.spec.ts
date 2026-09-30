@@ -48,12 +48,12 @@ test(`loader uses real milestones and a safe ${mode} handoff`, async ({ page, co
   if (mode !== "reduced") expect(new Set(work.map(s => s.packet)).size).toBeGreaterThan(10);
   expect(samples.some(s => s.providers.length === overview.sourcesList.length)).toBeTruthy();
   const resolve = samples.filter(s => s.phase === "resolve");
-  if (mode !== "reduced") expect(resolve.length).toBeGreaterThan(10);
+  if (mode !== "reduced") expect(resolve.length).toBeGreaterThan(3);
   else expect(resolve).toHaveLength(0);
   expect(resolve.every(s => s.lights.every(Boolean))).toBeTruthy();
   const flight = samples.filter(s => s.flight);
   expect(flight.every(s => s.targetHidden)).toBeTruthy();
-  expect(flight.slice(0, 3).every(s => !s.contentStarted)).toBeTruthy();
+  expect(flight.slice(0, 1).every(s => !s.contentStarted)).toBeTruthy();
   expect(flight.length === 0 || flight.some(s => s.contentStarted)).toBeTruthy();
   if (page.viewportSize()!.width >= 1024 && mode === "expanded") { expect(flight.length).toBeGreaterThan(3); expect(flight[flight.length-1].distance).toBeLessThan(1.5); }
   else expect(flight).toHaveLength(0);

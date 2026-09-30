@@ -29,11 +29,11 @@ export function DashboardHandoff({ ready, children }: { ready: boolean; children
       const animation = target.animate([
         { opacity: 0, transform: reduced ? "none" : "translateY(12px)" },
         { opacity: 1, transform: reduced ? "none" : "translateY(0)" },
-      ], { duration: reduced ? 150 : 300, delay: reduced ? 0 : Math.min(index,3)*50, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+      ], { duration: 150, delay: reduced ? 0 : Math.min(index,3)*40, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
       animation.pause();
       return animation;
     });
-    placeholder.current = outgoing.current?.animate([{opacity:1},{opacity:0}], {duration:200,easing:"ease-in-out",fill:"both"}) ?? null;
+    placeholder.current = outgoing.current?.animate([{opacity:1},{opacity:0}], {duration:100,easing:"ease-in-out",fill:"both"}) ?? null;
     placeholder.current?.pause();
     return () => { motions.current.forEach(a => a.cancel()); placeholder.current?.cancel(); motions.current = []; };
   }, [ready, enteredDuringStartup]);
@@ -45,7 +45,7 @@ export function DashboardHandoff({ ready, children }: { ready: boolean; children
       if (current.current.fade) real.current.animate([{opacity:0},{opacity:1}], {duration:150,easing:"ease-in-out",fill:"both"});
     }
     placeholder.current?.play();
-    const timer = setTimeout(() => setRetained(false), 600);
+    const timer = setTimeout(() => setRetained(false), 300);
     return () => clearTimeout(timer);
   }, [ready, handoff]);
   return <div className={styles.frame} data-ready={ready} data-reveal={handoff}>
