@@ -41,6 +41,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
   const [slow, setSlow] = useState(false);
   const tile = useRef<HTMLDivElement>(null);
   const landingTarget = useRef<SVGElement | null>(null);
+  const landingVisibility = useRef("");
   const [m0,m1,m2,m3] = milestones;
   useEffect(() => setCompleted(current => current.map((done,i) => done || [m0,m1,m2,m3 && !visible][i])), [m0,m1,m2,m3,visible]);
   useEffect(() => {
@@ -67,6 +68,16 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
     const appearance = showAt.current;
     const remember = () => { try { sessionStorage.setItem(SESSION_KEY, "1"); } catch { /* Optional storage. */ } };
     const timers: ReturnType<typeof setTimeout>[] = [];
+    let disposed = false;
+    let travel: Animation | undefined;
+    const land = () => {
+      if (disposed) return;
+      // Swap the two identical assets in one JS turn, before the next paint.
+      if (tile.current) tile.current.style.visibility = "hidden";
+      if (landingTarget.current) landingTarget.current.style.visibility = landingVisibility.current;
+      delete document.documentElement.dataset.monsteraTileFlight;
+      setMounted(false);
+    };
     if (visible) {
       timers.push(setTimeout(remember, Math.max(0, appearance - performance.now())));
     } else if (performance.now() < appearance) {
@@ -96,15 +107,17 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
           const collapsed = target?.closest("aside")?.dataset.collapsed === "true";
           const canFly = innerWidth >= 1024 && !collapsed && from && to && to.left >= 0 && to.right <= innerWidth && to.top >= 0 && to.width > 0;
           if (canFly && tile.current && target) {
+            const size = tile.current.offsetWidth;
             const dx = to.x + to.width/2 - (from.x + from.width/2);
             const dy = to.y + to.height/2 - (from.y + from.height/2);
             document.documentElement.dataset.monsteraTileFlight = "true";
             landingTarget.current = target;
+            landingVisibility.current = target.style.visibility;
             target.style.visibility = "hidden";
             document.querySelectorAll('[data-workspace-shell] aside[aria-label="Application sidebar"], [data-workspace-shell] nav[aria-label="Breadcrumb"]').forEach((part,index) => part.animate([{opacity:.65},{opacity:1}], {duration:180,delay:index*50,easing:"cubic-bezier(.22,1,.36,1)",fill:"both"}));
-            tile.current.animate([
-              { transform: "translate(-50%, -50%) scale(1)", opacity: 1 },
-              { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${to.width/from.width})`, opacity: 1 },
+            travel = tile.current.animate([
+              { transform: `translate(-50%, -50%) scale(${from.width/size})`, opacity: 1 },
+              { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${to.width/size})`, opacity: 1 },
             ], { duration: MOTION.exit, easing: "cubic-bezier(.22,1,.36,1)", fill: "forwards" });
           } else {
             tile.current?.animate([{ opacity: 1 },{ opacity: 0 }], { duration: 200, easing: "ease-in-out", fill: "forwards" });
@@ -112,16 +125,18 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
           setPhase("exit");
           onChromeReveal?.(canFly ? "flight" : "fade");
           timers.push(setTimeout(() => onContentReveal?.(), canFly ? 30 : MOTION.backdrop));
-          timers.push(setTimeout(() => {
-            delete document.documentElement.dataset.monsteraTileFlight;
-            if (landingTarget.current) landingTarget.current.style.visibility = "";
-            setMounted(false);
-          }, canFly ? MOTION.exit : 200));
+          if (travel) void travel.finished.then(land, () => { /* Cancellation during navigation. */ });
+          else timers.push(setTimeout(land, 200));
         }, MOTION.resolve));
       }, Math.max(0, appearance + MOTION.hold - plannedExit - performance.now())));
     }
-    return () => { timers.forEach(clearTimeout); delete document.documentElement.dataset.monsteraTileFlight;
-            if (landingTarget.current) landingTarget.current.style.visibility = ""; };
+    return () => {
+      disposed = true;
+      timers.forEach(clearTimeout);
+      travel?.cancel();
+      delete document.documentElement.dataset.monsteraTileFlight;
+      if (landingTarget.current) landingTarget.current.style.visibility = landingVisibility.current;
+    };
   }, [visible, mounted, onChromeReveal, onContentReveal]);
 
   useEffect(() => {
