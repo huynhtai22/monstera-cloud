@@ -42,7 +42,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
   const tile = useRef<HTMLDivElement>(null);
   const landingTarget = useRef<SVGElement | null>(null);
   const [m0,m1,m2,m3] = milestones;
-  useEffect(() => setCompleted(current => current.map((done,i) => done || [m0,m1,m2,m3][i])), [m0,m1,m2,m3]);
+  useEffect(() => setCompleted(current => current.map((done,i) => done || [m0,m1,m2,m3 && !visible][i])), [m0,m1,m2,m3,visible]);
   useEffect(() => {
     try { const saved = localStorage.getItem("marketing_lang"); setLanguage(saved === "vi" || (!saved && navigator.language.startsWith("vi")) ? "vi" : "en"); }
     catch { setLanguage(navigator.language.startsWith("vi") ? "vi" : "en"); }
@@ -136,10 +136,11 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
   </div>;
   const pendingStep = completed.findIndex(done => !done);
   const step = pendingStep === -1 ? 3 : pendingStep;
-  const status = slow && visible ? (lang === "vi" ? "Vẫn đang xử lý..." : "Still working...") : measurable ? copy[lang][step] : (lang === "vi" ? "Đang chuẩn bị không gian làm việc" : "Preparing your workspace");
-  const count = providers?.length ? Math.max(2, Math.min(4, providers.length)) : 4;
-  const slots = count === 2 ? [0,3] : count === 3 ? [0,1,2] : [0,1,2,3];
-  return <div className={`${theme.root} ${styles.overlay}`} data-console-theme="dark" data-phase={phase} data-workspace-loader role="status" aria-live="polite" aria-label={status} lang={lang}>
+  const resolved = completed.every(Boolean) && !visible;
+  const status = resolved ? (lang === "vi" ? "Không gian làm việc đã sẵn sàng" : "Workspace ready") : slow && visible ? (lang === "vi" ? "Vẫn đang xử lý..." : "Still working...") : measurable ? copy[lang][step] : (lang === "vi" ? "Đang chuẩn bị không gian làm việc" : "Preparing your workspace");
+  // Each node owns one startup signal; provider icons never imply live credential checks.
+  const slots = [0,1,2,3];
+  return <div className={`${theme.root} ${styles.overlay}`} data-console-theme="dark" data-phase={phase} data-pending={visible} data-workspace-loader role="status" aria-live="polite" aria-label={status} lang={lang}>
     <div className={styles.backdrop} />
     <div className={styles.visual} data-loader-visual>
       <div className={styles.scene} aria-hidden="true">
@@ -150,17 +151,16 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
           </g>)}
         </svg>
         {slots.map((slot,i) => {
-          const assigned = [0,1,2,3].filter(m => Math.floor(m*count/4) === i);
-          const done = assigned.every(m => completed[m]);
-          const active = assigned.includes(pendingStep);
+          const done = completed[i];
+          const active = i === pendingStep;
           const asset = providers?.[i] ? providerAssets[providers[i]] : undefined;
-          return <div key={slot} className={styles.branch} data-source-node data-state={done ? "done" : active ? "active" : "pending"} data-provider={providers?.[i]}>
+          return <div key={slot} className={styles.branch} data-source-node data-signal={i+1} data-state={done ? "done" : active ? "active" : "pending"} data-provider={providers?.[i]}>
             <div className={styles.nodeShell} style={{ left: nodes[slot][0], top: nodes[slot][1], animationDelay: `${200+i*50}ms` }}>
               <span className={styles.nodePulse}/><span className={styles.nodeFace}>{asset && <i className={styles.sourceGlyph} style={{ maskImage: `url(/logos/${asset}.svg)` }}/>}</span>
             </div>
             {active && phase === "enter" && <Packet line={slot} loop />}
             {phase === "resolve" && <Packet line={slot} duration={300} delay={i*60} />}
-            {assigned.filter(m => completed[m]).map(m => <Packet key={`done-${m}`} line={slot} />)}
+            {done && <Packet key={`done-${i}`} line={slot} />}
           </div>;
         })}
         <div ref={tile} className={styles.emblem} data-loader-tile><div className={styles.face}><LogoMark className={styles.mark}/><i className={styles.innerGradient}/><i className={styles.topHighlight}/><svg className={styles.outline} viewBox="0 0 32 32"><rect x="1.5" y="1.5" width="29" height="29" rx="6.5" pathLength="1" /></svg></div>
@@ -169,8 +169,10 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
       </div>
       <div className={styles.copy}>
         <p className={styles.wordmark} aria-hidden="true">Monstera Cloud</p>
-        <p className={styles.eyebrow} aria-hidden="true">{lang === "vi" ? "BƯỚC" : "STEP"} {step+1} / 4</p>
-        <div className={styles.status} aria-hidden="true"><StepText text={status} /></div>
+        <div key={`${step}:${status}`} className={styles.step} aria-hidden="true" data-loader-step={resolved ? "ready" : step+1}>
+          <p className={styles.eyebrow}>{resolved ? (lang === "vi" ? "SẴN SÀNG" : "READY") : `${lang === "vi" ? "BƯỚC" : "STEP"} ${step+1} / 4`}</p>
+          <p className={styles.status}>{status}</p>
+        </div>
       </div>
     </div>
   </div>;
@@ -186,17 +188,4 @@ function Packet({ line, loop = false, duration, delay = 0 }: { line: number; loo
     return () => motion.cancel();
   }, [line, loop, duration, delay]);
   return <span ref={element} className={styles.packet} data-line={line} data-loop={loop} />;
-}
-
-function StepText({ text }: { text: string }) {
-  const [previous, setPrevious] = useState<string | null>(null);
-  const last = useRef(text);
-  useEffect(() => {
-    if (last.current === text) return;
-    setPrevious(last.current);
-    last.current = text;
-    const timer = setTimeout(() => setPrevious(null), 250);
-    return () => clearTimeout(timer);
-  }, [text]);
-  return <>{previous && <span className={styles.outgoing}>{previous}</span>}<span key={text}>{text}</span></>;
 }

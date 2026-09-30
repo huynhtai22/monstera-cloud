@@ -18,7 +18,7 @@ test(`loader uses real milestones and a safe ${mode} handoff`, async ({ page, co
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
   });
   await page.addInitScript(() => {
-    const samples: { lights: boolean[]; distance: number; flight: boolean; phase: string; packet: string; providers: string[]; targetHidden: boolean; contentStarted: boolean }[] = [];
+    const samples: { lights: boolean[]; distance: number; flight: boolean; states: string[]; pending: boolean; label: string; status: string; phase: string; packet: string; providers: string[]; targetHidden: boolean; contentStarted: boolean }[] = [];
     (window as unknown as { startupSamples: typeof samples }).startupSamples = samples;
     function sample() {
       const loader = document.querySelector("[data-workspace-loader]");
@@ -26,7 +26,7 @@ test(`loader uses real milestones and a safe ${mode} handoff`, async ({ page, co
       const target = document.querySelector("[data-workspace-mark] svg");
       if (tile && target) {
         const a = tile.getBoundingClientRect(), b = target.getBoundingClientRect();
-        samples.push({ lights: [...loader!.querySelectorAll("[data-milestone]")].map(e => e.getAttribute("data-complete") === "true"), distance: Math.hypot(a.x+a.width/2-b.x-b.width/2, a.y+a.height/2-b.y-b.height/2), flight: document.documentElement.dataset.monsteraTileFlight === "true", phase: loader!.getAttribute("data-phase") ?? "", packet: (() => { const packet = loader!.querySelector("[data-loop=true]"); return packet ? getComputedStyle(packet).transform : ""; })(), providers: [...loader!.querySelectorAll("[data-provider]")].map(node => node.getAttribute("data-provider")!), targetHidden: getComputedStyle(target).visibility === "hidden", contentStarted: document.querySelector("[data-workspace-content]")?.parentElement?.getAttribute("data-reveal") === "true" });
+        samples.push({ lights: [...loader!.querySelectorAll("[data-milestone]")].map(e => e.getAttribute("data-complete") === "true"), distance: Math.hypot(a.x+a.width/2-b.x-b.width/2, a.y+a.height/2-b.y-b.height/2), flight: document.documentElement.dataset.monsteraTileFlight === "true", states: [...loader!.querySelectorAll("[data-source-node]")].map(node => node.getAttribute("data-state")!), pending: loader!.getAttribute("data-pending") === "true", label: loader!.querySelector("[data-loader-step]")?.textContent ?? "", status: loader!.getAttribute("aria-label") ?? "", phase: loader!.getAttribute("data-phase") ?? "", packet: (() => { const packet = loader!.querySelector("[data-loop=true]"); return packet ? getComputedStyle(packet).transform : ""; })(), providers: [...loader!.querySelectorAll("[data-provider]")].map(node => node.getAttribute("data-provider")!), targetHidden: getComputedStyle(target).visibility === "hidden", contentStarted: document.querySelector("[data-workspace-content]")?.parentElement?.getAttribute("data-reveal") === "true" });
       }
       requestAnimationFrame(sample);
     }
@@ -34,9 +34,16 @@ test(`loader uses real milestones and a safe ${mode} handoff`, async ({ page, co
   });
   await page.goto("/console", { waitUntil: "domcontentloaded" });
   await expect(page.locator("[data-workspace-loader]")).toHaveCount(0);
-  const samples = await page.evaluate(() => (window as unknown as { startupSamples: { lights: boolean[]; distance: number; flight: boolean; phase: string; packet: string; providers: string[]; targetHidden: boolean; contentStarted: boolean }[] }).startupSamples);
+  const samples = await page.evaluate(() => (window as unknown as { startupSamples: { lights: boolean[]; distance: number; flight: boolean; states: string[]; pending: boolean; label: string; status: string; phase: string; packet: string; providers: string[]; targetHidden: boolean; contentStarted: boolean }[] }).startupSamples);
   expect(samples.some(s => s.lights.every(Boolean))).toBeTruthy();
   for (let i = 1; i < samples.length; i++) samples[i-1].lights.forEach((done, index) => { if (done) expect(samples[i].lights[index]).toBeTruthy(); });
+  for (const sample of samples) {
+    expect(sample.states.map(state => state === "done")).toEqual(sample.lights);
+    if (sample.pending) expect(sample.lights[3]).toBeFalsy();
+    expect(sample.label).toContain(sample.status);
+    const active = sample.lights.findIndex(done => !done);
+    if (active >= 0) expect(sample.states[active]).toBe("active");
+  }
   const work = samples.filter(s => s.phase === "enter" && s.packet);
   if (mode !== "reduced") expect(new Set(work.map(s => s.packet)).size).toBeGreaterThan(10);
   expect(samples.some(s => s.providers.length === overview.sourcesList.length)).toBeTruthy();

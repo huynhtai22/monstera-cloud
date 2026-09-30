@@ -152,7 +152,7 @@ export function DashboardHomePage() {
 
   const isLoading = workspaceLoading || (!overview && !error && Boolean(workspaceId)) || (dataLoading && !overview);
   const settled = !workspaceLoading && (Boolean(workspaceError) || !workspaceId || Boolean(overview) || Boolean(error));
-  React.useEffect(() => { if (settled) completeDashboard?.(Boolean(overview), overview?.sourcesList.map(source => source.provider)); }, [settled, overview, completeDashboard]);
+  React.useLayoutEffect(() => { if (settled) completeDashboard?.(Boolean(overview), overview?.sourcesList.map(source => source.provider)); }, [settled, overview, completeDashboard]);
   const isUpdating = isRefreshing || isValidating;
 
   // ── Loading Skeleton ────────────────────────────────────────────────────────
