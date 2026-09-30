@@ -4,7 +4,6 @@ import { emitMonitor } from "@/lib/observability/monitors";
 import { shouldNotifyStale } from "./alert-policy";
 import { STALE_AFTER_MS } from "./stale-health";
 import { withSystemScope } from "@/lib/tenant-guard";
-import { getRedis } from "@/lib/redis";
 import { upsertOpenTicket } from "@/lib/support-ticket";
 
 const QUEUED_WARN_MS = 15 * 60 * 1000;
@@ -68,7 +67,6 @@ async function emitUnsafe(now: Date) {
 
   for (const [workspaceId, info] of staleByWorkspace) {
     if (!shouldNotifyStale(info.hours)) continue;
-    if (!(await claimAlertSlot(`stale:${workspaceId}`, 24 * 60 * 60))) continue;
     await upsertOpenTicket({
       workspaceId,
       reason: "stale",
@@ -81,7 +79,8 @@ async function emitUnsafe(now: Date) {
       pipelineName: `${info.count} source(s) stale`,
       errorMsg: `[stale] No successful warehouse sync in ${info.hours} hours`,
       actionHint: "Open Data Explorer and run a manual refresh, or wait for the next nightly sweep.",
-    }).catch(() => {});
+      idempotencyKey: `stale:${workspaceId}:${now.toISOString().slice(0, 10)}`,
+    });
   }
 
   return {
@@ -89,17 +88,4 @@ async function emitUnsafe(now: Date) {
     staleSources: staleSources.length,
     staleWorkspaces: staleByWorkspace.size,
   };
-}
-
-async function claimAlertSlot(key: string, ttlSeconds: number): Promise<boolean> {
-  if (!process.env.KV_URL && !process.env.KV_REST_API_URL) {
-    return false;
-  }
-  try {
-    const redis = getRedis();
-    const result = await redis.set(`alert:${key}`, "1", { nx: true, ex: ttlSeconds });
-    return result === "OK" || result === true || result === "1";
-  } catch {
-    return false;
-  }
 }

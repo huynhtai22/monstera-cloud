@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import prisma from "@/lib/prisma";
-import { syncConnectionData, calculateInclusiveDataWindowDays } from "./sync-connection";
+import { syncConnectionData, calculateInclusiveDataWindowDays, persistPreSyncConnectionFailure } from "./sync-connection";
 
 const TEST_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+type ConnectionUpdate = { data: Record<string, unknown>; where?: Record<string, unknown> };
 
 async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
   const originalTimeout = globalThis.setTimeout;
@@ -20,23 +21,30 @@ async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
 
 async function withSyncHarness<T>(
   fetchImpl: typeof fetch,
-  run: (updates: Array<{ data: Record<string, unknown> }>) => Promise<T>,
+  run: (updates: ConnectionUpdate[]) => Promise<T>,
+  options: { leaseBusy?: boolean; storedCredentials?: string; storedProvider?: string; storedWorkspaceId?: string } = {},
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
   const originalConnection = (prisma as any).connection;
   const originalTransaction = (prisma as any).$transaction;
   const originalSyncLock = (prisma as any).syncLock;
   const originalKey = process.env.ENCRYPTION_KEY;
-  const updates: Array<{ data: Record<string, unknown> }> = [];
+  const updates: ConnectionUpdate[] = [];
   process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
   globalThis.fetch = fetchImpl;
   (prisma as any).connection = {
     findUnique: async () => null,
+    findFirst: async ({ where }: any) => where.workspaceId === (options.storedWorkspaceId ?? "workspace-1")
+      ? {
+          credentials: options.storedCredentials ?? "stored-credentials",
+          provider: options.storedProvider ?? "google_ads",
+        }
+      : null,
     update: async (args: { data: Record<string, unknown> }) => {
       updates.push(args);
       return args;
     },
-    updateMany: async (args: { data: Record<string, unknown> }) => {
+    updateMany: async (args: ConnectionUpdate) => {
       updates.push(args);
       return { count: args.data && Object.keys(args.data).length >= 0 ? 1 : 0 };
     },
@@ -51,7 +59,7 @@ async function withSyncHarness<T>(
   };
   (prisma as any).$transaction = async (fn: any) =>
     fn({
-      $queryRawUnsafe: async () => [{ locked: true }],
+      $queryRawUnsafe: async () => [{ locked: !options.leaseBusy }],
       syncLock: {
         findUnique: async () => null,
         upsert: async (args: any) => ({ ...args.update, ...validLease }),
@@ -84,6 +92,81 @@ async function withSyncHarness<T>(
 const freshCredentials = { accessToken: "test-access-token", expiresAt: "2099-01-01T00:00:00.000Z" };
 
 describe("provider HTTP failures preserve sync correctness", () => {
+  it("persists pre-sync failures through the connection lease", async () => {
+    await withSyncHarness((async () => new Response("[]", { status: 200 })) as typeof fetch, async (updates) => {
+      await persistPreSyncConnectionFailure({
+        connectionId: "connection-with-invalid-credentials",
+        workspaceId: "workspace-1",
+        provider: "google_ads",
+        credentials: "stored-credentials",
+        error: "Credential decryption failed",
+      });
+
+      assert.equal(updates.length, 1);
+      assert.deepEqual(updates[0].data, { lastError: "[failed] Credential decryption failed" });
+      assert.deepEqual(updates[0].where, {
+        id: "connection-with-invalid-credentials",
+        status: { not: "disconnected" },
+        credentials: "stored-credentials",
+        workspaceId: "workspace-1",
+      });
+    });
+  });
+
+  it("does not persist a pre-sync failure while another worker owns the lease", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-owned-by-active-worker",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "stored-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { leaseBusy: true },
+    );
+  });
+
+  it("does not persist a stale credential failure after the source credentials are repaired", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-with-repaired-credentials",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "old-invalid-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { storedCredentials: "new-repaired-credentials" },
+    );
+  });
+
+  it("does not persist a failure for a connection from another workspace", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-from-another-workspace",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "stored-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { storedWorkspaceId: "workspace-2" },
+    );
+  });
+
   it("keeps mixed Google customer outcomes partial and does not advance lastSyncAt after a 429", async () => {
     let calls = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {

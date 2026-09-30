@@ -218,6 +218,7 @@ model Workspace {
   dispatchAttempts            ReportScheduleDispatchAttempt[]
   reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
   clientFreshnessStates       ClientFreshnessState[]
+  agencyAlertDeliveries       AgencyAlertDelivery[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -427,6 +428,33 @@ model ReportEmailDeliveryAttempt {
 
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, clientId, snapshotId, createdAt])
+}
+
+/// Durable at-least-once delivery queue for agency operations alerts.
+model AgencyAlertDelivery {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  idempotencyKey String
+  pipelineName   String
+  clientId       String?
+  errorMsg       String
+  actionHint     String?
+  status         String    @default("pending") // pending | sending | sent | dead
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  leaseId        String?
+  leaseExpiresAt DateTime?
+  deliveredAt    DateTime?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([workspaceId, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@index([status, deliveredAt])
 }
 
 /// Authoritative client assignment for a provider account discovered via a root connection.

@@ -41,7 +41,7 @@ describe("scoped cron authentication", () => {
   it("keeps every pilot scheduler invocation wired to scoped-or-legacy credentials", () => {
     const workflow = readFileSync(".github/workflows/pilot-cron.yml", "utf8");
     const invocations = [...workflow.matchAll(/invoke \/api\/cron\/\S+ "\$\{(CRON_SECRET_[A-Z_]+):-\}"/g)];
-    assert.equal(invocations.length, 8);
+    assert.equal(invocations.length, 9);
     for (const [, name] of invocations) {
       assert.ok(workflow.includes(`${name}: \u0024{{ secrets.${name} || secrets.CRON_SECRET }}`), name);
     }

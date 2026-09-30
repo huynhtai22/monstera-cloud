@@ -8,6 +8,12 @@ import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehou
 const DEFAULT_LIMIT = 1_000;
 export const HARD_LIMIT = 100_000;
 const STALE_AFTER_MS = 26 * 60 * 60 * 1_000;
+export const SUPPORTED_REPORT_LEVELS = ["ad", "adset", "campaign", "account"] as const;
+export type WarehouseReportLevel = (typeof SUPPORTED_REPORT_LEVELS)[number];
+
+export function isSupportedReportLevel(value: string): value is WarehouseReportLevel {
+  return (SUPPORTED_REPORT_LEVELS as readonly string[]).includes(value);
+}
 /**
  * Interactive-transaction budget for one consistent warehouse snapshot read.
  * Prisma defaults interactive transactions to five seconds, which a large
@@ -29,6 +35,8 @@ export interface WarehouseQueryInput {
   startDate?: Date;
   endDate?: Date;
   platforms?: string[];
+  /** `ad` filters stored rows; higher levels are grouped from the same filtered tenant scope. */
+  level?: WarehouseReportLevel;
   accountIds?: string[];
   campaignId?: string;
   connectionId?: string;
@@ -233,6 +241,7 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
   }
 
   if (input.platforms?.length) where.platform = { in: input.platforms };
+  if (input.level === "ad") where.level = "ad";
 
   if (input.accountIds?.length) {
     const accountPredicate = buildAccountFilterPredicate({
@@ -246,6 +255,143 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
   const countWhere = { ...where };
   if (Array.isArray(where.AND)) {
     countWhere.AND = [...where.AND];
+  }
+
+  if (input.level && input.level !== "ad") {
+    const dimensionFields: Prisma.CampaignMetricScalarFieldEnum[] = input.level === "account"
+      ? []
+      : input.level === "campaign"
+        ? ["campaignId"]
+        : ["campaignId", "adsetId"];
+    const aggregateWhere: Prisma.CampaignMetricWhereInput = { ...countWhere };
+    const aggregateConditions = Array.isArray(aggregateWhere.AND)
+      ? aggregateWhere.AND
+      : aggregateWhere.AND ? [aggregateWhere.AND] : [];
+    if (input.level === "campaign") {
+      aggregateWhere.AND = [...aggregateConditions, { campaignId: { not: "" } }];
+    } else if (input.level === "adset") {
+      aggregateWhere.AND = [...aggregateConditions, { adsetId: { not: null } }, { NOT: { adsetId: "" } }];
+    }
+    const by: Prisma.CampaignMetricScalarFieldEnum[] = [
+      "connectionId", "platform", "accountId", "date", "currency", ...dimensionFields,
+    ];
+    const [groups, asOfAggregate, dateRangeAggregate, platformRows, lastSyncAggregate, latestJob] = await Promise.all([
+      db.campaignMetric.groupBy({
+        by,
+        where: aggregateWhere,
+        _sum: { impressions: true, clicks: true, spend: true, conversions: true, revenue: true },
+        _max: { accountName: true, campaignName: true, adsetName: true, pulledAt: true },
+        orderBy: [{ date: "desc" }, { accountId: "asc" }, { platform: "asc" }, { currency: "asc" }],
+        take: take + 1,
+      }),
+      db.campaignMetric.aggregate({ where: aggregateWhere, _max: { pulledAt: true } }),
+      db.campaignMetric.aggregate({ where: aggregateWhere, _min: { date: true }, _max: { date: true } }),
+      db.campaignMetric.findMany({ where: aggregateWhere, distinct: ["platform"], select: { platform: true }, take: 50 }),
+      ownershipMode === "explicit" || ownershipMode === "unassigned"
+        ? Promise.resolve({ _max: { lastSyncAt: null as Date | null } })
+        : db.connection.aggregate({
+            where: {
+              workspaceId: input.workspaceId,
+              ...(ownershipMode === "legacy" ? { clientId: input.clientId, type: "source" } : {}),
+            },
+            _max: { lastSyncAt: true },
+          }),
+      ownershipMode === "explicit" || ownershipMode === "unassigned"
+        ? Promise.resolve(null)
+        : db.syncJob.findFirst({
+            where: {
+              pipeline: {
+                workspaceId: input.workspaceId,
+                ...(ownershipMode === "legacy"
+                  ? {
+                      OR: [
+                        { clientId: input.clientId },
+                        ...(clientAuthoritativeConnectionIds?.length
+                          ? [{ sourceConnectionId: { in: clientAuthoritativeConnectionIds } }]
+                          : []),
+                      ],
+                    }
+                  : {}),
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, status: true, finishedAt: true, errorMsg: true },
+          }),
+    ]);
+
+    const hasMore = groups.length > take;
+    const rows = groups.slice(0, take).map((group) => {
+      const impressions = group._sum.impressions ?? 0;
+      const clicks = group._sum.clicks ?? 0;
+      const spend = group._sum.spend ?? 0;
+      const revenue = group._sum.revenue ?? 0;
+      const dimensionId = input.level === "account" ? group.accountId
+        : input.level === "campaign" ? group.campaignId
+          : group.adsetId ?? "";
+      return {
+        id: `aggregate:${input.level}:${group.connectionId}:${group.accountId}:${group.date.toISOString()}:${dimensionId}:${group.currency ?? "unknown"}`,
+        workspaceId: input.workspaceId,
+        connectionId: group.connectionId,
+        platform: group.platform,
+        accountId: group.accountId,
+        accountName: group._max.accountName,
+        level: input.level,
+        entityId: dimensionId,
+        campaignId: input.level === "campaign" || input.level === "adset" ? group.campaignId : "",
+        campaignName: input.level === "campaign" || input.level === "adset" ? group._max.campaignName ?? "" : "",
+        adsetId: input.level === "adset" ? group.adsetId : null,
+        adsetName: input.level === "adset" ? group._max.adsetName : null,
+        adId: null,
+        adName: null,
+        date: group.date,
+        breakdownHash: "none",
+        impressions,
+        clicks,
+        // Reach is not additive across ads or ad sets. It is omitted at
+        // synthesized grains so the API cannot present a false unique reach.
+        reach: null,
+        spend,
+        cpc: clicks > 0 ? spend / clicks : 0,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        conversions: group._sum.conversions ?? 0,
+        revenue,
+        roas: spend > 0 ? revenue / spend : 0,
+        currency: group.currency,
+        rawData: null,
+        syncJobId: null,
+        lockScope: null,
+        pulledAt: group._max.pulledAt ?? group.date,
+        createdAt: group.date,
+        updatedAt: group.date,
+      };
+    });
+
+    const lastSyncAt = lastSyncAggregate._max.lastSyncAt;
+    const asOf = asOfAggregate._max.pulledAt;
+    const jobAttribution = ownershipMode === "explicit" || ownershipMode === "unassigned" ? "unavailable" : "available";
+    const freshnessClock = jobAttribution === "available" ? lastSyncAt : asOf;
+    let freshnessStatus: WarehouseFreshnessStatus = jobAttribution === "unavailable" && !asOf ? "unavailable" : "never";
+    if (latestJob?.status === "running" || latestJob?.status === "queued") freshnessStatus = "refreshing";
+    else if (latestJob?.status === "failed") freshnessStatus = "failed";
+    else if (freshnessClock) freshnessStatus = Date.now() - freshnessClock.getTime() > STALE_AFTER_MS ? "stale" : "fresh";
+
+    return {
+      rows,
+      pagination: { nextCursor: null, hasMore, returned: rows.length },
+      totalCount: undefined,
+      asOf,
+      dateRange: { earliest: dateRangeAggregate._min.date, latest: dateRangeAggregate._max.date },
+      platforms: platformRows.map((row) => row.platform),
+      freshness: {
+        status: freshnessStatus,
+        lastSyncAt,
+        jobAttribution,
+        latestJobId: latestJob?.id ?? null,
+        latestJobStatus: latestJob?.status ?? null,
+        retryable: latestJob?.status === "failed",
+      },
+      aggregatedLevel: input.level,
+    };
   }
 
   const decodedCursor = input.cursor ? decodeCursor(input.cursor) : null;

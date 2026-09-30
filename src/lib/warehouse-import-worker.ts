@@ -154,6 +154,7 @@ export async function processBatchItems(opts: {
         upserted: sync.rowsIngested,
         error: sync.error,
         retryable: syncChildren.some((child) => !child.ok && child.retryable),
+        retryAfterMs: Math.max(0, ...syncChildren.filter((child) => !child.ok && child.retryable).map((child) => child.retryAfterMs ?? 0)) || undefined,
         retryItems: syncChildren
           .filter((child) => !child.ok && child.retryable)
           .map((child) => ({
@@ -431,6 +432,7 @@ export async function runDurableImportWorker(
         results,
         totalUpserts,
         `Partial import: ${failedResults.length}/${results.length} requested source scope(s) failed. Retrying only retryable failed targets.`,
+        Math.max(0, ...failedResults.map((result) => result.retryAfterMs ?? 0)),
       );
       await notifyWarehouseJobIfNeeded(requeued).catch(() => {});
       return;

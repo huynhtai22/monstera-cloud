@@ -15,13 +15,14 @@ The August evidence is historical, not blanket approval of newer billing/AI/port
 
 ### 1. Overlapping connection sync protection
 
-**Status:** Implemented (2026-08-24, PR pending merge at time of writing) — verified by real-PostgreSQL concurrency suites.
+**Status:** Implemented (2026-08-24) — verified by real-PostgreSQL concurrency suites.
 
 Connection-scoped PostgreSQL lease with fencing token is implemented in `src/lib/connection-sync-lease.ts` (advisory xact lock + `SyncLock` lease row + monotonic `fencingToken`, 20-minute lease with heartbeat renewal). All execution paths (manual sync, cron warehouse refresh, batch import, OAuth backfill, pipeline pre-sync) funnel through `syncConnectionData`, which acquires the lease and fences outcome persistence.
 
 Coverage as of this hardening pass:
 
 - Outcome persistence (`lastSyncAt`/`lastError`/`status`) is lease-fenced everywhere, including pipeline runs, which now hold source + destination leases across ETL.
+- Scheduled warehouse-refresh failures detected before provider sync (such as credential decryption errors) acquire the connection lease before persisting `lastError`; if another worker owns it, the diagnostic write is skipped. Regression coverage lives in `sync-connection.test.ts`.
 - Row-level ingestion is fenced for all providers: Meta per-ad-account leases, and Google Ads / TikTok / Shopee / Lazada via `upsertCampaignMetric` lease stamping + heartbeat self-abort.
 - Shopee fleet token refresh holds the connection lease (refresh tokens are single-use; overlapping refreshes are skipped until the next cycle).
 - Admin force-unlock expires lease rows instead of deleting them, preserving `fencingToken` monotonicity.
@@ -29,7 +30,6 @@ Coverage as of this hardening pass:
 **Remaining notes (accepted):**
 
 - `WarehouseImportJob` uses leaseId + expiry CAS fencing without a monotonic token column (safe; less forensic detail).
-- A non-fenced `lastError` write remains on the warehouse-refresh error path (best-effort diagnostics write).
 - Stale-worker protection is application-layer enforcement, not PostgreSQL RLS.
 
 ### 2. Deleted / missing provider row reconciliation
@@ -48,11 +48,9 @@ Missing rows are still retained. This is not automatic provider deletion reconci
 
 ### 4. Retry pickup latency
 
-**Status:** Limitation
+**Status:** Provider-directed retry scheduling implemented; pickup cadence remains approximately 15 minutes.
 
-Provider retry backoff may be eligible within seconds or minutes, but production cron cadence can delay pickup until the next scheduler run. The current scheduler cadence is approximately 15 minutes.
-
-**Future:** Evaluate queue-driven retry execution if pilot usage requires lower latency.
+Meta requests have bounded deadlines, rate-limit responses carry provider retry hints into durable import-job scheduling, and scheduled refreshes enqueue idempotent jobs for the worker. A 15-minute GitHub Actions cadence can still delay eligible retries; lower-latency queue wakeups require a production queue/worker decision.
 
 ### 5. Poison-account isolation
 
@@ -109,15 +107,19 @@ Provider/warehouse freshness is owned by the Monstera backend scheduler. Do not 
 
 ### 11. Report level semantics
 
-**Status:** Limitation
+**Status:** Implemented in code; export-size acceptance remains.
 
-The Sheets add-on sends `reportLevel` values such as `campaign`, `account`, and `adset`. The current warehouse endpoint accepts the parameter and includes it in caching, but campaign-level selection does not yet necessarily perform a distinct aggregation/grouping operation.
+The Looker/Sheets warehouse endpoint validates `reportLevel`; `campaign`, `adset`, and `account` are grouped at their requested grain, with currency retained in the grouping key. Derived rates are recalculated from summed numerators/denominators, and non-additive reach is returned as null. Aggregated results report when the requested row cap truncates them. Large exports still need acceptance against the actual destination connector limits.
 
-**Future:** Implement explicit report-level aggregation only if user need is confirmed.
+### 12. Scheduled work and alert delivery
+
+**Status:** Durable code path implemented; production delivery and recovery acceptance pending.
+
+Scheduled imports use idempotent durable jobs. The pilot workflow now checks structured scheduler results and fails on terminal job errors or prolonged worker backlog, instead of treating an HTTP 200 response alone as proof of completed work. Operational alerts are persisted in a PostgreSQL outbox, leased, retried, and dead-lettered after bounded attempts. Production cron pickup, token refresh, partial recovery, and receipt by the configured alert owner still require a live operational walkthrough.
 
 ## Verification / release discipline
 
-### 12. PostgreSQL integration coverage
+### 13. PostgreSQL integration coverage
 
 **Status:** Verification gap
 

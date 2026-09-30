@@ -22,7 +22,7 @@ import { syncShopeeCatalogWarehouse } from "@/lib/sync-shopee-catalog-warehouse"
 
 // Meta imports
 import { ingestMetaRows, META_CANONICAL_METRIC_GRAIN } from "@/lib/meta-ingest";
-import { MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { MetaOAuthRevokedError, MetaRateLimitError } from "@/lib/meta-ads";
 import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
@@ -70,6 +70,7 @@ import {
   summarizeSyncOutcome,
 } from "@/lib/sync-outcome";
 import { refreshConnectionLastDataThrough, shouldRefreshLastDataThrough } from "@/lib/connection-data-through";
+import { scopeConnectionWhere } from "@/lib/workspace-scope";
 
 export interface SyncOptions {
   connectionId: string;
@@ -309,6 +310,7 @@ export async function persistConnectionSyncOutcome(
   connectionId: string,
   outcome: Pick<SyncResult, "outcome" | "error">,
   lease?: ConnectionLease,
+  scope?: { workspaceId: string; expectedCredentials?: string },
 ): Promise<void> {
   if (lease) {
     try {
@@ -325,22 +327,78 @@ export async function persistConnectionSyncOutcome(
     : `[${outcome.outcome}] ${outcome.error ?? "One or more requested accounts did not sync"}`.slice(0, 1900);
   // Never resurrect a disconnected connection: a sync that raced with Disconnect
   // must not flip status back to "connected".
-  await prisma.connection.updateMany({
-    where: { id: connectionId, status: { not: "disconnected" } },
+  const where = scope
+    ? scopeConnectionWhere(scope.workspaceId, {
+        id: connectionId,
+        status: { not: "disconnected" },
+        ...(scope.expectedCredentials !== undefined ? { credentials: scope.expectedCredentials } : {}),
+      })
+    : { id: connectionId, status: { not: "disconnected" } };
+  const updated = await prisma.connection.updateMany({
+    where,
     data: outcome.outcome === "success"
       ? { lastSyncAt: new Date(), lastError, status: "connected" }
       : { lastError },
   });
+  if (updated.count === 0) return;
 
-  const conn = await prisma.connection.findUnique({
-    where: { id: connectionId },
-    select: { workspaceId: true, provider: true },
-  });
+  const conn = scope
+    ? await prisma.connection.findFirst({
+        where: scopeConnectionWhere(scope.workspaceId, { id: connectionId }),
+        select: { workspaceId: true, provider: true },
+      })
+    : await prisma.connection.findUnique({
+        where: { id: connectionId },
+        select: { workspaceId: true, provider: true },
+      });
 
   if (shouldRefreshLastDataThrough(outcome.outcome)) {
     if (conn) {
       await refreshConnectionLastDataThrough(conn.workspaceId, connectionId);
     }
+  }
+}
+
+/**
+ * Persist a failure discovered before provider sync starts (for example,
+ * credential decryption or validation failure) without overwriting an outcome
+ * from another worker that currently owns this connection.
+ */
+export async function persistPreSyncConnectionFailure(params: {
+  connectionId: string;
+  workspaceId: string;
+  provider: string;
+  credentials: string;
+  error: string;
+}): Promise<void> {
+  const attempt = await acquireConnectionSyncLease(params);
+  if (!attempt.acquired) {
+    logger.warn(
+      `[syncConnectionData] Skipping pre-sync failure persistence for ${params.connectionId}; another worker owns the connection lease`,
+    );
+    return;
+  }
+
+  try {
+    const current = await prisma.connection.findFirst({
+      where: scopeConnectionWhere(params.workspaceId, { id: params.connectionId }),
+      select: { credentials: true, provider: true },
+    });
+    if (!current || current.credentials !== params.credentials || current.provider !== params.provider) {
+      logger.info(
+        `[syncConnectionData] Skipping stale pre-sync failure for ${params.connectionId}; source credentials or provider changed`,
+      );
+      return;
+    }
+
+    await persistConnectionSyncOutcome(
+      params.connectionId,
+      { outcome: "failed", error: params.error },
+      attempt.lease,
+      { workspaceId: params.workspaceId, expectedCredentials: params.credentials },
+    );
+  } finally {
+    await releaseConnectionSyncLease(attempt.lease, false);
   }
 }
 
@@ -630,7 +688,14 @@ async function syncMetaAds(opts: {
       const isAuth = isRevoked || /error validating access token|token.*revoked|code 190|oauthexception/i.test(msg);
       const metaRetryable = isRetryableSyncError(error) && !isAuth;
       const childError = isRevoked ? `Meta authorization revoked — reconnect required. (${msg})` : msg;
-      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: childError, retryable: metaRetryable });
+      children.push({
+        id: String(accountId),
+        kind: "ad_account",
+        ok: false,
+        error: childError,
+        retryable: metaRetryable,
+        ...(error instanceof MetaRateLimitError ? { retryAfterMs: error.retryAfterMs } : {}),
+      });
       await recordAccountOutcome({
         workspaceId,
         connectionId,
