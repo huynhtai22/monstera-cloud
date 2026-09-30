@@ -816,6 +816,7 @@ async function syncGoogleAds(opts: {
   type LeafAccount = { customerId: string; mccId: string; descriptiveName: string };
   const leafAccounts: LeafAccount[] = [];
   const seenLeafIds = new Set<string>();
+  const targetedHierarchyFailures: { rootId: string; error: string; retryable: boolean }[] = [];
 
   for (const rootId of customerIds) {
     try {
@@ -844,12 +845,19 @@ async function syncGoogleAds(opts: {
       if (isRetryableSyncError(err)) {
         // A quota/network failure while expanding an MCC means its child scope
         // is unknown; never substitute a zero-row root query for completion.
-        children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        if (selectedIds === undefined) {
+          children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        } else {
+          targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: true });
+        }
         logger.warn(`[syncGoogleAds] Deferring root=${rootId} after retryable hierarchy failure: ${msg}`);
         continue;
       }
       logger.warn(`[syncGoogleAds] Could not resolve hierarchy for root=${rootId}: ${msg} — trying direct query`);
-      if (selectedIds !== undefined) continue;
+      if (selectedIds !== undefined) {
+        targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: false });
+        continue;
+      }
       // Fallback: treat root as leaf with itself as login-customer-id
       if (!seenLeafIds.has(rootId)) {
         seenLeafIds.add(rootId);
@@ -874,7 +882,15 @@ async function syncGoogleAds(opts: {
   // Selection refers to reportable leaves, not manager roots. Never expand consent.
   const selectedLeaves = selectedIds === undefined ? leafAccounts : leafAccounts.filter(account => selectedIds.includes(account.customerId));
   if (selectedIds !== undefined) {
-    for (const id of selectedIds) if (!selectedLeaves.some(account => account.customerId === id)) children.push({ id, kind: "customer", ok: false, error: "Selected customer is no longer accessible under this connection", retryable: false });
+    for (const id of selectedIds) {
+      if (selectedLeaves.some(account => account.customerId === id)) continue;
+      // An unresolved hierarchy cannot prove revocation. Keep the approved leaf
+      // as the retry target; a manager ID must never become a report selection.
+      const transientFailure = targetedHierarchyFailures.find(failure => failure.retryable);
+      children.push({ id, kind: "customer", ok: false,
+        error: transientFailure ? `Could not resolve customer hierarchy: ${transientFailure.error}` : "Selected customer is no longer accessible under this connection",
+        retryable: Boolean(transientFailure) });
+    }
   }
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────

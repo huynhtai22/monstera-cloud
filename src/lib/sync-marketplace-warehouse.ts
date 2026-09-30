@@ -20,6 +20,8 @@ export interface MarketplaceSyncResult {
   error?: string;
 }
 
+const SUPPORTED_CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
+
 function parseYmd(d: string): Date {
   return new Date(`${d}T00:00:00.000Z`);
 }
@@ -51,7 +53,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
       sandbox: creds.sandbox === true,
     };
 
-    const daily = new Map<string, { revenue: number; orders: number; currency: string | undefined }>();
+    const daily = new Map<string, { revenue: number; orders: number; currency: string }>();
     let recordedSchema = false;
 
     // Shopee get_order_list strictly enforces: time_to - time_from <= 15 days.
@@ -106,7 +108,8 @@ export async function syncShopeeWarehouseMetrics(opts: {
             if (ct < rangeStart || ct > rangeEnd) continue;
             const day = dayKeyFromUnixSeconds(ct);
             const amt = Number(o.total_amount ?? 0) || 0;
-            const currency = typeof o.currency === "string" && /^[A-Z]{3}$/.test(o.currency) ? o.currency : undefined;
+            const currency = typeof o.currency === "string" && /^[A-Z]{3}$/.test(o.currency) && SUPPORTED_CURRENCIES.has(o.currency) ? o.currency : undefined;
+            if (!currency) throw new Error("Shopee returned missing or invalid currency for a daily order rollup");
             const previous = daily.get(day);
             if (previous && previous.currency !== currency) throw new Error("Shopee returned mixed or missing currencies for one daily order rollup");
             const cur = previous ?? { revenue: 0, orders: 0, currency };

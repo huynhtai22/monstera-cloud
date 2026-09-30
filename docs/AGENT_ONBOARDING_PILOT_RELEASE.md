@@ -14,6 +14,8 @@ Production requires `ENABLE_AGENT_ONBOARDING=1` and an explicit `AGENT_ONBOARDIN
 
 GitHub security checks additionally required compatible dependency patches: the lockfile now resolves Next.js 16.3.8 and `@grpc/grpc-js` 1.14.5. No dependency constraints or security checks are weakened. The dependency audit reports zero vulnerabilities.
 
+Review hardening preserves selected Google leaf IDs after transient manager discovery failures, so failed-only retry never substitutes a manager report target. Shopee rejects missing, malformed, unsupported or mixed currencies before any daily totals are persisted. Regression checks cover recovered discovery with an unselected sibling and malformed/missing currencies on every order.
+
 ## Rollback and acceptance
 
 Disable `ENABLE_AGENT_ONBOARDING` and redeploy the last known release, or remove the pilot ID from the cohort and redeploy. Keep the additive schema and existing run history. Submitted import jobs retain ordinary durable-worker behavior. Do not drop the new tables as a feature rollback.

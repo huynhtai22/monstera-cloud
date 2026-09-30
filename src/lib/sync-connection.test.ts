@@ -179,6 +179,31 @@ describe("provider HTTP failures preserve sync correctness", () => {
       assert.equal(result.success, true); assert.deepEqual(queried, ["101"]); assert.deepEqual(result.children.map(child => child.id), ["101"]);
     });
   });
+  it("retries transient manager discovery using only the originally selected leaf", async () => {
+    let hierarchyRecovered = false;
+    const queried: string[] = [];
+    await withFastRetries(() => withSyncHarness((async (input, init) => {
+      const query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
+      if (query.includes("customer_client")) {
+        if (!hierarchyRecovered) return Response.json({ error: { code: 429, message: "RESOURCE_EXHAUSTED quota" } }, { status: 429 });
+        return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
+      }
+      queried.push(String(input).match(/customers\/([^/]+)\//)?.[1]!);
+      return Response.json([]);
+    }) as typeof fetch, async () => {
+      const credentials = { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] };
+      const first = await syncConnectionData({ connectionId: "google-transient-hierarchy", provider: "google_ads", credentials, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(first.success, false);
+      assert.deepEqual(first.children.map(child => ({ id: child.id, retryable: child.retryable })), [{ id: "101", retryable: true }]);
+      assert.deepEqual(queried, []);
+      hierarchyRecovered = true;
+      const retryIds = first.children.filter(child => !child.ok && child.retryable).map(child => child.id);
+      const recovered = await syncConnectionData({ connectionId: "google-transient-hierarchy", provider: "google_ads", credentials: { ...credentials, selectedCustomerIds: retryIds }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(recovered.success, true);
+      assert.deepEqual(queried, ["101"]);
+      assert.deepEqual(recovered.children.map(child => child.id), ["101"]);
+    }));
+  });
   it("does not query a selected leaf that disappeared from its manager", async () => {
     await withSyncHarness((async (_input, init) => {
       assert.ok(JSON.parse(String(init?.body)).query.includes("customer_client"), "must not query metrics for missing leaf");

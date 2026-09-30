@@ -1,3 +1,4 @@
+import { syncShopeeWarehouseMetrics } from "@/lib/sync-marketplace-warehouse";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { before, after, beforeEach, describe, it } from "node:test";
@@ -204,6 +205,22 @@ describe("M3 TikTok: real PostgreSQL execution boundaries", () => {
     const preview = await getTaskDataPreview(scope, shop.id);
     assert.equal(preview.rowsCount, 1); assert.equal(preview.accounts[0].groups[0].conversions, 1); assert.equal(preview.accounts[0].groups[0].currency, "SGD"); assert.equal(preview.accounts[0].groups[0].revenue, 100);
     assert.ok(preview.coverage.limitations.some(note => note.includes("Ads coverage is optional")));
+  });
+  it("Shopee rejects missing, invalid and mixed currencies before persisting daily totals", async () => {
+    const shopConnection = `shopee-invalid-currency-${suffix}`;
+    await db.connection.create({ data: { id: shopConnection, workspaceId, name: "Currency validation fixture", provider: "shopee", type: "source", status: "connected", remoteAccountId: "556", credentials: encrypt(JSON.stringify({ access_token: "synthetic-shop-only", shop_id: 556, access_token_obtained_at: new Date().toISOString(), expire_in: 14400 })) } });
+    const original = { list: shopeeDataClient.getOrderList, detail: shopeeDataClient.getOrderDetail };
+    const date = initialImportWindow().until;
+    try {
+      shopeeDataClient.getOrderList = async () => ({ order_list: [{ order_sn: "one" }, { order_sn: "two" }], next_cursor: "" });
+      for (const currencies of [[undefined, undefined], ["", ""], ["SG", "SG"], ["sgd", "sgd"], ["ZZZ", "ZZZ"], ["SGD", "USD"]]) {
+        shopeeDataClient.getOrderDetail = async () => ({ order_list: currencies.map((currency, index) => ({ order_sn: String(index), create_time: new Date(`${date}T12:00:00Z`).getTime() / 1000, total_amount: 100, currency })) });
+        const result = await syncShopeeWarehouseMetrics({ workspaceId, connectionId: shopConnection, userPlan: "professional", since: date, until: date });
+        assert.equal(result.success, false); assert.equal(result.rowsIngested, 0);
+        assert.match(result.error ?? "", /currenc/i);
+        assert.equal(await db.campaignMetric.count({ where: { workspaceId, connectionId: shopConnection } }), 0);
+      }
+    } finally { shopeeDataClient.getOrderList = original.list; shopeeDataClient.getOrderDetail = original.detail; }
   });
   it("rejects foreign actors, revoked membership, disabled providers and paused OAuth", async () => {
     await assert.rejects(() => discoverTaskAccounts({ userId: peerId, workspaceId }, taskId, 0), errorCode("run_not_found"));
