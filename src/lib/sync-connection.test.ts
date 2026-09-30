@@ -188,7 +188,9 @@ describe("provider HTTP failures preserve sync correctness", () => {
         if (!hierarchyRecovered) return Response.json({ error: { code: 429, message: "RESOURCE_EXHAUSTED quota" } }, { status: 429 });
         return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
       }
-      queried.push(String(input).match(/customers\/([^/]+)\//)?.[1]!);
+      const customerId = String(input).match(/customers\/([^/]+)\//)?.[1];
+      assert.ok(customerId);
+      queried.push(customerId);
       return Response.json([]);
     }) as typeof fetch, async () => {
       const credentials = { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] };
