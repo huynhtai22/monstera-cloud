@@ -6,8 +6,8 @@ import { AppLoader } from "./AppLoader";
 // Only completion of the initial request matters; background refreshes never reopen the loader.
 const StartupContext = createContext<{
   configure: (session: boolean, dashboard: boolean, verified: boolean) => void;
-  completeDashboard: (success?: boolean) => void;
-  completeWorkspace: () => void;
+  completeDashboard: (success?: boolean, providers?: string[]) => void;
+  completeWorkspace: (providers?: string[]) => void;
   handoff: boolean;
   animateHandoff: boolean;
 } | null>(null);
@@ -16,7 +16,12 @@ const StartupActions = createContext<Pick<NonNullable<React.ContextType<typeof S
 export function WorkspaceStartup({ children }: { children: ReactNode }) {
   const [workspace, setWorkspace] = useState(false);
   const [success, setSuccess] = useState(false);
-  const completeWorkspace = useCallback(() => setWorkspace(true), []);
+  const [sourcesChecked, setSourcesChecked] = useState(false);
+  const [providers, setProviders] = useState<string[] | null>(null);
+  const completeWorkspace = useCallback((known?: string[]) => {
+    setWorkspace(true);
+    if (known) { setSourcesChecked(true); setProviders([...new Set(known)].slice(0,4)); }
+  }, []);
   const [handoff, setHandoff] = useState(false);
   const [animateHandoff, setAnimateHandoff] = useState(false);
   const beginHandoff = useCallback((animate = false) => { setAnimateHandoff(animate); setHandoff(true); }, []);
@@ -31,14 +36,17 @@ export function WorkspaceStartup({ children }: { children: ReactNode }) {
     setDashboard(needsDashboard);
     setConfigured(true);
   }, []);
-  const completeDashboard = useCallback((ok = false) => { setDataReturned(true); setSuccess(ok); }, []);
+  const completeDashboard = useCallback((ok = false, known?: string[]) => {
+    setDataReturned(true); setSuccess(ok);
+    if (ok && known) { setSourcesChecked(true); setProviders([...new Set(known)].slice(0,4)); }
+  }, []);
   const actions = useMemo(() => ({ completeDashboard, completeWorkspace }), [completeDashboard, completeWorkspace]);
   const context = useMemo(() => ({ configure, completeDashboard, completeWorkspace, handoff, animateHandoff }), [configure, completeDashboard, completeWorkspace, handoff, animateHandoff]);
   const pending = !configured || !session || (verified && dashboard && !dataReturned);
   return (
     <StartupContext.Provider value={context}>
       <StartupActions.Provider value={actions}>
-      <AppLoader visible={pending} milestones={[verified, workspace, success, success]} measurable={dashboard} onExitStart={beginHandoff} />
+      <AppLoader visible={pending} milestones={[verified, workspace, sourcesChecked, success]} providers={providers} measurable={dashboard} onExitStart={beginHandoff} />
       {children}
       </StartupActions.Provider>
     </StartupContext.Provider>

@@ -1,56 +1,63 @@
-.overlay { --loader-entrance: 450ms; --loader-exit: 480ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); pointer-events: auto; isolation: isolate; }
+.overlay { --loader-entrance: 450ms; --loader-exit: 480ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); isolation: isolate; overflow: hidden; }
 .backdrop { position: absolute; inset: 0; background: var(--color-canvas); }
-.backdrop::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(var(--console-motion-accent) .6px, transparent .6px); background-size: 20px 20px; opacity: .08; mask-image: radial-gradient(ellipse 360px 300px at 50% 44%, black, transparent); }
 .visual { position: absolute; width: 320px; top: 50%; left: 50%; transform: translate(-50%, -58%); text-align: center; }
 .scene { height: 260px; position: relative; }
-.connections { position: absolute; width: 100%; height: 100%; overflow: visible; animation: enter var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) both; }
-.track, .signal { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; }
-.track { opacity: .35; }
-.signal { opacity: .22; animation: breathe 1600ms ease-in-out infinite; transition: opacity 300ms ease-in-out; }
-.node { fill: var(--color-panel); stroke: var(--console-motion-accent); stroke-width: 1; opacity: .5; transition: opacity 300ms ease-in-out; }
-.connections [data-complete="true"] .signal { opacity: .85; animation: none; }
-.connections [data-complete="true"] .node { fill: var(--console-motion-accent); opacity: 1; }
+.connections { position: absolute; inset: 0; width: 320px; height: 260px; overflow: visible; }
+.connections > g { animation: enter 250ms cubic-bezier(.22,1,.36,1) both; }
+.track { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; opacity: .35; stroke-dasharray: 1; stroke-dashoffset: 1; animation: lineEnter 350ms 200ms cubic-bezier(.22,1,.36,1) forwards; }
+.branch { position: absolute; inset: 0; pointer-events: none; }
+.nodeShell { position: absolute; width: 28px; height: 28px; transform: translate(-50%, -50%); animation: nodeEnter 300ms cubic-bezier(.22,1,.36,1) both; }
+.nodeFace { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid var(--console-motion-accent); border-radius: 50%; background: var(--color-canvas); opacity: .75; transition: opacity 200ms ease-in-out; }
+.sourceGlyph { display: block; width: 16px; height: 16px; mask-size: contain; mask-position: center; mask-repeat: no-repeat; background: var(--color-ink); animation: enter 250ms ease-in-out both; }
+.branch[data-state="done"] .nodeFace { background: var(--console-motion-accent); opacity: 1; }
+.branch[data-state="done"] .sourceGlyph { background: var(--color-canvas); }
+.branch[data-state="active"] .nodeFace { opacity: 1; box-shadow: 0 0 12px color-mix(in srgb, var(--console-motion-accent) 18%, transparent); }
+.nodePulse { position: absolute; inset: 0; border: 1px solid var(--console-motion-accent); border-radius: 50%; opacity: 0; }
+.branch[data-state="active"] .nodePulse { animation: ringPulse 1600ms ease-in-out infinite; }
+.packet { position: absolute; left: 0; top: 0; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: var(--console-motion-accent); box-shadow: 0 0 7px color-mix(in srgb, var(--console-motion-accent) 75%, transparent); opacity: 0; will-change: transform, opacity; }
+/* Before hydration, the active neutral node still has compositor motion. */
+.packet[data-line="0"][data-loop="true"] { animation: bootPacket 1600ms 200ms ease-in-out infinite; }
 .emblem { position: absolute; top: 50%; left: 50%; width: 72px; height: 72px; transform: translate(-50%, -50%); animation: tileEnter var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) both; will-change: transform; }
-.emblem::before { content: ""; position: absolute; inset: -65px; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 15%, transparent), transparent 68%); animation: glow 1600ms ease-in-out infinite; }
-/* The brand SVG is identical to the sidebar. Effects are separate layers. */
+.emblem::before { content: ""; position: absolute; inset: -52px; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 22%, transparent), transparent 68%); animation: glow 1600ms ease-in-out infinite; }
 .face { position: relative; width: 100%; height: 100%; }
 .mark { position: relative; display: block; width: 100%; height: 100%; }
 .innerGradient { position: absolute; inset: 5px; border-radius: 10px; background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent) 10%, transparent), transparent 65%); pointer-events: none; }
 .topHighlight { position: absolute; inset: 5px 15px auto; height: 1px; background: linear-gradient(90deg, transparent, var(--console-motion-accent), transparent); opacity: .65; }
 .outline { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .outline rect { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: outline var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) forwards; }
-.connections > g { transform-box: fill-box; transform-origin: center; animation: nodeEnter 300ms cubic-bezier(.22,1,.36,1) both; }
-.signal { stroke-dasharray: 180; stroke-dashoffset: 180; animation: lineEnter 400ms 300ms cubic-bezier(.22,1,.36,1) forwards; }
-@keyframes lineEnter { to { stroke-dashoffset: 0; } }
-@keyframes nodeEnter { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
+.completionGlow { position: absolute; inset: -40px; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 30%, transparent), transparent 70%); animation: completionPulse 450ms ease-in-out both; }
 .copy { animation: copyEnter var(--loader-entrance) 320ms cubic-bezier(.22,1,.36,1) both; }
-.wordmark { margin: -5px 0 20px; font-size: 27px; font-weight: 500; letter-spacing: -.04em; line-height: 1.3; }
-.eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; color: var(--color-ink-mute); margin: 0 0 10px; }
-.status { color: var(--color-ink); font-size: 14px; line-height: 1.5; min-height: 42px; }
-.status { display: grid; }
+.wordmark { margin: -5px 0 18px; font-size: 24px; font-weight: 500; letter-spacing: -.04em; line-height: 1.3; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; color: var(--color-ink); margin: 0 0 10px; }
+.status { display: grid; color: var(--color-ink); font-size: 14px; line-height: 1.5; min-height: 42px; }
 .status > span { grid-area: 1 / 1; display: block; animation: enter 250ms ease-in-out both; }
 .status > .outgoing { animation: leave 250ms ease-in-out forwards; }
 .overlay[data-phase="exit"] { pointer-events: none; }
 .overlay[data-phase="exit"] .backdrop { animation: leave 160ms ease-in-out forwards; }
-.overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .copy { animation: leave 100ms ease-in-out forwards; }
-.overlay[data-phase="exit"] .emblem::before { animation: leave 100ms ease-in-out forwards; }
-.overlay[data-phase="exit"] .outline { animation: leave 100ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .branch, .overlay[data-phase="exit"] .copy { animation: leave 100ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .emblem::before, .overlay[data-phase="exit"] .outline, .overlay[data-phase="exit"] .completionGlow { animation: leave 100ms ease-in-out forwards; }
+.timeoutNotice { position: fixed; right: 24px; bottom: 24px; z-index: 10000; max-width: min(360px, calc(100vw - 48px)); padding: 16px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink); font-size: 14px; }
+.timeoutNotice p { margin: 0 0 12px; }
+.timeoutNotice button { padding: 6px 14px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-canvas); color: var(--color-ink); cursor: pointer; }
+.timeoutNotice button:focus-visible { outline: 2px solid var(--console-motion-accent); outline-offset: 3px; }
 :global(html[data-monstera-startup="skip"]) .overlay { display: none; }
 @keyframes enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes tileEnter { from { opacity: 0; transform: translate(-50%, -50%) scale(.94); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-@keyframes copyEnter { from { opacity: 0; transform: translateY(8px); filter: blur(2px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+@keyframes nodeEnter { from { opacity: 0; transform: translate(-50%, -50%) scale(.8); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes lineEnter { to { stroke-dashoffset: 0; } }
 @keyframes outline { to { stroke-dashoffset: 0; } }
-@keyframes sweep { from { transform: translateX(-75%); opacity: 0; } 30% { opacity: 1; } to { transform: translateX(75%); opacity: 0; } }
-@keyframes breathe { 50% { opacity: .45; } }
-@keyframes glow { from, to { opacity: .65; } 50% { opacity: .8; } }
-@keyframes borderBreath { from, to { opacity: .7; } 50% { opacity: 1; } }
+@keyframes copyEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ringPulse { from { opacity: .8; transform: scale(1); } to { opacity: 0; transform: scale(1.65); } }
+@keyframes glow { from, to { opacity: .4; transform: scale(.96); } 50% { opacity: .7; transform: scale(1.04); } }
+@keyframes completionPulse { from, to { opacity: 0; transform: scale(.92); } 40% { opacity: .8; transform: scale(1.05); } }
+@keyframes bootPacket { from { transform: translate3d(18px,65px,0); opacity: .3; } 50% { transform: translate3d(76px,98px,0); opacity: 1; } to { transform: translate3d(124px,130px,0); opacity: 0; } }
 @keyframes leave { to { opacity: 0; } }
-@media (max-width: 560px) { .wordmark { font-size: 24px; } }
 @media (prefers-reduced-motion: reduce) {
-  .connections, .copy, .emblem { animation: enter 150ms 200ms ease-in-out both; }
-  .emblem::before, .signal, .connections > g, .outline rect { animation: none; }
-  .signal, .outline rect { stroke-dashoffset: 0; }
+  .connections > g, .nodeShell, .copy, .emblem { animation: enter 150ms 200ms ease-in-out both; }
+  .emblem::before, .track, .outline rect { animation: none; }
+  .track, .outline rect { stroke-dashoffset: 0; }
+  .nodePulse, .packet, .completionGlow { display: none; }
   .status > span { animation: enter 150ms ease-in-out; }
   .overlay[data-phase="exit"] .backdrop, .overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .copy { animation-duration: 150ms; }
 }
-@media (forced-colors: active) { .backdrop { background: Canvas; } .mark > rect, .mark > path, .track, .signal { stroke: Highlight; } .status { color: CanvasText; } .emblem::before { display: none; } }
+@media (forced-colors: active) { .backdrop { background: Canvas; } .track, .outline rect { stroke: Highlight; } .nodeFace { border-color: Highlight; } .status, .eyebrow { color: CanvasText; } .emblem::before, .completionGlow { display: none; } }

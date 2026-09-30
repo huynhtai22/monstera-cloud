@@ -21,11 +21,18 @@ const fetcher = async (url: string) => {
 };
 
 export function DashboardHomePage() {
-  const { workspaceId, isLoading: workspaceLoading, error: workspaceError, mutate: retryWorkspaces } = useResolvedWorkspaceId();
+  const { workspaceId, workspaces, isLoading: workspaceLoading, error: workspaceError, mutate: retryWorkspaces } = useResolvedWorkspaceId();
   const startup = useWorkspaceStartupActions();
   const completeDashboard = startup?.completeDashboard;
   const completeWorkspace = startup?.completeWorkspace;
-  React.useEffect(() => { if (!workspaceLoading && workspaceId) completeWorkspace?.(); }, [workspaceLoading, workspaceId, completeWorkspace]);
+  React.useEffect(() => {
+    if (workspaceLoading || !workspaceId) return;
+    const selected = Array.isArray(workspaces) ? workspaces.find((w: { id: string }) => w.id === workspaceId) : undefined;
+    const providers = Array.isArray(selected?.sources)
+      ? selected.sources.filter((s: { provider?: unknown }) => typeof s.provider === "string").map((s: { provider: string }) => s.provider)
+      : undefined;
+    completeWorkspace?.(providers);
+  }, [workspaceLoading, workspaceId, workspaces, completeWorkspace]);
   const [fixTarget, setFixTarget] = useState<{
     id: string;
     name: string;
@@ -145,7 +152,7 @@ export function DashboardHomePage() {
 
   const isLoading = workspaceLoading || (!overview && !error && Boolean(workspaceId)) || (dataLoading && !overview);
   const settled = !workspaceLoading && (Boolean(workspaceError) || !workspaceId || Boolean(overview) || Boolean(error));
-  React.useEffect(() => { if (settled) completeDashboard?.(Boolean(overview)); }, [settled, overview, completeDashboard]);
+  React.useEffect(() => { if (settled) completeDashboard?.(Boolean(overview), overview?.sourcesList.map(source => source.provider)); }, [settled, overview, completeDashboard]);
   const isUpdating = isRefreshing || isValidating;
 
   // ── Loading Skeleton ────────────────────────────────────────────────────────
