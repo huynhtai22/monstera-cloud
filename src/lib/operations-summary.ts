@@ -421,6 +421,7 @@ export type FreshnessRow = {
 };
 
 const SOURCE_HEALTH_STATES: SourceHealthState[] = [
+  "stuck",
   "fresh",
   "stale",
   "error",

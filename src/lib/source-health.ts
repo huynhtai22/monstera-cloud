@@ -11,6 +11,7 @@ export type SourceHealthState =
   | "stale"
   | "error"
   | "partial"
+  | "stuck"
   | "syncing"
   | "pending"
   | "disconnected"
@@ -33,14 +34,26 @@ export function resolveSourceHealthState(input: {
   lastError: string | null | undefined;
   lastSyncAt: Date | string | null | undefined;
   isSyncing?: boolean;
+  syncStartedAt?: Date | string | null;
+  syncAttemptAt?: Date | string | null;
+  now?: Date;
   staleBefore: Date;
 }): SourceHealthState {
   const status = input.connectionStatus?.trim().toLowerCase();
   if (status === "disconnected") return "disconnected";
+  const providerProcessing = /will resume this task automatically|still processing|did not complete before the bounded polling|report task.*\b(processing|queuing|running|init)\b/i.test(input.lastError ?? "");
+  if (providerProcessing && (status === "connected" || status === "error")) {
+    const attempted = input.syncAttemptAt ? new Date(input.syncAttemptAt).getTime() : NaN;
+    return Number.isFinite(attempted) && (input.now ?? new Date()).getTime() - attempted <= 60 * 60 * 1000 ? "syncing" : "stuck";
+  }
   if (isPartialSyncError(input.lastError)) return "partial";
   if (status === "error" || Boolean(input.lastError)) return "error";
   if (status !== "connected") return "unknown";
-  if (input.isSyncing) return "syncing";
+  if (input.isSyncing) {
+    const started = input.syncStartedAt ? new Date(input.syncStartedAt).getTime() : NaN;
+    if (Number.isFinite(started) && (input.now ?? new Date()).getTime() - started > 60 * 60 * 1000) return "stuck";
+    return "syncing";
+  }
   if (!input.lastSyncAt) return "pending";
 
   const lastSyncAt = input.lastSyncAt instanceof Date
@@ -71,7 +84,7 @@ export function countSourceHealthStatuses(
   for (const i of integrations) {
     if (i.status === "available") available += 1;
     else if (i.status === "partial") partial += 1; // partial ≠ fully connected
-    else if (["error", "stale", "disconnected", "unknown"].includes(i.status)) needsAttention += 1;
+    else if (["error", "stale", "disconnected", "unknown", "stuck"].includes(i.status)) needsAttention += 1;
     else if (i.status === "fresh" || i.status === "connected") connected += 1;
   }
   return { connected, needsAttention, available, partial };

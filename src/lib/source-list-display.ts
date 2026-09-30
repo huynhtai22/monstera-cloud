@@ -10,6 +10,7 @@ export type SourceListRow = {
   healthState?: string;
   errorMsg?: string;
   lastSync?: string;
+  syncAttemptAt?: string;
   accountTags?: AccountTagEntry[];
 };
 
@@ -18,6 +19,7 @@ export type SourceStateKind =
   | "not-synced"
   | "syncing"
   | "partial"
+  | "stuck"
   | "sync-issue"
   | "auth-required"
   | "stale"
@@ -234,7 +236,15 @@ export function sourceStateFor(row: SourceListRow, syncBusy: boolean): SourceSta
     };
   }
 
+  if ((row.healthState ?? row.status) === "stuck") {
+    return { kind: "stuck", label: "Sync stuck", subtext: "Retry available", detail: "The sync has exceeded one hour. Review the source and retry.", needsReconnect: false, canSync: true };
+  }
+
   if (isInFlightProviderSync(row.errorMsg)) {
+    const attemptedAt = row.syncAttemptAt ? new Date(row.syncAttemptAt).getTime() : NaN;
+    if (!Number.isFinite(attemptedAt) || Date.now() - attemptedAt > 60 * 60 * 1000) {
+      return { kind: "stuck", label: "Sync stuck", subtext: "Report timed out", detail: "The provider report has not completed within one hour. Retry the sync or review the source.", needsReconnect: false, canSync: true };
+    }
     return {
       kind: "syncing",
       label: "Syncing",
