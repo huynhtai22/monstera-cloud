@@ -48,6 +48,8 @@ Final production build and TypeScript passed. Changed-component ESLint and diff 
 - At >4s pending, Still working appears with the last node incomplete. At >10s, the cover is removed, the skeleton and Retry are usable; Retry reloads and completes a subsequent real fixture response.
 - Destination headings and activation text stay unique through the cross-fade.
 
+The same ten motion/readiness/recovery cases also passed with 4× CPU and Slow 4G enabled, one worker, on desktop and Pixel 7. The first run passed eight; the two staged-response assertions correctly encountered Still working after the initial throttled asset/hydration delay exceeded four seconds. Their copy expectation was corrected to allow that real slow state while still requiring STEP 4, an active last node and no READY, and both reruns passed. These behavior tests intercept fixture API responses to hold individual signals; unlike the performance proxy, they do not measure network transport of API responses. Set `LOADER_THROTTLE=1` for the opt-in CDP conditions in `workspace-loader-motion.spec.ts`; use a production server and sufficient assertion timeout (20s) for cold assets. The trace measurements above remain unchanged because this follow-up changes tests/documentation only.
+
 Additional production browser checks passed: fast cached readiness (~94ms, no visible mark); repeat-session skip; app client navigation and marketing-to-app navigation skip; Vietnamese phone status and no horizontal overflow; delayed hydration by 1.5s; error, empty workspace and expired session destinations. These checks recorded CLS 0, no hydration errors and no residual body scroll lock.
 
 ## Preview and evidence

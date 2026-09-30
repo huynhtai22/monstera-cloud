@@ -2,6 +2,17 @@ import { test, expect } from "@playwright/test";
 import { encode } from "next-auth/jwt";
 import { previewOverview } from "../../src/app/demo/ui/console/fixtures";
 
+// Opt-in production browser verification; route fixtures still hold real readiness signals.
+test.beforeEach(async ({ page }) => {
+  if (process.env.LOADER_THROTTLE !== "1") return;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false, latency: 562.5, downloadThroughput: 180000, uploadThroughput: 84375,
+  });
+});
+
 for (const mode of ["expanded", "collapsed", "reduced"] as const) {
 test(`loader uses real milestones and a safe ${mode} handoff`, async ({ page, context, baseURL }) => {
   if (mode === "collapsed") await page.addInitScript(() => localStorage.setItem("monstera-sidebar-collapsed", "1"));
@@ -117,8 +128,8 @@ test("progress follows held API responses and keeps the last node active until d
   await expect(signal(2)).toHaveAttribute("data-state", "done");
   await expect(signal(3)).toHaveAttribute("data-state", "done");
   await expect(signal(4)).toHaveAttribute("data-state", "active");
-  await expect(page.locator("[data-loader-step]")).toHaveText("STEP 4 / 4Preparing dashboard");
-  await expect(page.getByRole("status", { name: "Preparing dashboard" })).toBeVisible();
+  await expect(page.locator("[data-loader-step]")).toHaveText(/^STEP 4 \/ 4(Preparing dashboard|Still working\.\.\.)$/);
+  await expect(page.getByRole("status", { name: /^(Preparing dashboard|Still working\.\.\.)$/ })).toBeVisible();
   await expect(page.getByText("Workspace ready", { exact: true })).toHaveCount(0);
   await expect.poll(() => held.has("/api/dashboard/summary")).toBeTruthy();
   await held.get("/api/dashboard/summary")!.fulfill({ json: overview });
