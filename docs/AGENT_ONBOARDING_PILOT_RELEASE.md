@@ -12,6 +12,8 @@ Production requires `ENABLE_AGENT_ONBOARDING=1` and an explicit `AGENT_ONBOARDIN
 
 155 targeted agent, OAuth, scope, recovery, import and route checks passed; 62 provider/tenant/import regression checks passed. The explicit production rollout test passed again after its TypeScript repair. ESLint reports zero errors (69 existing warnings), and the optimized production build passes. All committed migrations apply successfully to a fresh local PostgreSQL database. Additive production migrations are the onboarding foundation and OAuth task linkage; no destructive reset or schema push is used.
 
+GitHub security checks additionally required compatible dependency patches: the lockfile now resolves Next.js 16.3.8 and `@grpc/grpc-js` 1.14.5. No dependency constraints or security checks are weakened. The dependency audit reports zero vulnerabilities.
+
 ## Rollback and acceptance
 
 Disable `ENABLE_AGENT_ONBOARDING` and redeploy the last known release, or remove the pilot ID from the cohort and redeploy. Keep the additive schema and existing run history. Submitted import jobs retain ordinary durable-worker behavior. Do not drop the new tables as a feature rollback.
