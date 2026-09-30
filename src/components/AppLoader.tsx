@@ -7,9 +7,10 @@ import styles from "./AppLoader.module.css";
 
 const SESSION_KEY = "monstera-workspace-intro-seen";
 const MOTION = { delay: 200, hold: 600, resolve: 225, exit: 250, backdrop: 80, reduced: 150 };
-const paths = ["M18 65C80 65 76 130 124 130", "M59 227C115 227 109 174 141 158", "M306 82C238 82 247 130 196 130", "M284 224C220 224 225 174 178 158"];
-const nodes = [[18,65], [59,227], [306,82], [284,224]];
-const curves = [[[18,65],[80,65],[76,130],[124,130]], [[59,227],[115,227],[109,174],[141,158]], [[306,82],[238,82],[247,130],[196,130]], [[284,224],[220,224],[225,174],[178,158]]];
+const nodes = [[24,52], [61,185], [302,34], [279,194]];
+const curves = [[[24,52],[82,52],[91,100],[124,104]], [[61,185],[100,185],[110,150],[140,148]], [[302,34],[242,34],[235,100],[196,104]], [[279,194],[225,194],[222,153],[180,148]]];
+// A single geometry source keeps light packets on their connection after layout refinements.
+const paths = curves.map(([start, a, b, end]) => `M${start.join(" ")}C${a.join(" ")} ${b.join(" ")} ${end.join(" ")}`);
 const packetFrames = curves.map(points => Array.from({ length: 25 }, (_, i) => {
   const t = i/24, u = 1-t;
   const point = [0,1].map(axis => u*u*u*points[0][axis]+3*u*u*t*points[1][axis]+3*u*t*t*points[2][axis]+t*t*t*points[3][axis]);
@@ -164,7 +165,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
     <div className={styles.visual} data-loader-visual>
       <div className={styles.scene} aria-hidden="true">
         <div hidden>{completed.map((done,i) => <span key={i} data-milestone={i+1} data-complete={done}/>)}</div>
-        <svg className={styles.connections} viewBox="0 0 320 260">
+        <svg className={styles.connections} viewBox="0 0 320 224">
           {slots.map((slot,i) => <g key={slot} style={{ animationDelay: `${200+i*50}ms`, "--resolve-delay": `${i*30}ms` } as CSSProperties}>
             <path d={paths[slot]} pathLength="1" className={styles.track}/>
           </g>)}
@@ -187,7 +188,7 @@ export function AppLoader({ visible, milestones = [false,false,false,false], mea
         </div>
       </div>
       <div className={styles.copy}>
-        <p className={styles.wordmark} aria-hidden="true">Monstera Cloud</p>
+        <p className={styles.wordmark} aria-hidden="true">Monstera <span>Cloud</span></p>
         <div key={`${step}:${status}`} className={styles.step} aria-hidden="true" data-loader-step={resolved ? "ready" : step+1}>
           <p className={styles.eyebrow}>{resolved ? (lang === "vi" ? "SẴN SÀNG" : "READY") : `${lang === "vi" ? "BƯỚC" : "STEP"} ${step+1} / 4`}</p>
           <p className={styles.status}>{status}</p>
