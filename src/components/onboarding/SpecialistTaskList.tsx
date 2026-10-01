@@ -1,23 +1,12 @@
 "use client";
-import { ChevronDown, Check, Pause } from "lucide-react";
+import { ChevronDown, Pause, CircleAlert } from "lucide-react";
 import type { AgentSnapshot } from "@/hooks/use-agent-run";
 import { ONBOARDING_PROVIDERS } from "@/lib/agent/catalog";
 import styles from "./Onboarding.module.css";
 import { BusinessIcon, SourceLogo } from "./OnboardingIcons";
 import { AgentTaskSetup, type TaskAction, type ImportChoice } from "./AgentTaskSetup";
-import { SpecialistStack } from "./OnboardingMotion";
-
-const stateLabels: Record<string, string> = {
-  waiting_authorization: "Needs your permission",
-  discovering_accounts: "Discovering accounts…",
-  waiting_selection: "Choose your accounts",
-  queued: "Import queued",
-  importing: "Importing your data…",
-  verifying: "Checking warehouse results…",
-  ready: "Ready for review",
-  needs_attention: "Needs attention",
-  deferred: "Saved for later",
-};
+import { taskPresentation, type WarehouseEvidence } from "./task-presentation";
+import { CompletionCheck, SpecialistStack } from "./OnboardingMotion";
 
 interface SpecialistTaskListProps {
   providerCount: number;
@@ -29,7 +18,11 @@ interface SpecialistTaskListProps {
   onAction: (task: AgentSnapshot["tasks"][number], action: TaskAction, connectionId?: string | string[]) => void;
   canAuthorize: { tiktok_business: boolean; meta_ads: boolean; google_ads: boolean; shopee: boolean };
   onConfirm: (task: AgentSnapshot["tasks"][number], input: ImportChoice) => void;
-  onReviewed: (id: string) => void;
+  onReviewed: (id: string, evidence: WarehouseEvidence) => void;
+  warehouseEvidence: Record<string, WarehouseEvidence>;
+  activeTaskId: string | null;
+  onOpen: (id: string | null) => void;
+  explorerPath: string;
 }
 
 export function SpecialistTaskList({
@@ -43,6 +36,10 @@ export function SpecialistTaskList({
   canAuthorize,
   onConfirm,
   onReviewed,
+  warehouseEvidence,
+  activeTaskId,
+  onOpen,
+  explorerPath,
 }: SpecialistTaskListProps) {
   return (
     <aside className={styles.board} aria-label="Your source agents">
@@ -82,55 +79,44 @@ export function SpecialistTaskList({
         {tasks.map(task => {
           const provider = ONBOARDING_PROVIDERS.find(p => p.id === task.provider);
           const active = !paused && ["queued", "importing", "verifying", "discovering_accounts"].includes(task.state);
-          const step = task.state === "waiting_authorization" ? 0
-            : ["discovering_accounts", "waiting_selection"].includes(task.state) ? 1
-            : ["queued", "importing", "verifying"].includes(task.state) ? 2
-            : task.state === "ready" ? 3
-            : task.confirmedScope ? 2 : task.requestedScope?.connectionId ? 1 : 0;
+          const status = taskPresentation(task, warehouseEvidence[task.id]);
+          const open = activeTaskId === task.id;
+          const milestones = [status.connected, status.connected && Boolean(task.confirmedScope), status.imported];
 
           return (
-            <details key={task.id} data-specialist-id={task.id} data-state={task.state} className={`${styles.task} ${changedIds.includes(task.id) ? styles.updated : ""}`}>
-              <summary>
+            <section key={task.id} id={`source-agent-${task.id}`} data-open={open} data-specialist-id={task.id} data-state={task.state} className={`${styles.task} ${changedIds.includes(task.id) ? styles.updated : ""}`}>
+              <button type="button" className={styles.taskToggle} aria-expanded={open} aria-controls={`agent-panel-${task.id}`} onClick={() => onOpen(open ? null : task.id)}>
                 <span className={styles.providerMark} aria-hidden="true"><SourceLogo provider={task.provider} size={20} /></span>
                 <span className={styles.taskTitle}>
                   <strong>{provider?.name ?? task.provider} agent</strong>
-                  <span>{paused ? "Setup paused" : stateLabels[task.state]}</span>
+                  <span>{paused ? "Setup paused" : status.label}</span>
                 </span>
-                <span className={active ? styles.pulse : styles.statusDot}>
-                  {task.state === "ready" ? <Check size={13} /> : paused ? <Pause size={12} /> : null}
+                <span className={active ? styles.pulse : styles.taskStatus}>
+                  {status.imported ? <CompletionCheck /> : paused ? <Pause size={14} /> : task.state === "needs_attention" ? <CircleAlert size={15} /> : status.connected ? <CompletionCheck /> : <span className={styles.notConnected} />}
                 </span>
                 <ChevronDown size={14} className={styles.chevron} aria-hidden="true" />
-              </summary>
+              </button>
 
-              <div className={styles.taskBody}>
+              <div id={`agent-panel-${task.id}`} className={styles.taskPanel} inert={!open} aria-hidden={!open}><div className={styles.taskPanelInner}><div className={styles.taskBody}>
                 <p>{provider?.description}</p>
                 <ol className={styles.stages} aria-label="Connection stages">
-                  {["Authorize account", "Choose accounts", "Import data", "Review results"].map((label, index) => (
+                  {["Connect source", "Choose accounts", "Warehouse import"].map((label, index) => (
                     <li
                       key={label}
-                      data-step-state={step > index ? "complete" : step === index ? "current" : "upcoming"}
-                      aria-current={!paused && task.state !== "deferred" && step === index ? "step" : undefined}
+                      data-step-state={milestones[index] ? "complete" : (index === 0 || milestones[index - 1]) ? "current" : "upcoming"}
+                      aria-current={!paused && task.state !== "deferred" && !milestones[index] && (index === 0 || milestones[index - 1]) ? "step" : undefined}
                     >
-                      <span>{step > index ? <Check size={12} /> : `0${index + 1}`}</span>
+                      <span>{milestones[index] ? <CompletionCheck /> : `0${index + 1}`}</span>
                       <div>
                         {label}
-                        <small>{["You approve access to your account", "Choose what this workspace can use", "Wait for the source import to finish", "Check the data before finishing"][index]}</small>
+                        <small>{["You approve account access", "You choose the accounts and dates", status.imported ? "Data confirmed in your warehouse" : "Your agent checks that data arrives"][index]}</small>
                       </div>
                     </li>
                   ))}
                 </ol>
 
                 {/* State: waiting_authorization -> Real Connect Button */}
-                <AgentTaskSetup key={`${task.id}:${task.scopeRevision}`} task={task} workspaceId={workspaceId} canAuthorize={canAuthorize[task.provider as keyof typeof canAuthorize] ?? false} disabled={disabled} onAction={onAction} onConfirm={onConfirm} onReviewed={onReviewed} />
-            {task.reasonCode && (
-                  <p role="status" className={styles.taskAttention}>
-                    {task.reasonCode === "no_accounts" ? "No accessible advertiser accounts found for this connection." :
-                     task.reasonCode === "no_data_found" ? "Connected, but no warehouse data was returned for these dates." :
-                     task.reasonCode === "partial_import" ? "Some accounts are still missing. Review coverage, retry failed accounts, or save this source for later." :
-                     task.reasonCode === "import_failed" ? "Import did not finish. Check source health or save it for later." :
-                     "This source needs your attention before setup can continue."}
-                  </p>
-                )}
+                <AgentTaskSetup key={`${task.id}:${task.scopeRevision}`} task={task} workspaceId={workspaceId} canAuthorize={canAuthorize[task.provider as keyof typeof canAuthorize] ?? false} disabled={disabled} onAction={onAction} onConfirm={onConfirm} onReviewed={onReviewed} explorerPath={explorerPath} />
 
                 <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
                   {["waiting_authorization", "waiting_selection", "needs_attention"].includes(task.state) && (
@@ -144,8 +130,8 @@ export function SpecialistTaskList({
                     </button>
                   )}
                 </div>
-              </div>
-            </details>
+              </div></div></div>
+            </section>
           );
         })}
       </SpecialistStack>
