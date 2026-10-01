@@ -127,6 +127,13 @@ model User {
   paymentOrders               PaymentOrder[]
   reportSnapshotApprovals     ReportSnapshotApproval[]
   reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
+  ownedResponsibilities       AgentResponsibility[]        @relation("ResponsibilityOwner")
+  createdResponsibilities     AgentResponsibility[]        @relation("ResponsibilityCreator")
+  grantedAgentAuthorizations  AgentAuthorization[]         @relation("AuthorizationAuthorizer")
+  ownedCases                  AgentCase[]                  @relation("CaseOwner")
+  approvedAgentApprovals      AgentApproval[]              @relation("ApprovalApprover")
+  consoleEvents               AgentConsoleEvent[]          @relation("ConsoleEventActor")
+  notificationOutboxes        AgentNotificationOutbox[]    @relation("OutboxRecipient")
 }
 
 model LoginEvent {
@@ -253,6 +260,17 @@ model Workspace {
   reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
   clientFreshnessStates       ClientFreshnessState[]
   agencyAlertDeliveries       AgencyAlertDelivery[]
+  agentResponsibilities       AgentResponsibility[]
+  agentResponsibilityScopes   AgentResponsibilityScope[]
+  agentAuthorizations         AgentAuthorization[]
+  agentEvaluations            AgentEvaluation[]
+  agentCases                  AgentCase[]
+  agentOperations             AgentOperation[]
+  agentApprovals              AgentApproval[]
+  agentEvidenceSnapshots      AgentEvidenceSnapshot[]
+  agentConsoleEvents          AgentConsoleEvent[]
+  agentNotificationOutboxes   AgentNotificationOutbox[]
+  agentEventSequence          AgentEventSequence?
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -336,6 +354,8 @@ model Client {
   accountAssignments             ClientProviderAccountAssignment[]
   freshnessState                 ClientFreshnessState?
   agentRuns                      AgentRun[]
+  agentResponsibilities          AgentResponsibility[]
+  agentCases                     AgentCase[]
 
   @@unique([workspaceId, id])
   @@index([workspaceId])
@@ -664,6 +684,7 @@ model Connection {
   reportingContexts  AccountReportingContext[]
   accountAssignments ClientProviderAccountAssignment[]
   agentTaskConnections AgentTaskConnection[]
+  agentResponsibilityScopes AgentResponsibilityScope[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, id, provider])
@@ -1693,4 +1714,349 @@ model ProviderAccountHealth {
   @@unique([connectionId, accountId])
   @@index([workspaceId, provider, status])
   @@index([connectionId, status])
+}
+
+enum AgentResponsibilityStatus {
+  draft
+  active
+  paused
+  disabled
+}
+
+enum AgentCaseState {
+  detected
+  investigating
+  acting
+  verifying
+  needs_customer
+  blocked
+  failed
+  resolved
+}
+
+enum AgentCasePriority {
+  critical
+  high
+  medium
+  low
+}
+
+enum AgentOperationState {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum AgentApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+  consumed
+}
+
+enum AgentOutboxStatus {
+  pending
+  delivering
+  delivered
+  failed
+}
+
+model AgentResponsibility {
+  id                String                    @id @default(cuid())
+  workspaceId       String
+  clientId          String?
+  ownerId           String
+  createdByUserId   String
+  kind              String                    @default("monitoring")
+  status            AgentResponsibilityStatus @default(draft)
+  version           Int                       @default(0)
+  scopeRevision     Int                       @default(0)
+  policyRevision    Int                       @default(0)
+  configuration     Json
+  scopeHash         String?
+  cadence           String                    @default("daily")
+  timezone          String                    @default("UTC")
+  nextDueAt         DateTime?
+  lastAttemptedAt   DateTime?
+  lastSuccessfulAt  DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  workspace         Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client            Client?                   @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  owner             User                      @relation("ResponsibilityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  creator           User                      @relation("ResponsibilityCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  scopes            AgentResponsibilityScope[]
+  authorizations    AgentAuthorization[]
+  evaluations       AgentEvaluation[]
+  cases             AgentCase[]
+  events            AgentConsoleEvent[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, status, nextDueAt])
+  @@index([workspaceId, clientId, status])
+  @@index([status, nextDueAt])
+}
+
+model AgentResponsibilityScope {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  responsibilityId   String
+  scopeRevision      Int
+  connectionId       String
+  provider           String
+  providerAccountId  String
+  accountName        String?
+  currency           String?
+  timezone           String?
+  metadata           Json?
+  createdAt          DateTime            @default(now())
+  responsibility     AgentResponsibility @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  connection         Connection          @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([responsibilityId, scopeRevision, connectionId, providerAccountId])
+  @@index([workspaceId, responsibilityId, scopeRevision])
+  @@index([workspaceId, connectionId])
+}
+
+model AgentAuthorization {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  responsibilityId   String
+  policyRevision     Int
+  scopeRevision      Int
+  scopeHash          String
+  authorizingUserId  String
+  allowlistedTools   String[]            @default([])
+  allowedPairs       Json                @default("[]")
+  limits             Json?
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  revocationReason   String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  responsibility     AgentResponsibility @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  authorizingUser    User                @relation("AuthorizationAuthorizer", fields: [authorizingUserId], references: [id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  @@unique([responsibilityId, policyRevision])
+  @@index([workspaceId, responsibilityId, policyRevision])
+  @@index([responsibilityId, expiresAt])
+}
+
+model AgentEvaluation {
+  id                 String                 @id @default(cuid())
+  workspaceId        String
+  responsibilityId   String
+  configVersion      Int
+  scopeRevision      Int
+  policyRevision     Int
+  scheduledSlot      DateTime
+  attemptedAt        DateTime               @default(now())
+  completedAt        DateTime?
+  windowSince        DateTime?
+  windowUntil        DateTime?
+  status             String                 @default("no_finding")
+  qualityCode        String?
+  blockerCode        String?
+  evidenceId         String?
+  result             Json?
+  createdAt          DateTime               @default(now())
+  responsibility     AgentResponsibility    @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  evidence           AgentEvidenceSnapshot? @relation(fields: [workspaceId, evidenceId], references: [workspaceId, id], onDelete: Restrict)
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  cases              AgentCase[]
+  operations         AgentOperation[]
+
+  @@unique([workspaceId, id])
+  @@unique([responsibilityId, scopeRevision, scheduledSlot])
+  @@index([workspaceId, responsibilityId, attemptedAt])
+  @@index([responsibilityId, scheduledSlot])
+}
+
+model AgentCase {
+  id                    String                  @id @default(cuid())
+  workspaceId           String
+  clientId              String?
+  responsibilityId      String?
+  evaluationId          String?
+  fingerprint           String
+  episode               Int                     @default(1)
+  ownerUserId           String?
+  type                  String                  @default("metric_anomaly")
+  priority              AgentCasePriority       @default(medium)
+  state                 AgentCaseState          @default(detected)
+  version               Int                     @default(0)
+  title                 String
+  description           String?
+  requiredAction        String?
+  snoozedUntil          DateTime?
+  resolutionType        String?
+  resolutionReason      String?
+  resolutionEvidenceId  String?
+  firstObservedAt       DateTime                @default(now())
+  lastObservedAt        DateTime                @default(now())
+  resolvedAt            DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client                Client?                 @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  responsibility        AgentResponsibility?    @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  evaluation            AgentEvaluation?        @relation(fields: [workspaceId, evaluationId], references: [workspaceId, id], onDelete: Restrict)
+  ownerUser             User?                   @relation("CaseOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  operations            AgentOperation[]
+  events                AgentConsoleEvent[]
+  outboxes              AgentNotificationOutbox[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, fingerprint, episode])
+  @@index([workspaceId, state, priority])
+  @@index([workspaceId, clientId, state])
+  @@index([workspaceId, responsibilityId, state])
+  @@index([workspaceId, createdAt, id])
+}
+
+model AgentOperation {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  caseId             String?
+  evaluationId       String?
+  operationKey       String
+  toolName           String
+  arguments          Json
+  scopeHash          String
+  policyRevision     Int
+  state              AgentOperationState @default(queued)
+  attempts           Int                 @default(0)
+  maxAttempts        Int                 @default(3)
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  jobReference       String?
+  receipt            Json?
+  error              Json?
+  version            Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  case               AgentCase?          @relation(fields: [workspaceId, caseId], references: [workspaceId, id], onDelete: Cascade)
+  evaluation         AgentEvaluation?    @relation(fields: [workspaceId, evaluationId], references: [workspaceId, id], onDelete: Restrict)
+  approvals          AgentApproval[]
+  events             AgentConsoleEvent[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, operationKey])
+  @@index([workspaceId, state, leaseExpiresAt])
+  @@index([workspaceId, caseId, state])
+}
+
+model AgentApproval {
+  id                    String              @id @default(cuid())
+  workspaceId           String
+  operationId           String
+  proposalHash          String
+  approverUserId        String?
+  evidenceFingerprint   String
+  evidenceRevision      Int                 @default(1)
+  policyRevision        Int
+  scopeRevision         Int
+  status                AgentApprovalStatus @default(pending)
+  isSingleUseConsumed   Boolean             @default(false)
+  consumedAt            DateTime?
+  consumedByOperationId String?
+  expiresAt             DateTime
+  rejectedReason        String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  operation             AgentOperation      @relation(fields: [workspaceId, operationId], references: [workspaceId, id], onDelete: Cascade)
+  approverUser          User?               @relation("ApprovalApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  @@unique([operationId, proposalHash])
+  @@index([workspaceId, status, expiresAt])
+  @@index([workspaceId, operationId])
+}
+
+model AgentEvidenceSnapshot {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  datasetFingerprint String
+  grain              String            @default("campaign")
+  metrics            Json
+  inventory          Json
+  actualSince        DateTime
+  actualUntil        DateTime
+  currencies         String[]          @default([])
+  timezones          String[]          @default([])
+  calculationVersion Int               @default(1)
+  provenance         Json
+  citations          Json?
+  isExpired          Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  evaluations        AgentEvaluation[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, datasetFingerprint])
+  @@index([workspaceId, createdAt])
+}
+
+model AgentConsoleEvent {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  responsibilityId String?
+  caseId           String?
+  operationId      String?
+  actorType        String               @default("system")
+  actorUserId      String?
+  type             String
+  payload          Json
+  sequence         Int
+  createdAt        DateTime             @default(now())
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  responsibility   AgentResponsibility? @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  case             AgentCase?           @relation(fields: [workspaceId, caseId], references: [workspaceId, id], onDelete: Cascade)
+  operation        AgentOperation?      @relation(fields: [workspaceId, operationId], references: [workspaceId, id], onDelete: Cascade)
+  actorUser        User?                @relation("ConsoleEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, sequence])
+  @@index([workspaceId, responsibilityId, sequence])
+  @@index([workspaceId, caseId, sequence])
+  @@index([workspaceId, createdAt])
+}
+
+model AgentNotificationOutbox {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  caseId          String
+  channel         String            @default("in_app")
+  recipientUserId String
+  deliveryKey     String
+  status          AgentOutboxStatus @default(pending)
+  attempts        Int               @default(0)
+  lastAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  receipt         Json?
+  payload         Json
+  createdAt       DateTime          @default(now())
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  case            AgentCase         @relation(fields: [workspaceId, caseId], references: [workspaceId, id], onDelete: Cascade)
+  recipient       User              @relation("OutboxRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, deliveryKey])
+  @@index([workspaceId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model AgentEventSequence {
+  workspaceId  String    @id
+  lastSequence Int       @default(0)
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
