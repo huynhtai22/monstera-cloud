@@ -26,6 +26,7 @@ test.describe("persisted agent onboarding (M2)", () => {
   });
   test.afterEach(async () => {
     if (!db) return;
+    if (workspaceId) await db.campaignMetric.deleteMany({ where: { workspaceId } });
     if (workspaceId) await db.workspace.deleteMany({ where: { id: workspaceId } });
     if (userId) await db.user.deleteMany({ where: { id: userId } });
     await db.$disconnect();
@@ -40,8 +41,13 @@ test.describe("persisted agent onboarding (M2)", () => {
     await page.screenshot({ path: test.info().outputPath("roles-desktop.png"), fullPage: true });
     await page.getByRole("button", { name: /Growth marketer/ }).click();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: /Review spend See advertising/ }).click();
+    await expect(page.getByRole("button", { name: /Review spend See advertising/ })).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(page.getByRole("button", { name: /Review spend See advertising/ })).toHaveAttribute("aria-pressed", "true");
+    expect((await db.user.findUniqueOrThrow({ where: { id: userId } })).workContext).toBe("Review advertising spend");
     await page.getByRole("button", { name: "Start setup" }).click();
-    await expect(page.getByRole("heading", { name: "Which tools do you work with?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Let’s review advertising spend." })).toBeVisible();
     await page.getByRole("textbox", { name: "Tell Monstera which sources to connect" }).fill("Connect TikTok Ads and Meta Ads");
     await page.getByRole("button", { name: "Send message" }).click();
     await expect(page.getByRole("button", { name: /Add TikTok Ads \+ Meta Ads agents/ })).toBeVisible();
@@ -80,6 +86,23 @@ test.describe("persisted agent onboarding (M2)", () => {
     await expect(page.getByRole("button", { name: "TikTok Ads", exact: true })).toBeEnabled();
     expect(await db.agentTask.count({ where: { workspaceId } })).toBe(2);
     expect(await db.warehouseImportJob.count({ where: { workspaceId } })).toBe(0);
+  });
+
+  test("first overview requires explicit review and never blends source currencies", async ({ page }) => {
+    await db.user.update({ where: { id: userId }, data: { workProfileAnsweredAt: new Date(), workContext: "Review advertising spend" } });
+    const connection = await db.connection.create({ data: { workspaceId, name: "Local Meta fixture", provider: "meta_ads", type: "source", credentials: "local-fixture-only", remoteAccountId: userId } });
+    const run = await db.agentRun.create({ data: { workspaceId, initiatorUserId: userId, resumeKey: `onboarding:${userId}` } });
+    const today = new Date(); today.setUTCDate(today.getUTCDate() - 1); const until = today.toISOString().slice(0, 10);
+    for (const [accountId, currency, spend] of [["act_usd", "USD", 125], ["act_eur", "EUR", 80]] as const) await db.campaignMetric.create({ data: { workspaceId, connectionId: connection.id, platform: "meta_ads", accountId, currency, spend, date: new Date(`${until}T00:00:00Z`), level: "ad", entityId: accountId } });
+    await db.agentTask.create({ data: { workspaceId, runId: run.id, provider: "meta_ads", taskKey: "connect:meta_ads", state: "ready", scopeRevision: 1, confirmedScope: { provider: "meta_ads", connectionId: connection.id, selectedAccountIds: ["act_usd", "act_eur"], since: until, until }, connections: { create: { connectionId: connection.id } } } });
+    await page.goto(`/onboarding?workspaceId=${workspaceId}`);
+    await expect(page.getByText(/USD 125 spend/)).toBeVisible();
+    await expect(page.getByText(/EUR 80 spend/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open my workspace" })).toBeDisabled();
+    await page.getByRole("button", { name: "I’ve reviewed this overview" }).click();
+    await expect(page.getByRole("button", { name: "Open my workspace" })).toBeEnabled();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Open my workspace" })).toBeDisabled();
   });
 
   test("320px layout and reduced motion preserve keyboard-accessible direct selection", async ({ page }) => {

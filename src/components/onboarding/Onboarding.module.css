@@ -397,3 +397,23 @@
 @keyframes checkSettle { from { opacity:0; transform:scale(.8); } to { opacity:1; transform:scale(1); } }
 @keyframes messageArrive { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:reduce) { .root *,.root *::before,.root *::after { animation:none!important; transition:none!important; } }
+
+.goalPicker { margin: 0 0 28px; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: #151515; }
+.goalPicker h2, .firstResult h2 { margin: 8px 0 12px; font-size: 24px; }
+.goalPicker > div[role="group"] { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 18px; }
+.goalPicker > div > button { text-align: left; border: 1px solid #383838; background: #1b1b1b; border-radius: 9px; padding: 16px; color: #ddd; transition: background 200ms, border-color 200ms; }
+.goalPicker button[aria-pressed="true"] { background: #282828; border-color: #999; }
+.goalPicker button span { display: block; margin-top: 8px; font-size: 12px; line-height: 1.6; color: #aaa; }
+.goalPicker button:focus-visible, .firstResult button:focus-visible { outline: 2px solid #ddd; outline-offset: 4px; }
+.firstResult { padding: 28px; border-top: 1px solid var(--line); }
+.firstResult article { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.firstResult article h3 { font-size: 16px; }
+.firstResult article p { font-size: 12px; line-height: 1.7; color: #bbb; }
+.firstResult article > div { padding: 8px 0; overflow-wrap: anywhere; }
+.firstResult article strong { font-size: 12px; }
+.firstResult > a { display: inline-block; margin: 16px 24px 16px 0; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
+.recovery { margin: 16px 0; padding: 14px; border-left: 2px solid #777; }
+.recovery strong { font-size: 12px; }
+.recovery p { font-size: 11px; color: #aaa; line-height: 1.7; }
+@media(max-width:700px) { .goalPicker > div[role="group"] { grid-template-columns: 1fr; } .goalPicker, .firstResult { padding: 18px; } }
+@media(prefers-reduced-motion:reduce) { .goalPicker button { transition: none; } }

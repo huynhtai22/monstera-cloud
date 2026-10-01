@@ -65,6 +65,14 @@ describe("agent milestone 1: real Postgres persistence", () => {
     await db.$disconnect(); await prisma.$disconnect();
   });
 
+  it("preserves the saved onboarding goal when only the role changes", async t => {
+    if (!available) return t.skip("Postgres unavailable");
+    await saveWorkProfile(userId, { category: "GROWTH_MARKETER", context: "Review advertising spend" });
+    await saveWorkProfile(userId, { category: "BUSINESS_OWNER" });
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: userId } })).workContext, "Review advertising spend");
+    await saveWorkProfile(userId, { category: "BUSINESS_OWNER", context: "" });
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: userId } })).workContext, null);
+  });
   it("creates exactly one run and event under concurrent create/resume requests", async t => {
     if (!available) return t.skip("PostgreSQL required");
     const results = await Promise.all(Array.from({ length: 6 }, run));

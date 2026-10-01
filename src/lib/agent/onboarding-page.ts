@@ -13,7 +13,7 @@ export async function onboardingPageData(agencySlug?: string, requestedWorkspace
   if (!session?.user?.id) redirect("/login?callbackUrl=%2Fonboarding");
   const userId = session.user.id;
   const [profile, memberships] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { workCategory: true, workProfileAnsweredAt: true } }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { workCategory: true, workContext: true, workProfileAnsweredAt: true } }),
     prisma.workspaceMember.findMany({ where: { userId, ...(agencySlug ? { workspace: { slug: agencySlug } } : {}) }, orderBy: { workspace: { createdAt: "asc" } },
       select: { role: true, workspace: { select: { id: true, name: true, slug: true } } } }),
   ]);
@@ -28,6 +28,6 @@ export async function onboardingPageData(agencySlug?: string, requestedWorkspace
     return { ...workspace, role, clients, run, enabledProviders: access.map(row => row.provider).filter(id => ProviderSchema.safeParse(id).success && isConnectEnabled(id)) };
   }));
   const selectedWorkspaceId = workspaces.find(w => w.id === requestedWorkspaceId)?.id ?? workspaces[0]?.id ?? null;
-  return { profile: { category: profile.workCategory, answered: Boolean(profile.workProfileAnsweredAt) }, workspaces, selectedWorkspaceId, agencySlug: agencySlug ?? null, canAuthorizeTikTok: isProviderConfigured("tiktok_business"), canAuthorizeMeta: isProviderConfigured("meta_ads"), canAuthorizeGoogle: isProviderConfigured("google_ads"), canAuthorizeShopee: isProviderConfigured("shopee") };
+  return { profile: { category: profile.workCategory, context: profile.workContext, answered: Boolean(profile.workProfileAnsweredAt) }, workspaces, selectedWorkspaceId, agencySlug: agencySlug ?? null, canAuthorizeTikTok: isProviderConfigured("tiktok_business"), canAuthorizeMeta: isProviderConfigured("meta_ads"), canAuthorizeGoogle: isProviderConfigured("google_ads"), canAuthorizeShopee: isProviderConfigured("shopee") };
 }
 export type OnboardingBoot = Awaited<ReturnType<typeof onboardingPageData>>;

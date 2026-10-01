@@ -8,7 +8,7 @@ export async function saveWorkProfile(userId: string, input: unknown) {
   const profile = WorkProfileSchema.parse(input);
   return prisma.user.update({
     where: { id: userId },
-    data: { workCategory: profile.category, workContext: profile.context || null, workProfileAnsweredAt: new Date() },
+    data: { workCategory: profile.category, ...(profile.context !== undefined ? { workContext: profile.context || null } : {}), workProfileAnsweredAt: new Date() },
     select: { workCategory: true, workContext: true, workProfileAnsweredAt: true },
   });
 }
