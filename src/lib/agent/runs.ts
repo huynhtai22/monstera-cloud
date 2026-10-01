@@ -39,6 +39,15 @@ export async function createOrResumeOnboardingRun(userId: string, input: unknown
 
 /** Explicit continuation creates fresh tasks; prior consent and import approval never carry over. */
 export async function continueDeferredOnboarding(scope: AgentScope, completedRunId: string, expectedVersion: number) {
+  return continueCompletedOnboarding(scope, completedRunId, expectedVersion, true);
+}
+
+/** An empty follow-up lets the user choose a source without copying earlier approvals. */
+export async function addAnotherOnboardingSource(scope: AgentScope, completedRunId: string, expectedVersion: number) {
+  return continueCompletedOnboarding(scope, completedRunId, expectedVersion, false);
+}
+
+async function continueCompletedOnboarding(scope: AgentScope, completedRunId: string, expectedVersion: number, copyDeferred: boolean) {
   VersionSchema.parse(expectedVersion);
   return agentTransaction(async tx => {
     const source = await requireAgentRun(tx, scope, completedRunId, true);
@@ -50,8 +59,8 @@ export async function continueDeferredOnboarding(scope: AgentScope, completedRun
     const latest = await tx.agentRun.findFirst({ where: { workspaceId: scope.workspaceId, initiatorUserId: scope.userId, kind: "onboarding" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
     if (latest?.id !== source.id) throw new AgentError("continuation_exists", "A newer setup exists. Refresh to continue it.");
     if (source.clientId && !await tx.client.findFirst({ where: { id: source.clientId, workspaceId: scope.workspaceId } })) throw new AgentError("client_not_found", "The original reporting client is unavailable", 404);
-    const deferred = await tx.agentTask.findMany({ where: { workspaceId: scope.workspaceId, runId: source.id, state: "deferred" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, provider: true } });
-    if (!deferred.length) throw new AgentError("no_deferred_sources", "There are no saved sources to continue");
+    const deferred = copyDeferred ? await tx.agentTask.findMany({ where: { workspaceId: scope.workspaceId, runId: source.id, state: "deferred" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, provider: true } }) : [];
+    if (copyDeferred && !deferred.length) throw new AgentError("no_deferred_sources", "There are no saved sources to continue");
     const run = await tx.agentRun.create({ data: { workspaceId: scope.workspaceId, initiatorUserId: scope.userId, kind: "onboarding", clientId: source.clientId, resumeKey, createdAt: new Date(Math.max(Date.now(), source.createdAt.getTime() + 1)) } });
     await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: run.id, type: "run_created", payload: { kind: "onboarding", previousRunId: source.id } });
     for (const task of deferred) {

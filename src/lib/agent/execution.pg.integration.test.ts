@@ -14,7 +14,7 @@ import { NextRequest } from "next/server";
 import { GET as callback } from "@/app/api/auth/callback/route";
 import { createOAuthAttempt, consumeOAuthAttempt } from "@/lib/oauth-attempt";
 import { AgentError } from "./contracts";
-import { createOrResumeOnboardingRun, getAgentRun, setAgentRunPaused, continueDeferredOnboarding } from "./runs";
+import { createOrResumeOnboardingRun, getAgentRun, setAgentRunPaused, continueDeferredOnboarding, addAnotherOnboardingSource } from "./runs";
 import { createProviderTask, attachTaskConnections } from "./tasks";
 import { discoverTaskAccounts, confirmTaskScopeAndEnqueueImport, reconcileTaskImportOutcome, reconcileRunImports, finishOnboardingRun, getTaskDataPreview, validateAgentOAuthTask, reopenTaskImportChoice, restoreDeferredImport, retryFailedTaskAccounts, reuseTaskConnection } from "./execution";
 import { transitionAgentTask } from "./tasks";
@@ -134,6 +134,27 @@ describe("M3 TikTok: real PostgreSQL execution boundaries", () => {
     await assert.rejects(() => continueDeferredOnboarding(scope, runId, completed.version), errorCode("no_deferred_sources"));
     await assert.rejects(() => continueDeferredOnboarding({ userId: peerId, workspaceId }, runId, completed.version), errorCode("run_not_found"));
     await assert.rejects(() => continueDeferredOnboarding({ userId, workspaceId: otherWorkspaceId }, runId, completed.version), errorCode("run_not_found"));
+  });
+  it("opens an empty follow-up after completion without reusing approvals or importing data", async () => {
+    await assert.rejects(() => addAnotherOnboardingSource(scope, runId, 0), errorCode("run_not_completed"));
+    await confirm(); await row(); await outcome();
+    const snapshot = await getAgentRun(scope, runId);
+    const completed = await finishOnboardingRun(scope, runId, snapshot.run.version);
+    const before = JSON.stringify(await getAgentRun(scope, runId));
+    const jobsBefore = await jobs();
+    await assert.rejects(() => addAnotherOnboardingSource(scope, runId, completed.version - 1), errorCode("stale_version"));
+    await assert.rejects(() => addAnotherOnboardingSource({ userId: peerId, workspaceId }, runId, completed.version), errorCode("run_not_found"));
+    await assert.rejects(() => addAnotherOnboardingSource({ userId, workspaceId: otherWorkspaceId }, runId, completed.version), errorCode("run_not_found"));
+    const [next, replay] = await Promise.all([addAnotherOnboardingSource(scope, runId, completed.version), addAnotherOnboardingSource(scope, runId, completed.version)]);
+    assert.equal(next.id, replay.id); assert.notEqual(next.id, runId);
+    assert.equal((await getAgentRun(scope, next.id)).tasks.length, 0);
+    assert.equal(await jobs(), jobsBefore);
+    assert.equal(JSON.stringify(await getAgentRun(scope, runId)), before);
+    assert.equal((await continueDeferredOnboarding(scope, runId, completed.version)).id, next.id, "different entry actions share one follow-up");
+    const added = await createProviderTask(scope, next.id, "tiktok_business", next.version);
+    assert.equal(added.state, "waiting_authorization"); assert.equal(added.confirmedScope, null); assert.equal(added.importJobId, null);
+    await db.workspaceMember.update({ where: { workspaceId_userId: { workspaceId, userId } }, data: { role: "viewer" } });
+    await assert.rejects(() => addAnotherOnboardingSource(scope, runId, completed.version), errorCode("insufficient_role"));
   });
   it("Google binds multiple roots, imports selected leaves only, and carries successful pairs through failed-only retry", async () => {
     await db.workspaceProviderAccess.create({ data: { workspaceId, provider: "google_ads", enabled: true } });
