@@ -94,7 +94,7 @@ test.describe("persisted agent onboarding (M2)", () => {
     const run = await db.agentRun.create({ data: { workspaceId, initiatorUserId: userId, resumeKey: `onboarding:${userId}` } });
     const today = new Date(); today.setUTCDate(today.getUTCDate() - 1); const until = today.toISOString().slice(0, 10);
     for (const [accountId, currency, spend] of [["act_usd", "USD", 125], ["act_eur", "EUR", 80]] as const) await db.campaignMetric.create({ data: { workspaceId, connectionId: connection.id, platform: "meta_ads", accountId, currency, spend, date: new Date(`${until}T00:00:00Z`), level: "ad", entityId: accountId } });
-    await db.agentTask.create({ data: { workspaceId, runId: run.id, provider: "meta_ads", taskKey: "connect:meta_ads", state: "ready", scopeRevision: 1, confirmedScope: { provider: "meta_ads", connectionId: connection.id, selectedAccountIds: ["act_usd", "act_eur"], since: until, until }, connections: { create: { connectionId: connection.id } } } });
+    await db.agentTask.create({ data: { workspaceId, runId: run.id, provider: "meta_ads", taskKey: "connect:meta_ads", state: "ready", scopeRevision: 1, confirmedScope: { provider: "meta_ads", connectionId: connection.id, selectedAccountIds: ["act_empty_1", "act_empty_2", "act_empty_3", "act_usd", "act_eur"], since: until, until }, connections: { create: { connectionId: connection.id } } } });
     await page.goto(`/onboarding?workspaceId=${workspaceId}`);
     await expect(page.getByText(/USD 125 spend/)).toBeVisible();
     await expect(page.getByText(/EUR 80 spend/)).toBeVisible();
