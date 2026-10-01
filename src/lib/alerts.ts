@@ -91,24 +91,34 @@ async function dispatchAgencyAlert(alertId?: string): Promise<DispatchResult> {
 
   const clientName = candidate.clientId ? `[Client ID: ${candidate.clientId}]` : "[Unassigned]";
   const message = [
-    "🚨 *Monstera Sync Failure*",
+    "🚨 Monstera Sync Failure",
     "",
-    `*Source:* ${candidate.pipelineName}`,
-    `*Client:* ${clientName}`,
-    `*Workspace:* \`${candidate.workspaceId}\``,
-    `*Error:* ${candidate.errorMsg.slice(0, 280)}`,
+    `Source: ${candidate.pipelineName}`,
+    `Client: ${clientName}`,
+    `Workspace: ${candidate.workspaceId}`,
+    `Error: ${candidate.errorMsg.slice(0, 280)}`,
     "",
-    `_${candidate.actionHint || "Open Data Explorer → Recent runs and copy IDs for support."}_`,
+    candidate.actionHint || "Open Data Explorer → Recent runs and copy IDs for support.",
   ].join("\n");
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "Markdown" }),
+      // Operational names/errors are untrusted text, not Markdown entities.
+      body: JSON.stringify({ chat_id: chatId, text: message }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) return deferAgencyAlert(candidate.id, leaseId, candidate.attempts + 1, `Telegram returned HTTP ${response.status}`);
+
+    // HTTP success alone does not certify Telegram accepted a message.
+    // Never retain provider descriptions here: they can contain supplied secrets.
+    const receipt: unknown = await response.json();
+    if (!receipt || typeof receipt !== "object" || !("ok" in receipt) || receipt.ok !== true
+      || !("result" in receipt) || !receipt.result || typeof receipt.result !== "object"
+      || !("message_id" in receipt.result) || !Number.isInteger(receipt.result.message_id)) {
+      return deferAgencyAlert(candidate.id, leaseId, candidate.attempts + 1, "Telegram did not confirm message delivery");
+    }
 
     const updated = await withSystemScope(() => prisma.agencyAlertDelivery.updateMany({
       where: { id: candidate.id, status: "sending", leaseId },
