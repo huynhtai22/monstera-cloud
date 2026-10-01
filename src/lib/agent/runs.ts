@@ -54,7 +54,20 @@ async function continueCompletedOnboarding(scope: AgentScope, completedRunId: st
     if (source.status !== "completed" || source.kind !== "onboarding") throw new AgentError("run_not_completed", "Finish and review this setup before continuing saved sources");
     const resumeKey = `onboarding:${scope.userId}:after:${source.id}`;
     const existing = await tx.agentRun.findFirst({ where: { workspaceId: scope.workspaceId, resumeKey, initiatorUserId: scope.userId } });
-    if (existing) return existing;
+    if (existing) {
+      if (!copyDeferred) return existing;
+      const deferred = await tx.agentTask.findMany({ where: { workspaceId: scope.workspaceId, runId: source.id, state: "deferred" }, select: { id: true, provider: true } });
+      const tasks = await tx.agentTask.findMany({ where: { workspaceId: scope.workspaceId, runId: existing.id }, select: { provider: true } });
+      const missing = deferred.filter(task => !tasks.some(current => current.provider === task.provider));
+      if (missing.length) {
+        assertRunWritable(existing.status);
+        for (const task of missing) {
+          const next = await tx.agentTask.create({ data: { workspaceId: scope.workspaceId, runId: existing.id, taskKey: `connect:${task.provider}`, provider: task.provider } });
+          await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: existing.id, taskId: next.id, type: "task_created", payload: { provider: task.provider, previousTaskId: task.id } });
+        }
+      }
+      return tx.agentRun.findUniqueOrThrow({ where: { workspaceId_id: { workspaceId: scope.workspaceId, id: existing.id } } });
+    }
     if (source.version !== expectedVersion) throw new AgentError("stale_version", "Setup changed; refresh before continuing", 409, source.version);
     const latest = await tx.agentRun.findFirst({ where: { workspaceId: scope.workspaceId, initiatorUserId: scope.userId, kind: "onboarding" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
     if (latest?.id !== source.id) throw new AgentError("continuation_exists", "A newer setup exists. Refresh to continue it.");

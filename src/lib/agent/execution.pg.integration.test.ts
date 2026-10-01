@@ -156,6 +156,25 @@ describe("M3 TikTok: real PostgreSQL execution boundaries", () => {
     await db.workspaceMember.update({ where: { workspaceId_userId: { workspaceId, userId } }, data: { role: "viewer" } });
     await assert.rejects(() => addAnotherOnboardingSource(scope, runId, completed.version), errorCode("insufficient_role"));
   });
+  it("materializes saved sources when fresh and deferred continuation actions converge", async () => {
+    await confirm(); await row(); await outcome();
+    let snapshot = await getAgentRun(scope, runId);
+    const deferred = await createProviderTask(scope, runId, "meta_ads", snapshot.run.version);
+    await transitionAgentTask(scope, deferred.id, { expectedVersion: deferred.version, state: "deferred" });
+    snapshot = await getAgentRun(scope, runId);
+    const completed = await finishOnboardingRun(scope, runId, snapshot.run.version);
+    const next = await addAnotherOnboardingSource(scope, runId, completed.version);
+    assert.equal((await getAgentRun(scope, next.id)).tasks.length, 0);
+    const jobsBefore = await jobs();
+    const [continued, replay] = await Promise.all([continueDeferredOnboarding(scope, runId, completed.version), continueDeferredOnboarding(scope, runId, completed.version)]);
+    assert.equal(continued.id, next.id); assert.equal(replay.id, next.id);
+    const fresh = await getAgentRun(scope, next.id);
+    assert.equal(fresh.tasks.length, 1); assert.equal(fresh.tasks[0].provider, "meta_ads");
+    assert.equal(fresh.tasks[0].state, "waiting_authorization"); assert.equal(fresh.tasks[0].confirmedScope, null);
+    assert.equal(fresh.tasks[0].connections.length, 0); assert.equal(await jobs(), jobsBefore);
+    assert.equal(fresh.events.filter(event => event.type === "task_created").length, 1);
+    assert.equal((await getAgentRun(scope, runId)).run.status, "completed");
+  });
   it("Google binds multiple roots, imports selected leaves only, and carries successful pairs through failed-only retry", async () => {
     await db.workspaceProviderAccess.create({ data: { workspaceId, provider: "google_ads", enabled: true } });
     const roots = ["9001", "9002"];
