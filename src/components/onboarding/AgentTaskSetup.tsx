@@ -73,7 +73,7 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
     {task.state === "needs_attention" && task.result?.retryRemaining === 0 && <p className={styles.small}>The retry limit was reached. Check source health, then choose accounts and dates again to approve a new import.</p>}
     {task.state === "needs_attention" && task.confirmedScope && (preview?.rowsCount ?? task.result?.rowsCount) !== 0 && <button className={styles.textButton} disabled={busy} onClick={() => onAction(task, "change_scope")}>Choose accounts or dates again</button>}
     {task.confirmedScope && (preview?.rowsCount ?? task.result?.rowsCount) === 0 && !["queued", "importing", "verifying"].includes(task.state) && <div className={styles.recovery}>
-      <strong>Your source is connected. Let’s find usable data.</strong>
+      <strong>Let’s find usable data for this source.</strong>
       <p>Check that these accounts had activity during the selected dates. Empty results can also reflect provider reporting delays; zero rows alone does not identify the cause.</p>
       {task.state === "needs_attention" && <button className={styles.textButton} disabled={busy} onClick={() => onAction(task, "change_scope")}>Review accounts and dates →</button>}
       {task.state === "deferred" && <p>Add this source back to setup to review accounts and approve a new import.</p>}
