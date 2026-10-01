@@ -17,7 +17,7 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
   task: Task; workspaceId: string; canAuthorize: boolean; disabled: boolean;
   onAction: (task: Task, action: TaskAction, connectionId?: string | string[]) => void;
   onConfirm: (task: Task, input: ImportChoice) => void;
-  onReviewed: (id: string, evidence: WarehouseEvidence) => void;
+  onReviewed: (id: string, evidence: WarehouseEvidence, preview?: DataPreview) => void;
   explorerPath: string;
 }) {
   const [connections, setConnections] = useState<{ id: string; name: string }[] | null>(null);
@@ -34,19 +34,20 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
         setConnections(data.connections);
       } else {
         const data = await agentRequest<DataPreview>(`/api/agent/tasks/${task.id}/preview`);
-        setPreview(data); onReviewed(task.id, { verified: data.verified, rowsCount: data.rowsCount, scopeRevision: task.scopeRevision });
+        setPreview(data); onReviewed(task.id, { verified: data.verified, rowsCount: data.rowsCount, scopeRevision: task.scopeRevision }, data);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Please try again."); }
     finally { setLoading(false); }
   }
   useEffect(() => {
+    setPreview(null);
     if (task.state !== "ready") return;
     let live = true;
     setLoading(true); setError(null);
     void agentRequest<DataPreview>(`/api/agent/tasks/${task.id}/preview`).then(data => {
       if (!live) return;
       setPreview(data);
-      onReviewed(task.id, { verified: data.verified, rowsCount: data.rowsCount, scopeRevision: task.scopeRevision });
+      onReviewed(task.id, { verified: data.verified, rowsCount: data.rowsCount, scopeRevision: task.scopeRevision }, data);
     }).catch(err => { if (live) setError(err instanceof Error ? err.message : "Unable to confirm warehouse data."); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
@@ -70,7 +71,14 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
     {task.state === "needs_attention" && task.confirmedScope && <p className={styles.small}>{task.reasonCode === "no_data_found" ? "No usable data was found for the confirmed accounts and dates." : task.reasonCode === "partial_import" ? "Some account imports did not finish. Retry includes only the failed accounts." : "Import did not finish. Check this source in Data explorer."} You can save this source for later.</p>}
     {task.state === "needs_attention" && task.confirmedScope && task.result?.retryRemaining !== 0 && ["partial_import", "import_failed"].includes(task.reasonCode ?? "") && <button className={styles.connect} disabled={busy} onClick={() => onAction(task, "retry_failed")}>Retry failed accounts</button>}
     {task.state === "needs_attention" && task.result?.retryRemaining === 0 && <p className={styles.small}>The retry limit was reached. Check source health, then choose accounts and dates again to approve a new import.</p>}
-    {task.state === "needs_attention" && task.confirmedScope && <button className={styles.textButton} disabled={busy} onClick={() => onAction(task, "change_scope")}>Choose accounts or dates again</button>}
+    {task.state === "needs_attention" && task.confirmedScope && (preview?.rowsCount ?? task.result?.rowsCount) !== 0 && <button className={styles.textButton} disabled={busy} onClick={() => onAction(task, "change_scope")}>Choose accounts or dates again</button>}
+    {task.confirmedScope && (preview?.rowsCount ?? task.result?.rowsCount) === 0 && !["queued", "importing", "verifying"].includes(task.state) && <div className={styles.recovery}>
+      <strong>Let’s find usable data for this source.</strong>
+      <p>Check that these accounts had activity during the selected dates. Empty results can also reflect provider reporting delays; zero rows alone does not identify the cause.</p>
+      {task.state === "needs_attention" && <button className={styles.textButton} disabled={busy} onClick={() => onAction(task, "change_scope")}>Review accounts and dates →</button>}
+      {task.state === "deferred" && <p>Add this source back to setup to review accounts and approve a new import.</p>}
+      <p>Changing dates requires a new approval. Your agent won’t expand the import automatically.</p>
+    </div>}
     {task.confirmedScope && <div className={styles.warehouseReceipt} role="status">
       <span className={styles.receiptIcon}>{preview?.verified && preview.rowsCount > 0 ? <CompletionCheck /> : <span className={styles.notConnected} />}</span>
       <div><strong>{preview?.verified && preview.rowsCount > 0 ? "Data is in your warehouse" : ["queued", "importing", "verifying"].includes(task.state) ? task.state === "queued" ? "Your import is queued" : "Importing into your warehouse" : task.state === "ready" ? loading ? "Confirming warehouse data…" : "Warehouse confirmation needed" : (preview?.rowsCount ?? task.result?.rowsCount) === 0 ? "No data imported for these dates" : "Import needs attention"}</strong>

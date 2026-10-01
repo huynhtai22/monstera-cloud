@@ -13,6 +13,10 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { agentRequest, AgentRequestError, useAgentRun } from "@/hooks/use-agent-run";
 import type { AgentSnapshot } from "@/hooks/use-agent-run";
 import { taskPresentation, type WarehouseEvidence } from "./task-presentation";
+import { ONBOARDING_GOALS, onboardingGoal } from "@/lib/agent/onboarding-goals";
+import type { DataPreview } from "./AgentTaskSetup";
+import { firstResultKey } from "./first-result";
+import { FirstResult } from "./FirstResult";
 import { WorkRolePicker } from "./WorkRolePicker";
 import { OnboardingIntro } from "./OnboardingIntro";
 import { SpecialistTaskList } from "./SpecialistTaskList";
@@ -24,6 +28,7 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
   const router = useRouter();
   const { mutate: updateCache } = useSWRConfig();
   const [category, setCategory] = useState<WorkCategory | null>(boot.profile.category);
+  const [goal, setGoal] = useState(onboardingGoal(boot.profile.context));
   const [stage, setStage] = useState<"intro" | "role" | "sources">(boot.profile.answered ? "sources" : boot.workspaces.find(w => w.id === boot.selectedWorkspaceId)?.run ? "role" : "intro");
   const [workspaceRuns, setWorkspaceRuns] = useState(() => Object.fromEntries(boot.workspaces.map(w => [w.id, w.run])));
   const [workspaceId, setWorkspaceId] = useState(boot.selectedWorkspaceId);
@@ -37,7 +42,10 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
   const [reviewedTaskIds, setReviewedTaskIds] = useState<string[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [warehouseEvidence, setWarehouseEvidence] = useState<Record<string, WarehouseEvidence>>({});
-  const markReviewed = useCallback((id: string, evidence: WarehouseEvidence) => {
+  const [previews, setPreviews] = useState<Record<string, { scopeRevision: number; data: DataPreview }>>({});
+  const [acknowledgedResult, setAcknowledgedResult] = useState<string | null>(null);
+  const markReviewed = useCallback((id: string, evidence: WarehouseEvidence, preview?: DataPreview) => {
+    if (preview) setPreviews(previous => ({ ...previous, [id]: { scopeRevision: evidence.scopeRevision, data: preview } }));
     setWarehouseEvidence(previous => ({ ...previous, [id]: evidence }));
     setReviewedTaskIds(ids => evidence.verified && evidence.rowsCount > 0 ? ids.includes(id) ? ids : [...ids, id] : ids.filter(item => item !== id));
   }, []);
@@ -109,6 +117,14 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
       setCategory(selected); changeStage("sources");
     });
   }
+  function selectGoal(next: typeof goal) {
+    void mutate(async () => {
+      const response = await fetch("/api/me/work-profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category, context: next?.context ?? "" }) });
+      if (!response.ok) throw new Error("Unable to save your goal. Please try again.");
+      setGoal(next);
+    });
+  }
+  const resultKey = firstResultKey(snapshot, previews);
   async function beginSetup() {
     if (!workspaceId) return;
     const next = await agentRequest<AgentSnapshot>("/api/agent/runs", { kind: "onboarding", workspaceId, ...(clientId ? { clientId } : {}) });
@@ -177,6 +193,11 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
       {(error || loadError) && <div className={styles.error} role="alert">{error || loadError}<button className={styles.textButton} onClick={() => { setError(null); void refresh(); }}>Refresh setup</button></div>}
       {stage === "intro" ? <OnboardingIntro onStart={() => changeStage("role")} /> : stage === "role" ? <WorkRolePicker category={category} onChange={setCategory} busy={busy} onContinue={() => saveProfile(category)} onSkip={() => saveProfile(null)} /> : <>
         <div className={styles.sourceHeading}><button className={styles.back} onClick={() => changeStage("role")} disabled={busy}><ArrowLeft size={14} />Your work</button><div className={styles.sourceTitleRow}><div><p className={styles.eyebrow}>BUILD YOUR WORKSPACE</p><h1>Good work starts with the right setup.</h1></div><p>Choose your sources.<br />Your agents take it from there.</p></div></div>
+        <section className={styles.goalPicker} aria-labelledby="goal-title">
+          <div><p className={styles.eyebrow}>YOUR FIRST RESULT</p><h2 id="goal-title">What would you like help with first?</h2><p className={styles.small}>{goal?.id === "reporting" ? "Start with the platforms used by your selected client. Other sources can wait." : goal?.id === "spend" ? "Start with the ad platforms where you currently spend. Totals stay separate by currency." : "Optional. Start with one active ad platform; you can add other sources later."}</p></div>
+          <div role="group" aria-label="Your first goal">{ONBOARDING_GOALS.map(item => <button key={item.id} aria-pressed={goal?.id === item.id} disabled={busy} onClick={() => selectGoal(item)}><strong>{item.title}</strong><span>{item.description}</span></button>)}</div>
+          {goal && <button className={styles.textButton} disabled={busy} onClick={() => selectGoal(null)}>Decide later</button>}
+        </section>
         <div className={styles.workbench}>
         <div className={styles.contextBar}>
           <label className={styles.scopeField}><span>Workspace</span><span className={styles.selectControl}><Building2 size={14} aria-hidden="true" /><select aria-label="Workspace" value={workspaceId ?? ""} disabled={busy || !!boot.agencySlug || boot.workspaces.length < 2} onChange={e => {
@@ -196,7 +217,7 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
           {viewer && <div className={styles.pauseNotice}>You have view-only access. Ask a workspace member to continue setup.</div>}
           <div className={styles.workspace}>
             <section className={styles.conversation} aria-labelledby="sources-question"><div className={styles.conversationToolbar}><span className={styles.eyebrow}>SETUP CONVERSATION</span><span>{paused ? "Paused" : busy ? "Updating setup" : "Ready when you are"}</span></div><div className={styles.agentIdentity}><span className={styles.avatar}><BusinessIcon name="coordinator" size={23} /></span><span><strong>Monstera</strong><small>Your setup coordinator</small></span></div>
-              <h2 id="sources-question">Which tools do you work with?</h2><p className={styles.muted}>{greeting} Pick a source below, or tell me what you have in mind.</p><p className={styles.choiceLabel}>CHOOSE A STARTING POINT</p>
+              <h2 id="sources-question">{goal ? `Let’s ${goal.context.toLowerCase()}.` : "Which tools do you work with?"}</h2><p className={styles.muted}>{greeting} Pick a source below, or tell me what you have in mind.</p><p className={styles.choiceLabel}>CHOOSE A STARTING POINT</p>
               <div className={styles.chips} role="group" aria-label="Available sources">{ONBOARDING_PROVIDERS.map(provider => {
                 const task = snapshot.tasks.find(t => t.provider === provider.id);
                 const selected = !!task;
@@ -236,7 +257,8 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
               onConfirm={(task, input) => void mutate(async () => { await agentRequest(`/api/agent/tasks/${task.id}/confirm-scope`, input); await refresh(); })}
             />
           </div>
-          {snapshot.tasks.some(task => task.state === "ready") && !completed && <div className={styles.finishReview}><div><h3>Your workspace is taking shape.</h3><p>We confirm each import against your selected accounts and dates. Save unfinished sources for later, then explore your console.</p></div><button className={styles.primary} disabled={busy || !writable || snapshot.tasks.some(task => !["ready", "deferred"].includes(task.state)) || snapshot.tasks.filter(task => task.state === "ready").some(task => !reviewedTaskIds.includes(task.id))} onClick={() => void mutate(async () => { await agentRequest(`/api/agent/runs/${runId}/actions`, { expectedVersion: snapshot.run.version, action: "finish" }); await returnToConsole(); })}>Open my workspace →</button></div>}
+          {snapshot.tasks.some(task => task.state === "ready") && <FirstResult tasks={snapshot.tasks} previews={previews} goal={goal} explorerPath={explorerPath} workspaceId={workspaceId!} acknowledged={acknowledgedResult === resultKey} onAcknowledge={() => setAcknowledgedResult(resultKey)} />}
+          {snapshot.tasks.some(task => task.state === "ready") && !completed && <div className={styles.finishReview}><div><h3>Your workspace is taking shape.</h3><p>Review your first overview and save unfinished sources for later. Your setup agents connect sources and import data. This setup does not authorize campaign changes or activate ongoing monitoring.</p></div><button className={styles.primary} disabled={busy || !writable || acknowledgedResult !== resultKey || snapshot.tasks.some(task => !["ready", "deferred"].includes(task.state)) || snapshot.tasks.filter(task => task.state === "ready").some(task => !reviewedTaskIds.includes(task.id))} onClick={() => void mutate(async () => { await agentRequest(`/api/agent/runs/${runId}/actions`, { expectedVersion: snapshot.run.version, action: "finish" }); await returnToConsole(); })}>Open my workspace →</button></div>}
         </>}
         </div>
         <footer className={styles.footer}><span>Built around your work. Connected on your terms.</span><Link href={sourcesPath}>Manage existing sources ↗</Link></footer>

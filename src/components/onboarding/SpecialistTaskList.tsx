@@ -4,7 +4,7 @@ import type { AgentSnapshot } from "@/hooks/use-agent-run";
 import { ONBOARDING_PROVIDERS } from "@/lib/agent/catalog";
 import styles from "./Onboarding.module.css";
 import { BusinessIcon, SourceLogo } from "./OnboardingIcons";
-import { AgentTaskSetup, type TaskAction, type ImportChoice } from "./AgentTaskSetup";
+import { AgentTaskSetup, type TaskAction, type ImportChoice, type DataPreview } from "./AgentTaskSetup";
 import { taskPresentation, type WarehouseEvidence } from "./task-presentation";
 import { CompletionCheck, SpecialistStack } from "./OnboardingMotion";
 
@@ -18,7 +18,7 @@ interface SpecialistTaskListProps {
   onAction: (task: AgentSnapshot["tasks"][number], action: TaskAction, connectionId?: string | string[]) => void;
   canAuthorize: { tiktok_business: boolean; meta_ads: boolean; google_ads: boolean; shopee: boolean };
   onConfirm: (task: AgentSnapshot["tasks"][number], input: ImportChoice) => void;
-  onReviewed: (id: string, evidence: WarehouseEvidence) => void;
+  onReviewed: (id: string, evidence: WarehouseEvidence, preview?: DataPreview) => void;
   warehouseEvidence: Record<string, WarehouseEvidence>;
   activeTaskId: string | null;
   onOpen: (id: string | null) => void;
