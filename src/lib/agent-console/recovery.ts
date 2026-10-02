@@ -249,6 +249,15 @@ export async function heartbeatRecoveryOperationLease(workspaceId: string, jobId
       where: { id: jobId, workspaceId, status: "running", leaseId: workerId, leaseExpiresAt: { gt: now } },
     });
     if (!job) return false;
+    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { plan: true } });
+    try {
+      const permittedRange = boundedRecoveryRange(workspace.plan, job.since, job.until);
+      const args = op.arguments as { since?: string; until?: string };
+      if (permittedRange.since !== job.since || permittedRange.until !== job.until || args.since !== job.since || args.until !== job.until) return false;
+    } catch (error) {
+      if (error instanceof AgentConsoleError) return false;
+      throw error;
+    }
     const resp = op.case?.responsibility;
     if (!resp || resp.status !== "active" || resp.scopeHash !== op.scopeHash || resp.policyRevision !== op.policyRevision) return false;
     const auth = await tx.agentAuthorization.findFirst({

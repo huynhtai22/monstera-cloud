@@ -388,6 +388,9 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
     const workerLease = "recovery-warehouse-lease";
     await db.warehouseImportJob.update({ where: { id: recoveryJobId }, data: { status: "running", leaseId: workerLease, leaseExpiresAt: new Date(Date.now() + 60_000) } });
     assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, "stale-worker"), false);
+    await db.warehouseImportJob.update({ where: { id: recoveryJobId }, data: { since: "2026-01-01" } });
+    assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, workerLease), false, "Claim must reject an oversized or changed queued job window");
+    await db.warehouseImportJob.update({ where: { id: recoveryJobId }, data: { since: "2026-09-13" } });
     await db.agentAuthorization.updateMany({ where: { workspaceId, responsibilityId }, data: { expiresAt: new Date(Date.now() - 1000) } });
     assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, workerLease), false);
     await db.agentAuthorization.updateMany({ where: { workspaceId, responsibilityId }, data: { expiresAt: new Date(Date.now() + 86400000) } });
