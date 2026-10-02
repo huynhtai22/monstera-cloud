@@ -7,7 +7,7 @@ import type { OfferedScopeSchema, ConfirmedScopeSchema } from "@/lib/agent/execu
 import type { ProposalSchema } from "@/lib/agent/tools";
 
 export type AgentSnapshot = {
-  run: { id: string; workspaceId: string; clientId: string | null; version: number; status: AgentRunStatus };
+  run: { id: string; workspaceId: string; clientId: string | null; version: number; status: AgentRunStatus; goal?: { id: string; context: string } | null };
   tasks: { id: string; provider: string; state: AgentTaskState; scopeRevision: number; version: number; reasonCode: string | null; requestedScope: z.infer<typeof OfferedScopeSchema> | null; confirmedScope: z.infer<typeof ConfirmedScopeSchema> | null; importJobId: string | null; result: { retryRemaining?: number; verified: boolean; rowsCount: number; completedItems: number; totalItems: number } | null }[];
   messages: { id: string; role: string; content: string; structuredResponse: { proposedActions?: z.infer<typeof ProposalSchema>[] } | null }[];
   events: { id: string; sequence: number; taskId: string | null; type: string }[];

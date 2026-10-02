@@ -14,6 +14,7 @@ type Props = {
   sources: DashboardSourceItem[];
   monitoringAvailable: boolean;
   drafts?: DataHealthSetupDraft[];
+  preferredDraftId?: string | null;
   onSaved?: () => void | Promise<unknown>;
   onActivated: () => void | Promise<unknown>;
 };
@@ -32,7 +33,7 @@ async function canonicalScopeHash(items: Array<{ provider: string; connectionId:
 
 export function ConnectedDataResponsibilitySetup(props: Props) {
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
-  const draft = props.drafts?.find(item => item.id === selectedDraftId) ?? props.drafts?.[0];
+  const draft = props.drafts?.find(item => item.id === (selectedDraftId ?? props.preferredDraftId)) ?? props.drafts?.[0];
   return <div>
     {(props.drafts?.length ?? 0) > 1 && <label className={styles.draftPicker}>Saved setup
       <select value={draft?.id} onChange={event => setSelectedDraftId(event.target.value)}>
@@ -161,6 +162,7 @@ function DataHealthSetupEditor({ workspaceId, sources, monitoringAvailable, onAc
       <div className={styles.intro}>
         <p className={styles.eyebrow}>ONGOING RESPONSIBILITY</p>
         <h2 id="data-health-setup-title">Keep my connected data healthy</h2>
+        {savedDraft?.goalLabel && <p>Setup goal: {savedDraft.goalLabel}</p>}
         {savedDraft && <p className={styles.draftStatus} role="status">Saved draft · monitoring has not started. Review your choices before approval.</p>}
         {!monitoringAvailable && <p className={styles.muted}>Daily checks are unavailable in this workspace. You can save your choices and approve later when monitoring becomes available.</p>}
         <p>Choose the sources and accounts Monstera should check. Nothing starts until you review and approve this responsibility.</p>
@@ -203,7 +205,7 @@ function DataHealthSetupEditor({ workspaceId, sources, monitoringAvailable, onAc
       </div>
 
       <div className={styles.policy}>
-        <p><strong>Check schedule</strong><span>Daily</span></p>
+        <p><strong>Check schedule</strong><span>Daily{savedDraft ? ` · ${savedDraft.timezone}` : ""}</span></p>
         <p><strong>Permitted recovery</strong><span>Retry failed imports for the accounts you select</span></p>
         <p><strong>If access expires</strong><span>Ask you to reconnect; Monstera will not change campaigns or deliver reports</span></p>
       </div>

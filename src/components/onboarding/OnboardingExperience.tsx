@@ -98,7 +98,7 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
     if (workspaceId && !workspaces.some(item => item.id === workspaceId)) throw new Error("Workspace access changed. Refresh setup before continuing.");
     await updateCache("/api/workspaces", workspaces, { revalidate: false });
     if (workspaceId) useWorkspaceStore.getState().setActiveWorkspaceId(workspaceId);
-    router.push(consolePath);
+    router.push(runId ? `${consolePath}?onboardingRunId=${encodeURIComponent(runId)}` : consolePath);
   }
 
   async function mutate(action: () => Promise<void>) {
@@ -119,11 +119,22 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
   }
   function selectGoal(next: typeof goal) {
     void mutate(async () => {
+      if (snapshot) {
+        await agentRequest(`/api/agent/runs/${snapshot.run.id}/goal`, { expectedVersion: snapshot.run.version, goalId: next?.id ?? null });
+        setGoal(next);
+        await refresh();
+        return;
+      }
       const response = await fetch("/api/me/work-profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category, context: next?.context ?? "" }) });
       if (!response.ok) throw new Error("Unable to save your goal. Please try again.");
       setGoal(next);
     });
   }
+  const hasSavedGoal = snapshot?.run.goal !== undefined;
+  const savedGoalContext = snapshot?.run.goal?.context;
+  useEffect(() => {
+    if (hasSavedGoal) setGoal(onboardingGoal(savedGoalContext));
+  }, [snapshot?.run.id, savedGoalContext, hasSavedGoal]);
   const resultKey = firstResultKey(snapshot, previews);
   async function beginSetup() {
     if (!workspaceId) return;
@@ -195,8 +206,8 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
         <div className={styles.sourceHeading}><button className={styles.back} onClick={() => changeStage("role")} disabled={busy}><ArrowLeft size={14} />Your work</button><div className={styles.sourceTitleRow}><div><p className={styles.eyebrow}>BUILD YOUR WORKSPACE</p><h1>Good work starts with the right setup.</h1></div><p>Choose your sources.<br />Your agents take it from there.</p></div></div>
         <section className={styles.goalPicker} aria-labelledby="goal-title">
           <div><p className={styles.eyebrow}>YOUR FIRST RESULT</p><h2 id="goal-title">What would you like help with first?</h2><p className={styles.small}>{goal?.id === "reporting" ? "Start with the platforms used by your selected client. Other sources can wait." : goal?.id === "spend" ? "Start with the ad platforms where you currently spend. Totals stay separate by currency." : "Optional. Start with one active ad platform; you can add other sources later."}</p></div>
-          <div role="group" aria-label="Your first goal">{ONBOARDING_GOALS.map(item => <button key={item.id} aria-pressed={goal?.id === item.id} disabled={busy} onClick={() => selectGoal(item)}><strong>{item.title}</strong><span>{item.description}</span></button>)}</div>
-          {goal && <button className={styles.textButton} disabled={busy} onClick={() => selectGoal(null)}>Decide later</button>}
+          <div role="group" aria-label="Your first goal">{ONBOARDING_GOALS.map(item => <button key={item.id} aria-pressed={goal?.id === item.id} disabled={busy || completed || paused || viewer} onClick={() => selectGoal(item)}><strong>{item.title}</strong><span>{item.description}</span></button>)}</div>
+          {goal && <button className={styles.textButton} disabled={busy || completed || paused || viewer} onClick={() => selectGoal(null)}>Decide later</button>}
         </section>
         <div className={styles.workbench}>
         <div className={styles.contextBar}>

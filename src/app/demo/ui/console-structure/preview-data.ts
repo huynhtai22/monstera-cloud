@@ -58,10 +58,14 @@ export function sampleApiPayload(url: URL, state: PreviewState): unknown {
     dataThroughCoverage: monitoringActive ? "2026-10-01" : null,
     activeBlockers: monitoringActive ? ["IMPORT_COVERAGE_INCOMPLETE: One selected account needs a bounded retry"] : monitoringSetup ? [] : ["WORKER_UNAVAILABLE: Monitoring is not enabled in this preview"],
     responsibilities: monitoringActive ? [{ id: "sample-health-responsibility", kind: "data_health", status: "active", cadence: "daily", version: 2, nextDueAt: "2026-10-03T02:41:00.000Z", lastSuccessfulAt: "2026-10-02T02:41:00.000Z", scopeCount: 3 }] : [],
-    setupDrafts: monitoringDraft ? [{ id: "sample-saved-draft", version: 1, timezone: "Asia/Ho_Chi_Minh", updatedAt: sampleTime,
+    setupDrafts: monitoringDraft ? [{ id: "sample-saved-draft", version: 1, timezone: "Asia/Ho_Chi_Minh", updatedAt: sampleTime, goalLabel: "Review advertising spend", onboardingRunId: "sample-reviewed-run",
       scopes: [{ connectionId: "preview-meta", provider: "meta_ads", providerAccountId: "sample-account", accountName: "Sample provider account" }] }] : [],
     openCases: monitoringActive ? [{ id: "sample-health-case", title: "One Meta Ads import needs verification", description: "The latest check found an incomplete window for one selected account. Monstera has not marked that coverage complete.", state: "open", priority: "high", version: 1, requiredAction: "recovery_import", createdAt: "2026-10-02T02:41:00.000Z" }] : [],
   };
+  if (p === "/api/agent/runs/sample-reviewed-run/handoff") return { runId: "sample-reviewed-run", workspaceId: SAMPLE_WORKSPACE_ID, clientId: "north", version: 3,
+    goal: { id: "spend", context: "Review advertising spend" },
+    sources: [{ provider: "meta_ads", taskId: "sample-ready-task", scopeRevision: 1, window: { since: "2026-09-25", until: "2026-10-01" }, accounts: 1, rows: 140, spend: 21500, currency: "USD", limitations: ["Provider reporting dates; account timezone not verified"] }],
+    scopeItems: [{ provider: "meta_ads", connectionId: "preview-meta", providerAccountId: "sample-account" }], blockers: [], canPrepareDraft: true };
   if (p === "/api/runs") return { runs: [] };
   if (p === "/api/workspaces") return [workspace];
   if (p === "/api/clients") return clientRows;
