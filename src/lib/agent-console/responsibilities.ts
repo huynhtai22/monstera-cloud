@@ -7,6 +7,7 @@ import {
   confirmResponsibility,
   updateResponsibilityStatus,
   AgentConsoleError,
+  type ConsoleTransaction,
 } from "./persistence";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
@@ -36,6 +37,37 @@ export const CreateResponsibilitySchema = z.object({
 
 export type CreateResponsibilityInputDto = z.infer<typeof CreateResponsibilitySchema>;
 
+async function validateDataHealthScope(tx: ConsoleTransaction, workspaceId: string, items: NonNullable<CreateResponsibilityInputDto["scopeItems"]>) {
+  const supportedProviders: AccountSelectionProvider[] = ["meta_ads", "google_ads", "tiktok_business"];
+  for (const item of items) {
+    if (!supportedProviders.includes(item.provider as AccountSelectionProvider)) {
+      throw new AgentConsoleError("account_scope_unverified", `Account selection is not supported for provider '${item.provider}'`, 400);
+    }
+    const connection = await tx.connection.findFirst({
+      where: { id: item.connectionId, workspaceId },
+      select: { provider: true, credentials: true },
+    });
+    if (!connection || connection.provider !== item.provider) {
+      throw new AgentConsoleError("connection_not_found", `Connection '${item.connectionId}' does not match the selected provider`, 404);
+    }
+    let credentials: Record<string, unknown>;
+    try {
+      credentials = parseConnectionCredentialsJson(safeDecrypt(connection.credentials)) as Record<string, unknown>;
+    } catch {
+      throw new AgentConsoleError("account_scope_unverified", `Could not verify the saved account list for '${item.connectionId}'. Reconnect or refresh this source first.`, 409);
+    }
+    const authorizedIds = authorizedConnectionAccountIds(item.provider as AccountSelectionProvider, credentials);
+    const selection = validateConnectionAccountSelection({
+      provider: item.provider as AccountSelectionProvider,
+      selectedIds: [item.providerAccountId],
+      authorizedIds,
+    });
+    if (!selection.ok || selection.selectedIds[0] !== item.providerAccountId) {
+      throw new AgentConsoleError("account_scope_unverified", `Account '${item.providerAccountId}' is not in the saved authorized account list for '${item.connectionId}'`, 400);
+    }
+  }
+}
+
 export async function createResponsibilityDraft(
   userId: string,
   rawInput: unknown
@@ -48,38 +80,10 @@ export async function createResponsibilityDraft(
   return agentConsoleTransaction(async (tx) => {
     await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin", "member"]);
 
-    if (input.kind === "data_health" && input.scopeItems?.length) {
-      const supportedProviders: AccountSelectionProvider[] = ["meta_ads", "google_ads", "tiktok_business"];
-      for (const item of input.scopeItems) {
-        if (!supportedProviders.includes(item.provider as AccountSelectionProvider)) {
-          throw new AgentConsoleError("account_scope_unverified", `Account selection is not supported for provider '${item.provider}'`, 400);
-        }
-        const connection = await tx.connection.findFirst({
-          where: { id: item.connectionId, workspaceId: input.workspaceId },
-          select: { provider: true, credentials: true },
-        });
-        if (!connection || connection.provider !== item.provider) {
-          throw new AgentConsoleError("connection_not_found", `Connection '${item.connectionId}' does not match the selected provider`, 404);
-        }
-        let credentials: Record<string, unknown>;
-        try {
-          credentials = parseConnectionCredentialsJson(safeDecrypt(connection.credentials)) as Record<string, unknown>;
-        } catch {
-          throw new AgentConsoleError("account_scope_unverified", `Could not verify the saved account list for '${item.connectionId}'. Reconnect or refresh this source first.`, 409);
-        }
-        const authorizedIds = authorizedConnectionAccountIds(item.provider as AccountSelectionProvider, credentials);
-        const selection = validateConnectionAccountSelection({
-          provider: item.provider as AccountSelectionProvider,
-          selectedIds: [item.providerAccountId],
-          authorizedIds,
-        });
-        if (!selection.ok || selection.selectedIds[0] !== item.providerAccountId) {
-          throw new AgentConsoleError("account_scope_unverified", `Account '${item.providerAccountId}' is not in the saved authorized account list for '${item.connectionId}'`, 400);
-        }
-      }
-    }
+    if (input.ownerId) await requireWorkspaceRole(tx, input.workspaceId, input.ownerId, ["owner", "admin", "member", "viewer"]);
+    if (input.kind === "data_health" && input.scopeItems?.length) await validateDataHealthScope(tx, input.workspaceId, input.scopeItems);
 
-    const responsibility = await createResponsibility(tx, {
+    let responsibility = await createResponsibility(tx, {
       workspaceId: input.workspaceId,
       clientId: input.clientId,
       ownerId: input.ownerId ?? userId,
@@ -100,7 +104,7 @@ export async function createResponsibilityDraft(
       });
 
       // Update responsibility with initial scope revision
-      await tx.agentResponsibility.update({
+      responsibility = await tx.agentResponsibility.update({
         where: { workspaceId_id: { workspaceId: input.workspaceId, id: responsibility.id } },
         data: { scopeRevision: 1 },
       });
@@ -283,6 +287,7 @@ export async function handleResponsibilityAction(
         throw new AgentConsoleError("stale_version", "Responsibility version changed; refresh before updating scope", 409);
       }
 
+      if (resp.kind === "data_health") await validateDataHealthScope(tx, input.workspaceId, input.scopeItems);
       const nextScopeRev = resp.scopeRevision + 1;
       const scopes = await setResponsibilityScope(tx, {
         workspaceId: input.workspaceId,

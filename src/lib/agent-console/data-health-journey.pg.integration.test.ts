@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { before, after, describe, it } from "node:test";
+import { encrypt } from "@/lib/encryption";
 import { PrismaClient } from "@prisma/client";
 import {
   agentConsoleTransaction,
@@ -10,7 +11,7 @@ import {
   reconcileLostOperationLeases,
   updateOperationWithFencedLease,
 } from "./persistence";
-import { confirmResponsibilityAction, handleResponsibilityAction } from "./responsibilities";
+import { createResponsibilityDraft, confirmResponsibilityAction, handleResponsibilityAction } from "./responsibilities";
 import { executeScheduledDataHealthCheck } from "./scheduler";
 import {
   heartbeatRecoveryOperationLease,
@@ -24,6 +25,7 @@ import { computeCanonicalScopeHash } from "./persistence";
 import { GET as runAgentConsoleCronGet } from "@/app/api/agent-console/cron/route";
 
 describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () => {
+  const initialEncryptionKey = process.env.ENCRYPTION_KEY;
   const initialMonitoringFlag = process.env.ENABLE_AGENT_CONSOLE_MONITORING;
   const initialWorkerFlag = process.env.ENABLE_AGENT_CONSOLE_WORKER;
   const initialWorkspaceCohort = process.env.AGENT_CONSOLE_WORKSPACE_IDS;
@@ -54,6 +56,7 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
   let recoveryJobId: string;
 
   before(async () => {
+    process.env.ENCRYPTION_KEY ??= "01".repeat(32);
     await db.$connect();
 
     // 1. Create test users
@@ -122,6 +125,8 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
   });
 
   after(async () => {
+    if (initialEncryptionKey === undefined) delete process.env.ENCRYPTION_KEY;
+    else process.env.ENCRYPTION_KEY = initialEncryptionKey;
     // Cascade cleanup
     await db.campaignMetric.deleteMany({ where: { workspaceId: { in: [workspaceId, foreignWorkspaceId] } } });
     await db.workspace.deleteMany({ where: { id: { in: [workspaceId, foreignWorkspaceId] } } });
@@ -261,6 +266,17 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
     assert.equal(cases.length, 1, "Exactly one deduplicated actionable case created");
     assert.equal(cases[0].type, "source_health");
     assert.equal(cases[0].requiredAction, "recovery_import");
+    await db.connection.update({ where: { id: connMetaId }, data: { lastSyncAt: new Date(Date.now() - 36 * 3600000) } });
+    const multiSlot = new Date("2026-10-01T00:00:00Z");
+    await executeScheduledDataHealthCheck({ workspaceId, responsibilityId, scheduledSlot: multiSlot });
+    await executeScheduledDataHealthCheck({ workspaceId, responsibilityId, scheduledSlot: multiSlot });
+    const allCases = await db.agentCase.findMany({ where: { workspaceId, responsibilityId, state: { not: "resolved" } } });
+    assert.equal(allCases.length, 2, "Every unhealthy scoped connection must have one case, without duplicates");
+    const metaCase = allCases.find(c => c.fingerprint?.startsWith(`fp:source_health:${connMetaId}:`));
+    assert.ok(metaCase);
+    await db.connection.update({ where: { id: connMetaId }, data: { lastSyncAt: new Date() } });
+    await db.agentCase.delete({ where: { id: metaCase.id } });
+
   });
 
   it("Step 3: Console operational summary shows evidence, blockers, last check, data-through, next check and delayed status", async () => {
@@ -347,6 +363,21 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
         (error: any) => error.code === "invalid_recovery_range");
     }
     await db.workspace.update({ where: { id: workspaceId }, data: { plan: "free" } });
+    const yesterday = new Date(Date.now() - 86400000);
+    yesterday.setUTCHours(0, 0, 0, 0);
+    await db.connection.update({ where: { id: connMetaId }, data: { lastDataThrough: yesterday } });
+    await db.connection.update({ where: { id: connTikTokId }, data: { lastSyncAt: new Date() } });
+    const healthyMetaRow = await db.campaignMetric.create({ data: { workspaceId, connectionId: connMetaId, platform: "meta_ads", accountId: "act_101", entityId: "act_101", level: "account", date: yesterday, currency: "USD", spend: 1, conversions: 1 } });
+    for (const fingerprint of [`fp:conn_missing:missing-${suffix}`, `fp:source_health:missing-${suffix}:missing-account`]) {
+      const missingCase = await db.agentCase.create({ data: { workspaceId, responsibilityId, fingerprint, type: "source_health", state: "detected", title: "Missing source" } });
+      await assert.rejects(() => prepareCaseRecovery({ workspaceId, caseId: missingCase.id, userId: adminId }), (error: any) => error.code === "case_target_not_scoped");
+      await executeScheduledDataHealthCheck({ workspaceId, responsibilityId, scheduledSlot: new Date() });
+      const unverifiedMissingCase = await db.agentCase.findUniqueOrThrow({ where: { id: missingCase.id } });
+      assert.notEqual(unverifiedMissingCase.state, "resolved", "Healthy unrelated source coverage must not resolve a missing-source case");
+      await db.agentCase.delete({ where: { id: missingCase.id } });
+    }
+    await db.campaignMetric.delete({ where: { id: healthyMetaRow.id } });
+    await db.connection.update({ where: { id: connTikTokId }, data: { lastSyncAt: new Date(Date.now() - 36 * 3600000) } });
     const queuedOutcome = await prepareCaseRecovery({
       workspaceId,
       caseId: detectedCaseId,
@@ -385,6 +416,18 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
     await db.agentOperation.update({ where: { id: queuedOp.id }, data: { createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
     const repeat = await executeRecoveryImportOperation({ workspaceId, operationId: recoveryOperationId, userId: adminId });
     assert.equal(repeat.jobId, recoveryJobId);
+    const jobCount = await db.warehouseImportJob.count({ where: { workspaceId } });
+    for (const status of ["failed", "partial", "completed"]) {
+      await db.warehouseImportJob.update({ where: { id: recoveryJobId }, data: { status, retryCount: 3 } });
+      const retry = await executeRecoveryImportOperation({ workspaceId, operationId: recoveryOperationId, userId: adminId });
+      assert.equal(retry.jobId, recoveryJobId);
+      assert.equal(retry.outcome, "queued");
+      const reset = await db.warehouseImportJob.findUniqueOrThrow({ where: { id: recoveryJobId } });
+      assert.equal(reset.status, "queued");
+      assert.equal(reset.retryCount, 0);
+      assert.equal((await executeRecoveryImportOperation({ workspaceId, operationId: recoveryOperationId, userId: adminId })).outcome, "already_active");
+    }
+    assert.equal(await db.warehouseImportJob.count({ where: { workspaceId } }), jobCount);
     const workerLease = "recovery-warehouse-lease";
     await db.warehouseImportJob.update({ where: { id: recoveryJobId }, data: { status: "running", leaseId: workerLease, leaseExpiresAt: new Date(Date.now() + 60_000) } });
     assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, "stale-worker"), false);
@@ -1349,6 +1392,21 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
         else process.env[key] = value;
       }
     }
+  });
+
+  it("Owner and scope updates remain within workspace membership and saved provider accounts", async () => {
+    await assert.rejects(() => createResponsibilityDraft(adminId, { workspaceId, ownerId: foreignOwnerId, kind: "data_health", configuration: {} }),
+      (error: any) => error.code === "access_denied");
+    await db.connection.update({ where: { id: connMetaId }, data: { credentials: encrypt(JSON.stringify({ adAccounts: [{ id: "act_101" }] })) } });
+    const { responsibility: draft } = await createResponsibilityDraft(adminId, { workspaceId, ownerId, kind: "data_health", configuration: {}, scopeItems: [{ connectionId: connMetaId, provider: "meta_ads", providerAccountId: "act_101" }] });
+    await assert.rejects(() => handleResponsibilityAction(adminId, draft.id, { workspaceId, expectedVersion: draft.version, action: "update_scope", scopeItems: [{ connectionId: connMetaId, provider: "meta_ads", providerAccountId: "act_outside_scope" }] }),
+      (error: any) => error.code === "account_scope_unverified");
+    const unchanged = await db.agentResponsibility.findUniqueOrThrow({ where: { id: draft.id } });
+    assert.equal(unchanged.version, draft.version);
+    assert.equal(unchanged.scopeRevision, draft.scopeRevision);
+    const updated = await handleResponsibilityAction(adminId, draft.id, { workspaceId, expectedVersion: draft.version, action: "update_scope", scopeItems: [{ connectionId: connMetaId, provider: "meta_ads", providerAccountId: "act_101" }] });
+    assert.equal(updated.responsibility.scopeRevision, draft.scopeRevision + 1);
+    assert.equal(updated.responsibility.status, "paused");
   });
 
   it("Step 10: Disabled monitoring cannot be approved or resumed", async () => {

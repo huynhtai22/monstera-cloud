@@ -140,13 +140,14 @@ export async function prepareCaseRecovery(
 
     // Resolve target scope from case fingerprint if available (e.g. "fp:source_health:conn_id:account_id")
     let targetScope = currentScopes[0];
-    if (caseRecord.fingerprint && caseRecord.fingerprint.startsWith("fp:source_health:")) {
-      const parts = caseRecord.fingerprint.split(":");
-      const connIdFromFp = parts[2];
-      const matched = currentScopes.find((s) => s.connectionId === connIdFromFp);
-      if (matched) {
-        targetScope = matched;
-      }
+    const targetId = caseRecord.fingerprint?.startsWith("fp:source_health:")
+      ? caseRecord.fingerprint.split(":")[2]
+      : caseRecord.fingerprint?.startsWith("fp:conn_missing:")
+      ? caseRecord.fingerprint.slice("fp:conn_missing:".length) : null;
+    if (targetId) {
+      const matched = currentScopes.find(scope => scope.connectionId === targetId);
+      if (!matched) throw new AgentConsoleError("case_target_not_scoped", "Case target is no longer in the confirmed scope; review source setup", 409);
+      targetScope = matched;
     }
 
     const conn = await tx.connection.findFirst({
@@ -310,9 +311,12 @@ export async function executeRecoveryImportOperation(
       throw new AgentConsoleError("invalid_tool", `Cannot execute recovery for tool ${op.toolName}`, 400);
     }
 
+    const terminalJob = op.jobReference ? await tx.warehouseImportJob.findFirst({
+      where: { id: op.jobReference, workspaceId: input.workspaceId, status: { in: ["failed", "partial", "completed"] } },
+    }) : null;
     const now = new Date();
     // A live lease is exclusive, including repeated dispatches from the same worker.
-    if (op.state === "running" && op.leaseExpiresAt && op.leaseExpiresAt > now) {
+    if (op.state === "running" && !terminalJob && op.leaseExpiresAt && op.leaseExpiresAt > now) {
       throw new AgentConsoleError(
         "lease_active_conflict",
         `Operation is currently running under active lease by '${op.leaseOwner}'`,
@@ -320,7 +324,7 @@ export async function executeRecoveryImportOperation(
       );
     }
 
-    if (op.state !== "queued") {
+    if (op.state !== "queued" && !(op.state === "running" && terminalJob)) {
       throw new AgentConsoleError("invalid_operation_state", `Operation state must be 'queued' to dispatch, got '${op.state}'`, 400);
     }
 
@@ -433,6 +437,12 @@ export async function executeRecoveryImportOperation(
     }
 
     // Crash recovery check: if job was already created (op.jobReference or matching idempotencyKey), reuse without duplicating side effect
+    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: input.workspaceId }, select: { plan: true } });
+    const permittedRange = boundedRecoveryRange(workspace.plan, since, until);
+    if (permittedRange.since !== since || permittedRange.until !== until) {
+      throw new AgentConsoleError("recovery_range_superseded", "Recovery window exceeds current limits; prepare recovery again", 409);
+    }
+    let requeuedTerminal = false;
     let job: { id: string; status: string } | null = null;
     if (op.jobReference) {
       const existingJob = await tx.warehouseImportJob.findFirst({
@@ -454,15 +464,6 @@ export async function executeRecoveryImportOperation(
 
 
     if (!job) {
-      const workspace = await tx.workspace.findUniqueOrThrow({
-        where: { id: input.workspaceId },
-        select: { plan: true },
-      });
-
-      const permittedRange = boundedRecoveryRange(workspace.plan, since, until);
-      if (permittedRange.since !== since || permittedRange.until !== until) {
-        throw new AgentConsoleError("recovery_range_superseded", "Recovery window exceeds current limits; prepare recovery again", 409);
-      }
       job = await createImportJob({
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -478,14 +479,28 @@ export async function executeRecoveryImportOperation(
       });
     }
 
-    if (op.jobReference === job.id) {
+    if (["failed", "partial", "completed"].includes(job.status)) {
+      const reset = await tx.warehouseImportJob.updateMany({
+        where: { id: job.id, workspaceId: input.workspaceId, status: job.status },
+        data: { status: "queued", plan: workspace.plan, since, until,
+          items: accountIds.map(accountId => ({ connectionId, accountId })), totalItems: accountIds.length,
+          completedItems: 0, approximateRows: 0, results: Prisma.DbNull, errorMsg: null,
+          retryCount: 0, leaseId: null, leaseExpiresAt: null, heartbeatAt: null,
+          scheduledAt: now, startedAt: null, finishedAt: null },
+      });
+      if (reset.count !== 1) throw new AgentConsoleError("lease_active_conflict", "Recovery job changed; retry", 409);
+      job.status = "queued";
+      requeuedTerminal = true;
+    }
+
+    if (op.jobReference === job.id && !requeuedTerminal) {
       return { jobId: job.id, status: job.status, outcome: "already_active" };
     }
 
     // Bind the job once; the warehouse worker acquires the execution lease.
     const claimed = await tx.agentOperation.updateMany({
-      where: { id: op.id, workspaceId: input.workspaceId, state: "queued", version: op.version },
-      data: { jobReference: job.id, leaseOwner: null, leaseExpiresAt: null, version: { increment: 1 } },
+      where: { id: op.id, workspaceId: input.workspaceId, state: op.state, version: op.version },
+      data: { state: "queued", jobReference: job.id, leaseOwner: null, leaseExpiresAt: null, version: { increment: 1 } },
     });
     if (claimed.count !== 1) {
       throw new AgentConsoleError("lease_active_conflict", "Recovery operation was claimed by another worker", 409);

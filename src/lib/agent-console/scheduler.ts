@@ -146,7 +146,7 @@ export async function executeScheduledDataHealthCheck(
       },
     });
 
-    let detectedProblem: {
+    const detectedProblems: Array<{
       connectionId: string;
       provider: string;
       healthState: string;
@@ -154,21 +154,22 @@ export async function executeScheduledDataHealthCheck(
       description: string;
       requiredAction: "reconnect" | "recovery_import" | "review";
       fingerprint: string;
-    } | null = null;
+    }> = [];
 
-    for (const scope of currentScopes) {
+    for (const connectionId of scopedConnectionIds) {
+      const scope = currentScopes.find(item => item.connectionId === connectionId)!;
       const conn = connections.find((c) => c.id === scope.connectionId);
       if (!conn) {
-        detectedProblem = {
+        detectedProblems.push({
           connectionId: scope.connectionId,
           provider: scope.provider,
           healthState: "missing",
           title: `Connection missing: ${scope.provider}`,
           description: `Scoped connection '${scope.connectionId}' was not found in the workspace.`,
           requiredAction: "reconnect",
-          fingerprint: `fp:conn_missing:${scope.connectionId}`,
-        };
-        break;
+          fingerprint: `fp:source_health:${scope.connectionId}:${scope.providerAccountId}`,
+        });
+        continue;
       }
 
       const healthState = resolveSourceHealthState({
@@ -194,7 +195,7 @@ export async function executeScheduledDataHealthCheck(
 
         const description = conn.lastError || (healthState === "stale" ? "Last sync is older than 24 hours" : "Connection health degraded");
 
-        detectedProblem = {
+        detectedProblems.push({
           connectionId: conn.id,
           provider: conn.provider,
           healthState,
@@ -202,13 +203,14 @@ export async function executeScheduledDataHealthCheck(
           description,
           requiredAction: isAuthExpired ? "reconnect" : "recovery_import",
           fingerprint: `fp:source_health:${conn.id}:${scope.providerAccountId}`,
-        };
-        break;
+        });
+        continue;
       }
     }
 
     // 4. Record evaluation and manage case
-    if (detectedProblem) {
+    if (detectedProblems.length > 0) {
+      const detectedProblem = detectedProblems[0];
       await tx.agentResponsibility.update({
         where: { workspaceId_id: { workspaceId: options.workspaceId, id: resp.id } },
         data: {
@@ -229,22 +231,20 @@ export async function executeScheduledDataHealthCheck(
         blockerCode: detectedProblem.healthState.toUpperCase(),
         result: {
           problem: detectedProblem,
+          problems: detectedProblems,
           inspectedAt: scheduledSlot.toISOString(),
         },
       });
 
-      const caseRes = await openOrUpdateCase(tx, {
-        workspaceId: options.workspaceId,
-        clientId: resp.clientId,
-        responsibilityId: resp.id,
-        evaluationId: evalResult.evaluation.id,
-        fingerprint: detectedProblem.fingerprint,
-        type: "source_health",
-        priority: "high",
-        title: detectedProblem.title,
-        description: detectedProblem.description,
-        requiredAction: detectedProblem.requiredAction,
-      });
+      const caseIds: string[] = [];
+      for (const problem of detectedProblems) {
+        const caseRes = await openOrUpdateCase(tx, {
+          workspaceId: options.workspaceId, clientId: resp.clientId, responsibilityId: resp.id,
+          evaluationId: evalResult.evaluation.id, fingerprint: problem.fingerprint, type: "source_health",
+          priority: "high", title: problem.title, description: problem.description, requiredAction: problem.requiredAction,
+        });
+        caseIds.push(caseRes.caseRecord.id);
+      }
 
       return {
         status: "incident_detected",
@@ -252,8 +252,8 @@ export async function executeScheduledDataHealthCheck(
         blockerCode: evalResult.evaluation.blockerCode,
         caseOpenedOrUpdated: true,
         caseResolved: false,
-        caseId: caseRes.caseRecord.id,
-        details: { problem: detectedProblem },
+        caseId: caseIds[0],
+        details: { problem: detectedProblem, problems: detectedProblems, caseIds },
       };
     }
 
@@ -308,6 +308,9 @@ export async function executeScheduledDataHealthCheck(
         }
       }
 
+      if (openCase.fingerprint?.startsWith("fp:conn_missing:")) {
+        targetConnectionId = openCase.fingerprint.slice("fp:conn_missing:".length);
+      }
       if (!targetConnectionId) {
         // Fall back to first connection in active scope
         targetConnectionId = currentScopes[0]?.connectionId ?? null;

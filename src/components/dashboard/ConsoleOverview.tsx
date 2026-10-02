@@ -542,7 +542,7 @@ export function ConsoleOverview({
       )}
 
       </section>
-      {agentConsoleSummary && !agentConsoleSummary.responsibilities?.some((responsibility) => responsibility.kind === "data_health") && (
+      {agentConsoleSummary && !agentConsoleSummary.responsibilities?.some((responsibility) => responsibility.kind === "data_health" && ["active", "paused"].includes(responsibility.status)) && (
         <ConnectedDataResponsibilitySetup
           workspaceId={workspace.id}
           sources={sourcesList}
