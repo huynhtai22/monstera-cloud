@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { ConsoleRouteTransition } from './console/ConsoleMotion';
 import { ConsoleSupportControl } from './LiveChatWidget';
-import { LogoMark } from "@/components/Logo";
+import { LogoMark } from "./Logo";
+import { ConsoleSectionGuide } from "./console/ConsoleSectionGuide";
 import { Sidebar } from './Sidebar';
 import { useWorkspaceStartupActions } from './WorkspaceStartup';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
@@ -121,7 +122,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         <PendingNavigationProvider>
         {!visualPreview && <WorkspaceSessionSync />}
         {!visualPreview && <SessionHeartbeat />}
-        <div data-workspace-shell aria-busy={loading} inert={loading} data-console-theme={isDarkMode ? "dark" : "light"} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
+        <div data-workspace-shell data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
@@ -133,9 +134,8 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                     >
                         <Menu className="h-5 w-5" strokeWidth={1.5} />
                     </button>
-                    <div className="ml-1 flex min-w-0 items-center gap-2">
-                        <LogoMark className="h-5 w-5 shrink-0" />
-                        <span className="hidden sm:inline shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
+                    <div className="ml-1 flex min-w-0 items-baseline gap-2">
+                        <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
                             Monstera
                         </span>
                         <span className="truncate text-sm font-semibold text-ink">{mobileTitle}</span>
@@ -172,7 +172,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
             >
                 <div className="h-14 shrink-0 lg:hidden" />
                 {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
-                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/70 px-6 py-2.5 lg:px-10 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
+                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/70 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
                     <nav className="pointer-events-auto flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
                         <LogoMark className="h-5 w-5 shrink-0" />
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">Monstera</span>
@@ -186,6 +186,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                     </div>
                 </div>
                 {!visualPreview && <UpgradeNudge />}
+                {!visualPreview && <ConsoleSectionGuide />}
                 {!visualPreview && <ClientContextBarGate />}
                 <main className="relative z-10 flex-1 overflow-x-hidden">
                     <DemoModeBanner />

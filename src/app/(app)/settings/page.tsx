@@ -24,10 +24,18 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
-    const pathname = usePathname();
-    const router = useRouter();
     const searchParams = useSearchParams();
-    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api' | 'sessions'>('workspace');
+    const router = useRouter();
+    const pathname = usePathname();
+    const tabs = ['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'] as const;
+    type SettingsTab = typeof tabs[number];
+    const requestedTab = searchParams.get('tab');
+    const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? requestedTab as SettingsTab : 'workspace';
+    const setActiveTab = (tab: SettingsTab) => {
+        const query = new URLSearchParams(searchParams.toString());
+        query.set('tab', tab);
+        router.push(`${pathname}?${query}`, { scroll: false });
+    };
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
@@ -54,20 +62,6 @@ export default function SettingsPage() {
         violations: [],
         telegramChatId: "",
     });
-
-    // Tabs share the navigation contract with subsection links and browser history.
-    const requestedTab = searchParams.get("tab") ?? "workspace";
-    useEffect(() => {
-        const valid = ['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'];
-        setActiveTab((valid.includes(requestedTab) ? requestedTab : "workspace") as typeof activeTab);
-    }, [requestedTab]);
-    const selectTab = (tab: typeof activeTab) => {
-        if (tab === activeTab) return;
-        const next = new URLSearchParams(searchParams.toString());
-        next.set("tab", tab);
-        window.dispatchEvent(new Event("monstera:navigation-start"));
-        router.push(`${pathname}?${next}`, { scroll: false });
-    };
 
     // --- API Handlers ---
 
@@ -239,7 +233,7 @@ export default function SettingsPage() {
 
     return (
         <div data-console-page="true" data-console-section="settings" className="console-page w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
-            <div data-console-page-header="true" className="mb-6 flex items-center gap-3">
+            <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
                     <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />
                 </div>
@@ -265,7 +259,7 @@ export default function SettingsPage() {
                                 <button
                                     key={tab.id}
                                     aria-pressed={activeTab === tab.id}
-                                    onClick={() => selectTab(tab.id as typeof activeTab)}
+                                    onClick={() => setActiveTab(tab.id as any)}
                                     className={cn(
                                         "flex items-center w-full px-3 py-2.5 rounded-md text-sm transition-colors",
                                         activeTab === tab.id

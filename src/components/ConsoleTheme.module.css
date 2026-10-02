@@ -15,7 +15,7 @@
   --ui-border-rgb: 42 42 42;
   --ui-primary-rgb: 237 237 237;
   --ui-primary-foreground-rgb: 23 23 23;
-  --console-motion-accent: #5eead4;
+  --console-motion-accent: var(--console-brand-green);
   --shadow-card: 0 1px 0 #ffffff04;
 }
 .root[data-console-theme="dark"] > aside {
@@ -35,7 +35,7 @@
   border-color: color-mix(in srgb, var(--color-ink) 20%, var(--color-line));
 }
 .root [data-console-button="primary"] {
-  --console-motion-accent: #0f766e;
+  --console-motion-accent: #6b6b6b;
   border-color: var(--color-primary);
 }
 .root main :global(.console-page) > :where(header, div) > h1,
@@ -151,7 +151,7 @@
   --color-ink: #ededed;
   --color-ink-mute: #adadad;
   --color-surface-muted: #1c1c1c;
-  --console-motion-accent: #5eead4;
+  --console-motion-accent: var(--console-brand-green);
   --shadow-card: 0 1px 0 #ffffff05;
 }
 .root[data-console-theme="dark"] > aside {
@@ -290,7 +290,7 @@
 }
 .root main :global([data-console-destinations="true"] > div) {
   border-radius: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent, #b8b8b8) 3%, var(--color-panel)), var(--color-panel) 76%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)), var(--color-panel) 76%);
   box-shadow: inset 0 1px 0 #ffffff05;
 }
 .root main :global([data-console-section="sources"] .console-section-heading),
@@ -303,7 +303,7 @@
 }
 .root main :global([data-console-section="sources"] .console-source-summary > div) {
   min-width: 0;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent, #b8b8b8) 3%, var(--color-panel)), var(--color-panel) 78%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)), var(--color-panel) 78%);
 }
 .root main :global([data-console-section="sources"] .console-source-tabs > [role="tab"]) {
   margin-bottom: -1px;
@@ -316,7 +316,7 @@
   transition: color 260ms ease, border-color 320ms ease;
 }
 .root main :global([data-console-section="sources"] .console-source-tabs > [role="tab"][aria-selected="true"]) {
-  border-bottom-color: #5eead4;
+  border-bottom-color: var(--console-brand-green);
   color: var(--color-ink);
 }
 .root main :global([data-console-section="sources"] .console-source-layout) {
@@ -336,7 +336,7 @@
   border-radius: 14px;
 }
 .root main :global([data-console-section="sources"] .console-source-list > div:first-child) {
-  background: color-mix(in srgb, var(--console-motion-accent, #b8b8b8) 2%, var(--color-panel));
+  background: color-mix(in srgb, var(--color-ink) 2%, var(--color-panel));
 }
 .root main :global([data-console-section="sources"] [data-source-connection]) {
   min-height: 94px;
@@ -359,7 +359,7 @@
 }
 .root main :global([data-console-warehouse-filters="true"]) {
   border-radius: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent, #b8b8b8) 3%, var(--color-panel)), var(--color-panel) 78%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)), var(--color-panel) 78%);
   box-shadow: inset 0 1px 0 #ffffff04;
 }
 .root main :global([data-console-warehouse-summary="true"] .console-scorecard) {
@@ -396,7 +396,7 @@
 .root :global(.console-route-enter) { animation: consoleRouteIn var(--console-duration-normal) var(--console-ease) both; }
 .root :global(.console-route-exit) { position: absolute; inset: 0; pointer-events: none; animation: consoleRouteOut var(--console-duration-fast) var(--console-ease) both; }
 .root :global(.console-sliding-control) { position: relative; }
-.root :global(.console-sliding-indicator) { position: absolute; bottom: 0; left: 0; width: 1px; height: 2px; border-radius: 2px; background: #5eead4; transform-origin: left; pointer-events: none; transition: transform var(--console-duration-normal) var(--console-ease), opacity var(--console-duration-fast) var(--console-ease); }
+.root :global(.console-sliding-indicator) { position: absolute; bottom: 0; left: 0; width: 1px; height: 2px; border-radius: 2px; background: var(--console-brand-green); transform-origin: left; pointer-events: none; transition: transform var(--console-duration-normal) var(--console-ease), opacity var(--console-duration-fast) var(--console-ease); }
 @keyframes consoleRouteIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes consoleRouteOut { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .root :global(.console-route-enter), .root :global(.console-route-exit) { animation: none; } .root :global(.console-route-exit) { display: none; } .root :global(.console-sliding-indicator) { transition: none; } }
@@ -410,23 +410,9 @@
 @keyframes consoleWorkText { from { opacity: .65; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .root :global(.console-activity-text) { animation: none; } }
 
-.root :global([aria-selected="true"]), .root :global([aria-checked="true"]), .root :global([aria-current="page"]) { color: #5eead4; }
+.root :global([aria-selected="true"]), .root :global([aria-checked="true"]), .root :global([aria-current="page"]) { color: var(--console-brand-green); }
 
-/* One route transition owns motion; nested page fades otherwise flicker together. */
-.root :global(.console-route-stage) :global(.console-page) { animation: none; }
-.root :global(.console-route-stage) { min-height: 240px; }
-
-/* Shared green dot-grid cue: no overlay and no blocked controls during navigation. */
-.root { --console-motion-accent: #0f766e; }
-.root :global(.console-route-indicator) { --console-motion-accent: #5eead4; position: fixed; right: 24px; bottom: 24px; z-index: 35; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink-mute); font-size: 11px; pointer-events: none; }
-.root[data-console-theme="light"] :global(.console-route-indicator) { --console-motion-accent: #0f766e; }
-
-/* Native scroll remains available without a light track in the dark console. */
-.root[data-console-theme="dark"] { color-scheme: dark; }
-.root[data-console-theme="light"] { color-scheme: light; }
-.root :global(*) { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-ink) 24%, var(--color-canvas)) transparent; }
-.root :global(*::-webkit-scrollbar) { width: 6px; height: 6px; }
-.root :global(*::-webkit-scrollbar-track) { background: transparent; }
-.root :global(*::-webkit-scrollbar-thumb) { background: color-mix(in srgb, var(--color-ink) 24%, var(--color-canvas)); border-radius: 8px; }
-.root :global(*::-webkit-scrollbar-thumb:hover) { background: color-mix(in srgb, var(--color-ink) 40%, var(--color-canvas)); }
-@media (forced-colors: active) { .root :global(*) { scrollbar-color: auto; } }
+.root main :global(.console-source-list [aria-label="Connection view"] button[aria-pressed="true"]) {
+  background-color: var(--console-brand-green);
+  color: #101010;
+}
