@@ -7,19 +7,7 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
 
 /** Keep the sidebar outside this boundary and retire the previous page after the fade. */
 export function ConsoleRouteTransition({ pathname, children }: { pathname: string; children: ReactNode }) {
-  const [route, setRoute] = useState({ pathname, children, previous: null as ReactNode });
-  if (route.pathname !== pathname) {
-    setRoute({ pathname, children, previous: route.children });
-  } else if (route.children !== children) {
-    setRoute(current => ({ ...current, children }));
-  }
-  useEffect(() => {
-    if (!route.previous) return;
-    const timer = setTimeout(() => setRoute(current => ({ ...current, previous: null })), CONSOLE_MOTION.normal);
-    return () => clearTimeout(timer);
-  }, [route.pathname, route.previous]);
   return <div className="console-route-stage">
-    {route.previous && <div className="console-route-exit" inert aria-hidden="true">{route.previous}</div>}
     <div key={pathname} className="console-route-enter">{children}</div>
   </div>;
 }
