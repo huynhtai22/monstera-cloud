@@ -10,7 +10,7 @@ Acceptance: isolated PostgreSQL tests exercise duplicate/concurrent saves, reloa
 
 ## Remaining build order
 
-1. Explicit onboarding handoff: carry the saved goal, run reference, workspace and confirmed account scope into the first useful result or a factual blocker, then offer this same saved monitoring draft. Do not infer ongoing authorization from OAuth or setup completion.
+1. Explicit onboarding handoff is implemented locally in the follow-up branch: each run snapshots its selected goal; the console reloads its owned run, current scoped warehouse overview, date windows and limitations. An explicit action prepares a deduplicated draft carrying the originating run/goal/source revisions. Completed import records and data for every selected account are required; unsupported sources, missing rows, stale versions and lost access block creation. OAuth and setup completion never authorize ongoing checks. Eight PostgreSQL cases plus synthetic browser checks cover this boundary; live certification remains open.
 2. Responsibility/case inspection: customer-visible scope, policy revision and activity history, plus clear account-specific coverage and delayed-check states. Reuse stored events and evidence.
 3. Guided setup A1: deterministic supported intents, reviewed English/Vietnamese help and adjudicated evaluation fixtures. Add bounded language interpretation only after those contracts are reviewed.
 4. Pilot preparation: provider/cohort controls, operator acceptance record, pause/rollback rehearsal and measurement of useful findings, recovery and customer effort. Live certification and scheduler observation require authorized operator/account access.

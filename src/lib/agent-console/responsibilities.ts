@@ -72,16 +72,18 @@ async function validateDataHealthScope(tx: ConsoleTransaction, workspaceId: stri
   }
 }
 
-export async function createResponsibilityDraft(
-  userId: string,
-  rawInput: unknown
+export async function createResponsibilityDraft(userId: string, rawInput: unknown) {
+  return agentConsoleTransaction(tx => createResponsibilityDraftInTransaction(tx, userId, rawInput));
+}
+
+export async function createResponsibilityDraftInTransaction(
+  tx: ConsoleTransaction, userId: string, rawInput: unknown
 ) {
   const input = CreateResponsibilitySchema.parse(rawInput);
   if (input.kind === "data_health" && input.cadence !== "daily") {
     throw new AgentConsoleError("unsupported_cadence", "Connected data health checks currently support daily cadence only", 400);
   }
 
-  return agentConsoleTransaction(async (tx) => {
     await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin", "member"]);
 
     if (input.ownerId) await requireWorkspaceRole(tx, input.workspaceId, input.ownerId, ["owner", "admin", "member", "viewer"]);
@@ -134,7 +136,7 @@ export async function createResponsibilityDraft(
     }
 
     return { responsibility, scopes };
-  });
+
 }
 
 export const UpdateDataHealthDraftSchema = z.object({

@@ -163,6 +163,10 @@ export async function getAgentConsoleOperationalSummary(
     })),
     setupDrafts: responsibilities.filter(r => r.kind === "data_health" && r.status === "draft").map(r => ({
       id: r.id, version: r.version, timezone: r.timezone, updatedAt: r.updatedAt.toISOString(),
+      goalLabel: typeof (r.configuration as { onboardingGoal?: { context?: unknown } }).onboardingGoal?.context === "string"
+        ? (r.configuration as { onboardingGoal: { context: string } }).onboardingGoal.context : null,
+      onboardingRunId: typeof (r.configuration as { onboardingRunId?: unknown }).onboardingRunId === "string"
+        ? (r.configuration as { onboardingRunId: string }).onboardingRunId : null,
       scopes: r.scopes.filter(s => s.scopeRevision === r.scopeRevision).map(s => ({
         connectionId: s.connectionId, provider: s.provider, providerAccountId: s.providerAccountId, accountName: s.accountName,
       })),
