@@ -11,6 +11,7 @@ import { emitMonitor } from "@/lib/observability/monitors";
 import { notifyWarehouseJobIfNeeded } from "@/lib/ingestion/notify-run";
 import { chunkResultsForModal, hasBackfillChunks, listBackfillChunks, runCheckpointedBackfillWorker } from "@/lib/warehouse-backfill-chunks";
 import { isPilotJobKey } from "@/lib/extended-backfill-pilot";
+import { heartbeatRecoveryOperationLease, verifyRecoveryAndCloseCase } from "@/lib/agent-console/recovery";
 
 /**
  * Executes warehouse refresh sync for an array of items.
@@ -94,15 +95,10 @@ export async function processBatchItems(opts: {
     }
 
     try {
-      const rawCreds = safeDecrypt(conn.credentials);
-      const parsedCreds = parseConnectionCredentialsJson(rawCreds) as Record<
-        string,
-        unknown
-      >;
-      const credentials = {
-        ...parsedCreds,
-        remoteAccountId: conn.remoteAccountId,
-      };
+      const parsedCreds = syncFn
+        ? {}
+        : parseConnectionCredentialsJson(safeDecrypt(conn.credentials)) as Record<string, unknown>;
+      const credentials = { ...parsedCreds, remoteAccountId: conn.remoteAccountId };
 
       const targetAccountId = item.accountId ?? item.adAccountId;
       const providerTargetCredentials = targetAccountId
@@ -155,7 +151,7 @@ export async function processBatchItems(opts: {
         upserted: sync.rowsIngested,
         error: sync.error,
         retryable: syncChildren.some((child) => !child.optional && !child.ok && child.retryable),
-        retryAfterMs: Math.max(0, ...syncChildren.filter((child) => !child.optional && !child.ok && child.retryable).map((child) => child.retryAfterMs ?? 0)) || undefined,
+        retryAfterMs: Math.max(0, ...syncChildren.filter(child => !child.optional && !child.ok && child.retryable).map(child => child.retryAfterMs ?? 0)),
         retryItems: syncChildren
           .filter((child) => !child.optional && !child.ok && child.retryable)
           .map((child) => ({
@@ -351,10 +347,18 @@ export async function runDurableImportWorker(
 
     // Fence execution before the first provider call, not only after 10 seconds.
     await heartbeatImportJob(jobId, leaseId);
+    if (!(await heartbeatRecoveryOperationLease(jobRecord.workspaceId, jobId, leaseId))) {
+      throw new LeaseLostError(jobId, leaseId);
+    }
     // Start continuous heartbeat while processing (every 10s)
     heartbeatTimer = setInterval(async () => {
       try {
         await heartbeatImportJob(jobId, leaseId);
+        if (!(await heartbeatRecoveryOperationLease(jobRecord.workspaceId, jobId, leaseId))) {
+          isLeaseLost = true;
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          return;
+        }
       } catch (err) {
         isLeaseLost = true;
         logger.error(`[runDurableImportWorker] Heartbeat failed for job ${jobId}, aborting execution:`, err);
@@ -436,7 +440,6 @@ export async function runDurableImportWorker(
         results,
         totalUpserts,
         `Partial import: ${failedResults.length}/${results.length} requested source scope(s) failed. Retrying only retryable failed targets.`,
-        Math.max(0, ...failedResults.map((result) => result.retryAfterMs ?? 0)),
       );
       await notifyWarehouseJobIfNeeded(requeued).catch(() => {});
       return;
@@ -457,6 +460,20 @@ export async function runDurableImportWorker(
         ? `${outcome === "failed" ? "Import failed" : "Partial import"}: ${failedResults.length}/${results.length} requested source scope(s) failed. ${failedResults.map((result) => result.error).filter(Boolean).slice(0, 2).join(" | ")}`
         : undefined,
     );
+
+    if (outcome === "completed") {
+      const recoveryOperation = await prisma.agentOperation.findFirst({
+        where: { workspaceId: jobRecord.workspaceId, jobReference: jobId, toolName: "submit_recovery_import", state: "running" },
+        select: { caseId: true },
+      });
+      if (recoveryOperation?.caseId) {
+        try {
+          await verifyRecoveryAndCloseCase({ workspaceId: jobRecord.workspaceId, caseId: recoveryOperation.caseId, jobId });
+        } catch (verificationError) {
+          logger.error("[warehouse/import-batch] Recovery completed but authoritative case verification failed", { jobId, caseId: recoveryOperation.caseId }, verificationError);
+        }
+      }
+    }
 
     logger.info(
       `[warehouse/import-batch] Durable job ${jobId} finished: ${okCount}/${results.length} succeeded`

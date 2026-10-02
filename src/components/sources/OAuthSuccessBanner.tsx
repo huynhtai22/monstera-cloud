@@ -34,7 +34,7 @@ export function OAuthSuccessBanner({
 
   return (
     <div
-      className={`mb-6 flex items-start gap-4 rounded-lg border px-4 py-4 ${
+      className={`mb-4 flex items-start gap-3 rounded-lg border px-4 py-3 ${
         limit
           ? "border-amber-500/30 bg-amber-950/20"
           : "border-line bg-panel"
@@ -44,17 +44,15 @@ export function OAuthSuccessBanner({
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" strokeWidth={1.5} />
-          <p className="text-sm font-semibold text-ink">{providerLabel} connected</p>
+          <p className="text-xs font-semibold text-ink">{providerLabel} connected</p>
         </div>
-        <p className="mt-1.5 text-sm text-ink-mute">
-          {pipelineReady ? (
-            <>Authorization is ready. <Link href="#connected-sources" className="font-medium text-ink underline">Run the first sync</Link> from Connected sources to pull data, then use <Link href="/reports" className="font-medium text-ink underline">Sync activity</Link> to confirm destination pipeline runs.</>
+        <p className="mt-1 text-xs leading-relaxed text-ink-mute">
+          {limit ? (
+            <>Your sync limit is reached. <Link href="/settings?tab=billing" className="font-medium text-ink underline">Review your plan</Link>.</>
           ) : needsDestination ? (
-            <>Authorization is ready. Create a destination pipeline in the <Link href="/console" className="font-medium text-ink underline">Dashboard</Link> before syncing.</>
-          ) : limit ? (
-            <>Sync limit reached. <Link href="/settings" className="font-medium text-amber-200 underline">Manage in Settings</Link> or upgrade.</>  
+            <>Choose where to send your data. <Link href="/exports" className="font-medium text-ink underline">Set up a destination</Link>.</>
           ) : (
-            <>Authorization is ready. Manage this source and run a sync from Connected sources when you want updated data.</>
+            <>Ready to import data. <Link href="#connected-sources" className="font-medium text-ink underline">{pipelineReady ? "Run the first sync" : "Review your source"}</Link>.</>
           )}
         </p>
       </div>

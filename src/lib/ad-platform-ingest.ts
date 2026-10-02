@@ -426,6 +426,16 @@ async function ingestGoogleAdsRowsBulk(
   return { upserted: result.upserted, failed: failed + result.failed };
 }
 
+export interface TiktokProvenanceContext {
+  endpoint?: string;
+  grain?: string;
+  conversionAction?: string;
+  attributionWindow?: string;
+  revenueBasis?: string;
+  availability?: string;
+  origin?: "provider_response" | "provider_request" | "account_config" | "unverified";
+}
+
 /**
  * Ingest TikTok campaign rows to CampaignMetric.
  */
@@ -444,6 +454,7 @@ export async function ingestTiktokRows(
     providerCurrency?: string;
     syncJobId: string;
     lease?: ConnectionLease;
+    provenanceContext?: TiktokProvenanceContext;
   }
 ): Promise<{ upserted: number; failed: number }> {
   let upserted = 0;
@@ -512,6 +523,47 @@ export async function ingestTiktokRows(
       const roas = parseFloat(String(metrics.roas ?? 0));
       const currency = typeof metrics.currency === 'string' ? metrics.currency : opts.providerCurrency;
 
+      const rawObj = (row.raw && typeof row.raw === 'object') ? (row.raw as Record<string, unknown>) : {};
+      const provContext = opts.provenanceContext ?? {};
+
+      const endpoint = typeof provContext.endpoint === 'string'
+        ? provContext.endpoint
+        : (typeof rawObj.endpoint === 'string' ? rawObj.endpoint : 'AUCTION_CAMPAIGN');
+      const grain = typeof provContext.grain === 'string'
+        ? provContext.grain
+        : (typeof rawObj.grain === 'string' ? rawObj.grain : 'campaign');
+      const conversionAction = typeof provContext.conversionAction === 'string'
+        ? provContext.conversionAction
+        : (typeof rawObj.conversionAction === 'string' ? rawObj.conversionAction : undefined);
+      const attributionWindow = typeof provContext.attributionWindow === 'string'
+        ? provContext.attributionWindow
+        : (typeof rawObj.attributionWindow === 'string' ? rawObj.attributionWindow : undefined);
+      const revenueBasis = typeof provContext.revenueBasis === 'string'
+        ? provContext.revenueBasis
+        : (typeof rawObj.revenueBasis === 'string' ? rawObj.revenueBasis : undefined);
+      const availability = typeof provContext.availability === 'string'
+        ? provContext.availability
+        : (typeof rawObj.availability === 'string' ? rawObj.availability : undefined);
+      const provenanceOrigin = provContext.origin ?? (
+        typeof rawObj.provenanceOrigin === 'string'
+          ? (rawObj.provenanceOrigin as "provider_response" | "provider_request" | "account_config" | "unverified")
+          : "unverified"
+      );
+
+      const normalizedProvenance: Record<string, unknown> = {
+        endpoint,
+        grain,
+        provenanceOrigin,
+        ...rawObj,
+        dimensions: dims,
+        metrics,
+      };
+
+      if (conversionAction !== undefined) normalizedProvenance.conversionAction = conversionAction;
+      if (attributionWindow !== undefined) normalizedProvenance.attributionWindow = attributionWindow;
+      if (revenueBasis !== undefined) normalizedProvenance.revenueBasis = revenueBasis;
+      if (availability !== undefined) normalizedProvenance.availability = availability;
+
       await upsertCampaignMetric({
         workspaceId: opts.workspaceId,
         connectionId: opts.connectionId,
@@ -534,7 +586,7 @@ export async function ingestTiktokRows(
         revenue,
         roas,
         currency,
-        rawData: row.raw ?? { dimensions: dims, metrics },
+        rawData: normalizedProvenance,
         syncJobId: opts.syncJobId,
         lease: opts.lease,
       });
@@ -553,7 +605,7 @@ export async function ingestTiktokRows(
  * Bulk variant of the TikTok loop. Validation mirrors the per-row loop
  * exactly; validated payloads flush through the batched UNNEST path.
  */
-async function ingestTiktokRowsBulk(
+export async function ingestTiktokRowsBulk(
   rows: Array<{
     dimensions?: Record<string, string | number>;
     metrics?: Record<string, string | number>;
@@ -567,6 +619,7 @@ async function ingestTiktokRowsBulk(
     providerCurrency?: string;
     syncJobId: string;
     lease?: ConnectionLease;
+    provenanceContext?: TiktokProvenanceContext;
   },
 ): Promise<{ upserted: number; failed: number }> {
   if (opts.lease) {
@@ -605,6 +658,47 @@ async function ingestTiktokRowsBulk(
     const revenue = parseFloat(String(metrics.revenue ?? metrics.conversion_value ?? 0));
     const roas = parseFloat(String(metrics.roas ?? 0));
     const currency = typeof metrics.currency === 'string' ? metrics.currency : opts.providerCurrency;
+    const rawObj = (row.raw && typeof row.raw === 'object') ? (row.raw as Record<string, unknown>) : {};
+    const provContext = opts.provenanceContext ?? {};
+
+    const endpoint = typeof provContext.endpoint === 'string'
+      ? provContext.endpoint
+      : (typeof rawObj.endpoint === 'string' ? rawObj.endpoint : 'AUCTION_CAMPAIGN');
+    const grain = typeof provContext.grain === 'string'
+      ? provContext.grain
+      : (typeof rawObj.grain === 'string' ? rawObj.grain : 'campaign');
+    const conversionAction = typeof provContext.conversionAction === 'string'
+      ? provContext.conversionAction
+      : (typeof rawObj.conversionAction === 'string' ? rawObj.conversionAction : undefined);
+    const attributionWindow = typeof provContext.attributionWindow === 'string'
+      ? provContext.attributionWindow
+      : (typeof rawObj.attributionWindow === 'string' ? rawObj.attributionWindow : undefined);
+    const revenueBasis = typeof provContext.revenueBasis === 'string'
+      ? provContext.revenueBasis
+      : (typeof rawObj.revenueBasis === 'string' ? rawObj.revenueBasis : undefined);
+    const availability = typeof provContext.availability === 'string'
+      ? provContext.availability
+      : (typeof rawObj.availability === 'string' ? rawObj.availability : undefined);
+    const provenanceOrigin = provContext.origin ?? (
+      typeof rawObj.provenanceOrigin === 'string'
+        ? (rawObj.provenanceOrigin as "provider_response" | "provider_request" | "account_config" | "unverified")
+        : "unverified"
+    );
+
+    const normalizedProvenance: Record<string, unknown> = {
+      endpoint,
+      grain,
+      provenanceOrigin,
+      ...rawObj,
+      dimensions: dims,
+      metrics,
+    };
+
+    if (conversionAction !== undefined) normalizedProvenance.conversionAction = conversionAction;
+    if (attributionWindow !== undefined) normalizedProvenance.attributionWindow = attributionWindow;
+    if (revenueBasis !== undefined) normalizedProvenance.revenueBasis = revenueBasis;
+    if (availability !== undefined) normalizedProvenance.availability = availability;
+
     payloads.push({
       workspaceId: opts.workspaceId,
       connectionId: opts.connectionId,
@@ -627,7 +721,7 @@ async function ingestTiktokRowsBulk(
       revenue,
       roas,
       currency,
-      rawData: row.raw ?? { dimensions: dims, metrics },
+      rawData: normalizedProvenance,
       syncJobId: opts.syncJobId,
       lease: opts.lease,
     });

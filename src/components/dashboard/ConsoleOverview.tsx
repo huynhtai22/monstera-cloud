@@ -1,7 +1,8 @@
 "use client";
 
+import { LogoMark } from "@/components/Logo";
 import { ConsoleCountUp } from "@/components/console/ConsoleMotion";
-import type { ReactNode, Ref } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 import Link from "next/link";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import {
@@ -23,6 +24,7 @@ import type {
   DashboardOverviewDTO,
   DashboardIssueItem,
 } from "@/lib/dashboard-overview";
+import { ConnectedDataResponsibilitySetup } from "./ConnectedDataResponsibilitySetup";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import {
@@ -55,6 +57,37 @@ type Props = {
   onWizardResume: () => void;
   onReconnect: (issue: DashboardIssueItem) => void;
   performancePanelRef?: Ref<HTMLDivElement>;
+  agentConsoleSummary?: {
+    workspaceId?: string;
+    schedulerStatus: "active" | "delayed" | "paused" | "unavailable" | "no_responsibility";
+    monitoringAvailable: boolean;
+    supportedCadenceLabel: string;
+    nextScheduledCheck: string | null;
+    lastSuccessfulCheck: string | null;
+    dataThroughCoverage: string | null;
+    activeBlockers: string[];
+    responsibilities?: Array<{
+      id: string;
+      kind: string;
+      status: string;
+      cadence: string;
+      version: number;
+      nextDueAt: string | null;
+      lastSuccessfulAt: string | null;
+      scopeCount: number;
+    }>;
+    openCases?: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      state: string;
+      priority: string;
+      version: number;
+      requiredAction: string | null;
+      createdAt: string;
+    }>;
+  } | null;
+  onRefreshSummary?: () => void | Promise<unknown>;
 };
 
 function Status({
@@ -147,8 +180,75 @@ export function ConsoleOverview({
   onWizardResume,
   onReconnect,
   performancePanelRef,
+  agentConsoleSummary,
+  onRefreshSummary,
 }: Props) {
   const { hrefFor } = useClientContextNavigation();
+  const [activeCaseActionId, setActiveCaseActionId] = useState<string | null>(null);
+  const [activeRespAction, setActiveRespAction] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const activeResp = agentConsoleSummary?.responsibilities?.find((r) => r.status === "active");
+  const pausedResp = agentConsoleSummary?.responsibilities?.find((r) => r.status === "paused");
+  const monitoredResp = activeResp || pausedResp;
+
+  const handleTogglePause = async () => {
+    if (!monitoredResp || !workspace.id) return;
+    setActiveRespAction(true);
+    setActionError(null);
+    try {
+      const targetAction = monitoredResp.status === "active" ? "pause" : "resume";
+      const res = await fetch(`/api/agent-console/responsibilities/${monitoredResp.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          expectedVersion: monitoredResp.version,
+          action: targetAction,
+          reason: targetAction === "pause" ? "Paused by user from console overview" : "Resumed by user from console overview",
+        }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || "Failed to update responsibility status");
+      }
+      if (onRefreshSummary) {
+        await onRefreshSummary();
+      }
+      onRefresh();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActiveRespAction(false);
+    }
+  };
+
+  const handleRecoverCase = async (c: { id: string; version: number; requiredAction: string | null }) => {
+    if (!workspace.id) return;
+    setActiveCaseActionId(c.id);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/agent-console/cases/${c.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          expectedVersion: c.version,
+          action: "recover",
+        }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || (typeof errJson.details === "string" ? errJson.details : JSON.stringify(errJson.details)) || "Failed to trigger case recovery");
+      }
+      if (onRefreshSummary) onRefreshSummary();
+      onRefresh();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActiveCaseActionId(null);
+    }
+  };
   const {
     workspace,
     summaryCards,
@@ -230,7 +330,7 @@ export function ConsoleOverview({
 
   return (
     <div className={styles.console} data-console-page="true" data-console-section="dashboard">
-      <header className={styles.header}>
+      <header data-console-page-header="true" className={styles.header}>
         <div>
           <p className={styles.eyebrow}>
             WORKSPACE OVERVIEW <span className={styles.eyebrowDivider}>/</span>{" "}
@@ -242,6 +342,25 @@ export function ConsoleOverview({
           </p>
         </div>
         <div className={styles.headerActions}>
+          {monitoredResp && (
+            <button
+              className={styles.button}
+              type="button"
+              onClick={handleTogglePause}
+              disabled={activeRespAction || (monitoredResp.status === "paused" && !agentConsoleSummary?.monitoringAvailable)}
+              title={monitoredResp.status === "paused" && !agentConsoleSummary?.monitoringAvailable
+                ? "Monitoring cannot resume until its scheduled worker is enabled"
+                : undefined}
+            >
+              <ConsoleSyncLabel
+                active={activeRespAction}
+                idleLabel={monitoredResp.status === "active"
+                  ? "Pause monitoring"
+                  : agentConsoleSummary?.monitoringAvailable ? "Resume monitoring" : "Resume unavailable"}
+                activeLabel={monitoredResp.status === "active" ? "Pausing…" : "Resuming…"}
+              />
+            </button>
+          )}
           <button
             className={styles.button}
             type="button"
@@ -264,6 +383,13 @@ export function ConsoleOverview({
           </Link>
         </div>
       </header>
+
+      {actionError && (
+        <div role="status" className={styles.warning}>
+          <TriangleAlert size={18} />
+          <p>{actionError}</p>
+        </div>
+      )}
 
       {showRefreshWarning && (
         <div role="status" className={styles.warning}>
@@ -321,14 +447,31 @@ export function ConsoleOverview({
             busy={warehouse.status === "refreshing"}
           />
           <span>
-            {warehouseSnapshot.dataThroughDate
-              ? `Data through ${warehouseSnapshot.dataThroughDate}`
+            {agentConsoleSummary?.dataThroughCoverage
+              ? `Data through ${agentConsoleSummary.dataThroughCoverage}`
+              : warehouseSnapshot.dataThroughDate
+              ? `Data through ${formatDateTime(`${warehouseSnapshot.dataThroughDate}T00:00:00`).split(",")[0]}`
               : warehouse.totalRows > 0 ? "Stored history available" : summaryCards.syncs.successful7d > 0 ? "Sync completed without metric rows" : "Awaiting first import"}
           </span>
+          {agentConsoleSummary && (
+            <span style={{ fontSize: "9px", opacity: 0.85 }}>
+              {agentConsoleSummary.schedulerStatus === "unavailable" ? (
+                <strong style={{ color: "#ef4444" }}>Monitoring unavailable (worker offline)</strong>
+              ) : agentConsoleSummary.schedulerStatus === "delayed" ? (
+                <strong style={{ color: "#f59e0b" }}>Scheduler delayed (overdue)</strong>
+              ) : agentConsoleSummary.schedulerStatus === "paused" ? (
+                <strong>Monitoring paused</strong>
+              ) : agentConsoleSummary.nextScheduledCheck ? (
+                `Next check: ${formatDateTime(agentConsoleSummary.nextScheduledCheck)}`
+              ) : (
+                agentConsoleSummary.supportedCadenceLabel
+              )}
+            </span>
+          )}
         </div>
       </div>
 
-      {needsAttention.length > 0 && (
+      {((needsAttention.length > 0) || (agentConsoleSummary?.openCases && agentConsoleSummary.openCases.length > 0)) && (
         <section
           className={styles.attention}
           aria-labelledby="attention-heading"
@@ -336,8 +479,39 @@ export function ConsoleOverview({
           <div className={styles.attentionHeading}>
             <TriangleAlert size={16} />
             <h2 id="attention-heading">Needs your attention</h2>
-            <span>{needsAttention.length}</span>
+            <span>{needsAttention.length + (agentConsoleSummary?.openCases?.length ?? 0)}</span>
           </div>
+          {agentConsoleSummary?.openCases?.map((c) => (
+            <div key={`agent-case-${c.id}`} className={styles.issue}>
+              <div>
+                <h3>{c.title}</h3>
+                <p>{c.description || "Source health incident requires review or recovery."}</p>
+                <time dateTime={c.createdAt}>
+                  {formatDateTime(c.createdAt)}
+                </time>
+              </div>
+              {c.requiredAction === "reconnect" ? (
+                <Link className={styles.button} href={hrefFor(`/sources#case-${encodeURIComponent(c.id)}`)}>
+                  Reconnect source
+                  <ArrowRight size={14} />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.button}
+                  onClick={() => handleRecoverCase(c)}
+                  disabled={activeCaseActionId === c.id}
+                >
+                  <ConsoleSyncLabel
+                    active={activeCaseActionId === c.id}
+                    idleLabel="Recover data"
+                    activeLabel="Recovering…"
+                  />
+                  <ArrowRight size={14} />
+                </button>
+              )}
+            </div>
+          ))}
           {needsAttention.map((issue) => (
             <div key={issue.id} className={styles.issue}>
               <div>
@@ -368,6 +542,17 @@ export function ConsoleOverview({
       )}
 
       </section>
+      {agentConsoleSummary && !agentConsoleSummary.responsibilities?.some((responsibility) => responsibility.kind === "data_health" && ["active", "paused"].includes(responsibility.status)) && (
+        <ConnectedDataResponsibilitySetup
+          workspaceId={workspace.id}
+          sources={sourcesList}
+          monitoringAvailable={agentConsoleSummary.monitoringAvailable}
+          onActivated={async () => {
+            await onRefreshSummary?.();
+            onRefresh();
+          }}
+        />
+      )}
       {!wizardDismissed && (
         <SetupWizard
           activation={overview.pilotActivation}
@@ -634,7 +819,7 @@ export function ConsoleOverview({
                 <span>LAST SUCCESSFUL REFRESH</span>
                 <p>
                   {warehouseSnapshot.lastRefreshAt
-                    ? warehouseSnapshot.lastRefreshAt
+                    ? formatDateTime(warehouseSnapshot.lastRefreshAt)
                     : "Your first import will appear here"}
                 </p>
               </div>
@@ -761,11 +946,11 @@ export function ConsoleOverview({
       )}
       <footer className={styles.footer}>
         <span>
-          <span className={styles.footerMark}>✳</span> Monstera Cloud
+          <LogoMark className="h-5 w-5 shrink-0" /> Monstera Cloud
         </span>
         <p>
           {warehouseSnapshot.lastRefreshAt
-            ? `Last successful sync ${warehouseSnapshot.lastRefreshAt}`
+            ? `Last successful sync ${formatDateTime(warehouseSnapshot.lastRefreshAt)}`
             : "Built around your data"}
         </p>
         <span>Workspace overview</span>

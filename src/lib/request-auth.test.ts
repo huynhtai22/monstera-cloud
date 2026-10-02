@@ -10,6 +10,7 @@ describe("scoped cron authentication", () => {
   it("maps each child scope to a separate environment variable", () => {
     assert.equal(cronSecretEnvName("master"), "CRON_SECRET");
     assert.equal(cronSecretEnvName("warehouse_jobs"), "CRON_SECRET_WAREHOUSE_JOBS");
+    assert.equal(cronSecretEnvName("agent_console"), "CRON_SECRET_AGENT_CONSOLE");
   });
 
   it("retains production shared-secret compatibility until explicitly disabled", () => {
@@ -41,10 +42,19 @@ describe("scoped cron authentication", () => {
   it("keeps every pilot scheduler invocation wired to scoped-or-legacy credentials", () => {
     const workflow = readFileSync(".github/workflows/pilot-cron.yml", "utf8");
     const invocations = [...workflow.matchAll(/invoke \/api\/cron\/\S+ "\$\{(CRON_SECRET_[A-Z_]+):-\}"/g)];
-    assert.equal(invocations.length, 9);
+    assert.equal(invocations.length, 8);
     for (const [, name] of invocations) {
       assert.ok(workflow.includes(`${name}: \u0024{{ secrets.${name} || secrets.CRON_SECRET }}`), name);
     }
+  });
+
+  it("keeps Agent Console monitoring on a dedicated opt-in job and secret", () => {
+    assert.ok(CRON_SCOPES.includes("agent_console"));
+    const workflow = readFileSync(".github/workflows/pilot-cron.yml", "utf8");
+    assert.match(workflow, /agent-console-tick:[\s\S]*?ENABLE_AGENT_CONSOLE_MONITORING == '1'[\s\S]*?ENABLE_AGENT_CONSOLE_WORKER == '1'/);
+    assert.match(workflow, /CRON_SECRET_AGENT_CONSOLE: \$\{\{ secrets\.CRON_SECRET_AGENT_CONSOLE \}\}/);
+    assert.match(workflow, /\/api\/agent-console\/cron/);
+    assert.doesNotMatch(workflow.match(/agent-console-tick:[\s\S]*?(?=\n  [a-z][a-z-]*:|$)/)?.[0] ?? "", /secrets\.CRON_SECRET\s*\|\|/);
   });
 
   it("allows the explicit temporary legacy switch", () => {

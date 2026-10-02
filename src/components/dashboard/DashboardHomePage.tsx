@@ -59,6 +59,12 @@ export function DashboardHomePage() {
   const deferredOverview = React.useDeferredValue(receivedOverview);
   const overview = deferredOverview?.workspace.id === workspaceId ? deferredOverview : undefined;
 
+  const { data: consoleSummary, mutate: mutateSummary } = useSWR<any>(
+    workspaceId ? `/api/agent-console/summary?workspaceId=${workspaceId}` : null,
+    fetcher,
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  );
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [manualRefreshFailed, setManualRefreshFailed] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(false);
@@ -200,6 +206,8 @@ export function DashboardHomePage() {
         isUpdating={isUpdating}
         showRefreshWarning={Boolean(error || manualRefreshFailed)}
         onRefresh={handleManualRefresh}
+        agentConsoleSummary={consoleSummary}
+        onRefreshSummary={() => mutateSummary()}
         wizardDismissed={wizardDismissed}
         onWizardDismiss={handleWizardDismiss}
         onWizardResume={() => {

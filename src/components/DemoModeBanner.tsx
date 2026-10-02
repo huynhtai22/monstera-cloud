@@ -28,20 +28,15 @@ export function DemoModeBanner() {
         <div
             role="status"
             aria-live="polite"
-            className="sticky top-0 z-30 flex w-full items-center justify-center gap-2 border-b border-violet-200/90 bg-violet-50/95 px-3 py-2 text-center shadow-sm backdrop-blur-sm dark:border-violet-900/60 dark:bg-violet-950/85 sm:justify-between sm:px-4 sm:text-left"
+            className="relative flex w-full items-center justify-center gap-2 border-b border-violet-200/90 bg-violet-50/95 px-3 py-2 text-center dark:border-violet-900/60 dark:bg-violet-950/85 sm:justify-between sm:px-4 sm:text-left"
         >
             <div className="flex min-w-0 flex-1 items-center justify-center gap-2 sm:justify-start">
                 <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-60 dark:bg-violet-300" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-600 dark:bg-violet-400" />
+                    <span className="inline-flex h-2 w-2 rounded-full bg-violet-600 dark:bg-violet-400" />
                 </span>
                 <p className="min-w-0 text-xs font-medium text-violet-950 dark:text-violet-100">
                     <span className="font-semibold">Demo data on</span>
-                    <span className="hidden sm:inline">
-                        {" "}
-                        — charts, ROAS, and client lists may include sample rows. Real connections are unchanged.
-                    </span>
-                    <span className="sm:hidden"> — sample data mixed in.</span>
+                    <span> — metrics may include sample rows.</span>
                 </p>
             </div>
             <Link

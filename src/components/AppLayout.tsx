@@ -54,7 +54,7 @@ function mobileSectionTitle(pathname: string | null): string {
     return first ? first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, " ") : "Home";
 }
 
-export function AppLayout({ children, visualPreview = false, previewTitle = "Dashboard" }: { children: React.ReactNode; visualPreview?: boolean; previewTitle?: string }) {
+export function AppLayout({ children, visualPreview = false, previewTitle = "Dashboard", previewPath, previewHref, previewDirectory, previewDirectories }: { children: React.ReactNode; visualPreview?: boolean; previewTitle?: string; previewPath?: string; previewHref?: (href: string) => string; previewDirectory?: readonly { label: string; href: string }[]; previewDirectories?: Readonly<Record<string, readonly { label: string; href: string }[]>> }) {
     const pathname = usePathname();
     const { status } = useSession();
     const loading = status === 'loading';
@@ -118,7 +118,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     if (pathname?.startsWith("/invite/")) return <>{children}</>;
 
     return (
-        <KeyboardShortcutsProvider>
+        <KeyboardShortcutsProvider hrefTransform={visualPreview ? previewHref : undefined}>
         <PendingNavigationProvider>
         {!visualPreview && <WorkspaceSessionSync />}
         {!visualPreview && <SessionHeartbeat />}
@@ -162,6 +162,9 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                 toggleDarkMode={toggleDarkMode}
                 collapsed={sidebarCollapsed}
                 setCollapsed={setSidebarCollapsed}
+                previewPath={visualPreview ? previewPath : undefined}
+                previewDirectory={visualPreview ? previewDirectory : undefined}
+                previewDirectories={visualPreview ? previewDirectories : undefined}
             />
 
             <div

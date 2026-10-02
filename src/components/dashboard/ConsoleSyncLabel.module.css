@@ -157,3 +157,7 @@
     -webkit-text-fill-color: CanvasText;
   }
 }
+
+.large .symbol { width: 28px; height: 28px; }
+.large .dots { grid-template-columns: repeat(3, 6px); gap: 3px; width: 24px; height: 24px; }
+.large .dots > span { width: 6px; height: 6px; border-radius: 1.5px; }

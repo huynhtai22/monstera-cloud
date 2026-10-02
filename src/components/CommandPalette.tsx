@@ -17,7 +17,7 @@ const BASE: Item[] = [
   { id: "settings", label: "Settings", detail: "Workspace settings", href: "/settings", group: "Navigate" },
 ];
 
-function PaletteSurface() {
+function PaletteSurface({ hrefTransform }: { hrefTransform?: (href: string) => string }) {
   const router = useRouter();
   const { activeWorkspaceId } = useWorkspaceStore();
   const [open, setOpen] = useState(false);
@@ -64,7 +64,8 @@ function PaletteSurface() {
     const url = new URL(item.href, window.location.origin);
     const currentClient = new URLSearchParams(window.location.search).get("clientId");
     if (currentClient && !url.searchParams.has("clientId") && ["/clients", "/sources", "/reports", "/explorer", "/exports", "/operations"].includes(url.pathname)) url.searchParams.set("clientId", currentClient);
-    setOpen(false); router.push(`${url.pathname}${url.search}${url.hash}`);
+    const href = `${url.pathname}${url.search}${url.hash}`;
+    setOpen(false); router.push(hrefTransform?.(href) ?? href);
   };
 
   if (!open) return null;
@@ -82,7 +83,7 @@ function PaletteSurface() {
   </div>;
 }
 
-export function CommandPalette() { return <Suspense fallback={null}><PaletteSurface /></Suspense>; }
+export function CommandPalette({ hrefTransform }: { hrefTransform?: (href: string) => string }) { return <Suspense fallback={null}><PaletteSurface hrefTransform={hrefTransform} /></Suspense>; }
 export function CommandPaletteTrigger() {
   return <button type="button" onClick={() => window.dispatchEvent(new Event("open-monstera-command-palette"))} className="pointer-events-auto hidden min-h-8 items-center gap-2 rounded-md border border-line bg-panel px-2.5 text-xs text-ink-mute hover:text-ink sm:flex" aria-label="Search clients, sources, and pages"><Search className="h-3.5 w-3.5" />Search…<kbd className="rounded border border-line px-1 py-0.5 font-mono text-[10px]">⌘K</kbd></button>;
 }

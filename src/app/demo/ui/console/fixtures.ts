@@ -7,7 +7,9 @@ export type PreviewState =
   | "Syncing"
   | "Needs attention"
   | "New workspace"
-  | "Multi-currency";
+  | "Multi-currency"
+  | "Monitoring setup"
+  | "Monitoring active";
 export const previewStates: PreviewState[] = [
   "Overview",
   "Disconnected",
@@ -16,6 +18,8 @@ export const previewStates: PreviewState[] = [
   "Needs attention",
   "New workspace",
   "Multi-currency",
+  "Monitoring setup",
+  "Monitoring active",
 ];
 
 // Synthetic, local-only data: no customer records or credentials.
