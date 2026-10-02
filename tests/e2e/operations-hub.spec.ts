@@ -209,7 +209,7 @@ test.describe("operations hub", () => {
   test("renders every operations section with connector attention and the client context bar", async ({ authenticatedPage: page }) => {
     await page.goto("/operations");
     await expect(page.getByTestId("operations-page")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Operations Hub" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Operations", exact: true })).toBeVisible();
     await expect(page.getByTestId("client-context-bar")).toBeVisible();
     const journey = page.getByTestId("freshness-journey");
     await expect(journey).toBeVisible();

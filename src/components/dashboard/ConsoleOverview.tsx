@@ -553,7 +553,7 @@ export function ConsoleOverview({
           }}
         />
       )}
-      {!wizardDismissed && hasMetrics && (
+      {!wizardDismissed && (
         <SetupWizard
           activation={overview.pilotActivation}
           plan={workspace.plan}
