@@ -15,7 +15,7 @@
   --ui-border-rgb: 42 42 42;
   --ui-primary-rgb: 237 237 237;
   --ui-primary-foreground-rgb: 23 23 23;
-  --console-motion-accent: #5eead4;
+  --console-motion-accent: var(--console-brand-green);
   --shadow-card: 0 1px 0 #ffffff04;
 }
 .root[data-console-theme="dark"] > aside {
@@ -151,7 +151,7 @@
   --color-ink: #ededed;
   --color-ink-mute: #adadad;
   --color-surface-muted: #1c1c1c;
-  --console-motion-accent: #5eead4;
+  --console-motion-accent: var(--console-brand-green);
   --shadow-card: 0 1px 0 #ffffff05;
 }
 .root[data-console-theme="dark"] > aside {
@@ -316,7 +316,7 @@
   transition: color 260ms ease, border-color 320ms ease;
 }
 .root main :global([data-console-section="sources"] .console-source-tabs > [role="tab"][aria-selected="true"]) {
-  border-bottom-color: #5eead4;
+  border-bottom-color: var(--console-brand-green);
   color: var(--color-ink);
 }
 .root main :global([data-console-section="sources"] .console-source-layout) {
@@ -396,7 +396,7 @@
 .root :global(.console-route-enter) { animation: consoleRouteIn var(--console-duration-normal) var(--console-ease) both; }
 .root :global(.console-route-exit) { position: absolute; inset: 0; pointer-events: none; animation: consoleRouteOut var(--console-duration-fast) var(--console-ease) both; }
 .root :global(.console-sliding-control) { position: relative; }
-.root :global(.console-sliding-indicator) { position: absolute; bottom: 0; left: 0; width: 1px; height: 2px; border-radius: 2px; background: #5eead4; transform-origin: left; pointer-events: none; transition: transform var(--console-duration-normal) var(--console-ease), opacity var(--console-duration-fast) var(--console-ease); }
+.root :global(.console-sliding-indicator) { position: absolute; bottom: 0; left: 0; width: 1px; height: 2px; border-radius: 2px; background: var(--console-brand-green); transform-origin: left; pointer-events: none; transition: transform var(--console-duration-normal) var(--console-ease), opacity var(--console-duration-fast) var(--console-ease); }
 @keyframes consoleRouteIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes consoleRouteOut { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .root :global(.console-route-enter), .root :global(.console-route-exit) { animation: none; } .root :global(.console-route-exit) { display: none; } .root :global(.console-sliding-indicator) { transition: none; } }
@@ -410,4 +410,9 @@
 @keyframes consoleWorkText { from { opacity: .65; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .root :global(.console-activity-text) { animation: none; } }
 
-.root :global([aria-selected="true"]), .root :global([aria-checked="true"]), .root :global([aria-current="page"]) { color: #5eead4; }
+.root :global([aria-selected="true"]), .root :global([aria-checked="true"]), .root :global([aria-current="page"]) { color: var(--console-brand-green); }
+
+.root main :global(.console-source-list [aria-label="Connection view"] button[aria-pressed="true"]) {
+  background-color: var(--console-brand-green);
+  color: #101010;
+}
