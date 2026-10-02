@@ -2,12 +2,16 @@ import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
 
 export type PreviewState =
   | "Overview"
+  | "Disconnected"
+  | "Sync stuck"
   | "Syncing"
   | "Needs attention"
   | "New workspace"
   | "Multi-currency";
 export const previewStates: PreviewState[] = [
   "Overview",
+  "Disconnected",
+  "Sync stuck",
   "Syncing",
   "Needs attention",
   "New workspace",
@@ -31,8 +35,8 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
       trialEndsAt: null,
       sourceConnectionId: "preview-meta",
       rows7d: 24860,
-      dataThroughDate: "2026-09-27",
-      dashboardReviewedAt: "2026-09-27T08:00:00Z",
+      dataThroughDate: "2026-09-30",
+      dashboardReviewedAt: "2026-09-30T08:00:00Z",
       blockers: [],
     },
     overallStatus: {
@@ -52,15 +56,15 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
       },
       warehouse: {
         status: "fresh",
-        dataThroughDate: "2026-09-27",
+        dataThroughDate: "2026-09-30",
         totalRows: 128450,
         rows7d: 24860,
-        asOf: "2026-09-27T13:42:00Z",
+        asOf: "2026-09-30T13:42:00Z",
       },
       syncs: {
         successful7d: 168,
         failed7d: 0,
-        lastSyncTimeAgo: "8 minutes ago",
+        lastSyncTimeAgo: "30 Sep 2026, 20:42",
       },
       destinations: {
         activeCount: 2,
@@ -73,24 +77,24 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         id: "preview-meta",
         provider: "meta_ads",
         name: "Studio North · Meta",
-        managerBadge: "[BM: 100023456789]",
+        managerBadge: "BM: 100023456789",
         shortId: "mt_01",
         accountCount: 5,
         accountTags: [],
         state: "fresh",
-        lastSyncAt: "2026-09-27T13:42:00Z",
+        lastSyncAt: "2026-09-30T13:42:00Z",
         lastError: null,
       },
       {
         id: "preview-google",
         provider: "google_ads",
         name: "Google Ads portfolio",
-        managerBadge: "[MCC: 123-456-7890]",
+        managerBadge: "MCC: 123-456-7890",
         shortId: "gg_02",
         accountCount: 4,
         accountTags: [],
         state: "fresh",
-        lastSyncAt: "2026-09-27T13:40:00Z",
+        lastSyncAt: "2026-09-30T13:40:00Z",
         lastError: null,
       },
       {
@@ -101,7 +105,7 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         accountCount: 2,
         accountTags: [],
         state: "fresh",
-        lastSyncAt: "2026-09-27T13:38:00Z",
+        lastSyncAt: "2026-09-30T13:38:00Z",
         lastError: null,
       },
       {
@@ -112,42 +116,42 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         accountCount: 1,
         accountTags: [],
         state: "fresh",
-        lastSyncAt: "2026-09-27T13:35:00Z",
+        lastSyncAt: "2026-09-30T13:35:00Z",
         lastError: null,
       },
     ],
     warehouseSnapshot: {
       hasData: true,
-      dataThroughDate: "2026-09-27",
-      lastRefreshAt: "2026-09-27T13:42:00Z",
+      dataThroughDate: "2026-09-30",
+      lastRefreshAt: "2026-09-30T13:42:00Z",
       metrics7d: {
         impressions: 2846000,
         clicks: 86420,
         conversions: 3284,
         mixedCurrency: false,
         byCurrency: [
-          { currency: "USD", spend: 18420.5, revenue: 76381, roas: 4.1465 },
+          { currency: "VND", spend: 460512500, revenue: 1909525000, roas: 4.1465 },
         ],
         byPlatform: [
           {
             platform: "meta_ads",
-            spend: 8657.64,
-            revenue: 36438,
-            currency: "USD",
+            spend: 216441000,
+            revenue: 910950000,
+            currency: "VND",
             percentage: 47,
           },
           {
             platform: "google_ads",
-            spend: 6262.97,
-            revenue: 28260,
-            currency: "USD",
+            spend: 156574250,
+            revenue: 706500000,
+            currency: "VND",
             percentage: 34,
           },
           {
             platform: "tiktok_business",
-            spend: 3499.89,
-            revenue: 11683,
-            currency: "USD",
+            spend: 87497250,
+            revenue: 292075000,
+            currency: "VND",
             percentage: 19,
           },
         ],
@@ -185,7 +189,7 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         type: "warehouse_refresh",
         title: "Warehouse is up to date",
         description: "1,248 metric rows imported across 12 accounts.",
-        timestamp: "2026-09-27T13:42:00Z",
+        timestamp: "2026-09-30T13:42:00Z",
         status: "success",
       },
       {
@@ -193,7 +197,7 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         type: "sync_success",
         title: "Google Ads sync completed",
         description: "4 ad accounts refreshed successfully.",
-        timestamp: "2026-09-27T13:40:00Z",
+        timestamp: "2026-09-30T13:40:00Z",
         status: "success",
       },
       {
@@ -201,11 +205,22 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         type: "looker_query",
         title: "Looker Studio queried the warehouse",
         description: "Latest performance data delivered to your dashboard.",
-        timestamp: "2026-09-27T13:32:00Z",
+        timestamp: "2026-09-30T13:32:00Z",
         status: "info",
       },
     ],
   };
+  if (state === "Disconnected" || state === "Sync stuck") {
+    const stuck = state === "Sync stuck";
+    overview.sourcesList[2].state = stuck ? "stuck" : "disconnected";
+    overview.sourcesList[2].lastSyncAt = "2026-09-30T11:30:00Z";
+    overview.sourcesList[2].lastError = stuck ? "Import has not progressed for over an hour" : "Source disconnected";
+    overview.summaryCards.sources.healthy = 3;
+    overview.summaryCards.sources.attention = 1;
+    overview.summaryCards.warehouse.status = "partial";
+    overview.overallStatus = { state: "attention", headline: stuck ? "TikTok import is stuck" : "TikTok is disconnected", supportingText: stuck ? "Restart this import to resume reporting." : "Reconnect TikTok to resume importing your accounts." };
+    overview.needsAttention = [{ id: "tiktok-recovery", title: overview.overallStatus.headline, explanation: overview.overallStatus.supportingText, actionType: stuck ? "retry" : "reconnect", actionLabel: stuck ? "Review source" : "Reconnect source", href: "/sources/preview-tiktok#source-recovery", connectionId: "preview-tiktok", provider: "tiktok_business", timestamp: "2026-09-30T13:42:00Z" }];
+  }
   if (state === "Syncing") {
     overview.overallStatus = {
       state: "syncing",
@@ -245,7 +260,7 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
         actionLabel: "Reconnect source",
         connectionId: "preview-google",
         provider: "google_ads",
-        timestamp: "2026-09-27T13:40:00Z",
+        timestamp: "2026-09-30T13:40:00Z",
       },
     ];
     overview.recentActivity.unshift({
@@ -253,7 +268,7 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
       type: "sync_error",
       title: "Google Ads needs authorization",
       description: "The scheduled import could not complete.",
-      timestamp: "2026-09-27T13:45:00Z",
+      timestamp: "2026-09-30T13:45:00Z",
       status: "error",
     });
   }
@@ -317,16 +332,16 @@ export function previewOverview(state: PreviewState): DashboardOverviewDTO {
   if (state === "Multi-currency") {
     overview.warehouseSnapshot.metrics7d.mixedCurrency = true;
     overview.warehouseSnapshot.metrics7d.byCurrency.push({
-      currency: "VND",
-      spend: 32400000,
-      revenue: 110000000,
+      currency: "USD",
+      spend: 1296,
+      revenue: 4400,
       roas: 3.395,
     });
     overview.warehouseSnapshot.metrics7d.byPlatform.push({
       platform: "shopee",
-      spend: 32400000,
-      revenue: 110000000,
-      currency: "VND",
+      spend: 1296,
+      revenue: 4400,
+      currency: "USD",
       percentage: 0,
     });
   }

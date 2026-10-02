@@ -36,9 +36,12 @@ export function formatCurrency(n: number, currency?: string | null): string {
 export function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown time";
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour12: false,
     month: "short",
-    day: "numeric",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
@@ -68,8 +71,8 @@ export function warehouseStatePresentation(
       return {
         label: "Syncing",
         detail: "A warehouse refresh is in progress.",
-        dotClassName: "bg-[#86c99b]",
-        textClassName: "text-[#86c99b]",
+        dotClassName: "bg-neutral-400",
+        textClassName: "text-neutral-300",
       };
     case "stale":
       return {
@@ -120,6 +123,8 @@ export function sourceStatePresentation(
         dotClassName: "bg-amber-400",
         textClassName: "text-amber-400",
       };
+    case "stuck":
+      return { label: "Sync stuck", detail: "The sync has exceeded one hour. Review and retry.", dotClassName: "bg-amber-400", textClassName: "text-amber-300" };
     case "error":
       return {
         label: "Needs attention",
@@ -139,8 +144,8 @@ export function sourceStatePresentation(
       return {
         label: "Syncing",
         detail: "A warehouse sync is in progress.",
-        dotClassName: "bg-[#86c99b]",
-        textClassName: "text-[#86c99b]",
+        dotClassName: "bg-neutral-400",
+        textClassName: "text-neutral-300",
       };
     case "disconnected":
       return {
@@ -196,8 +201,8 @@ export function destinationStatePresentation(
       return {
         label: "In progress",
         detail: "A destination operation is currently running.",
-        dotClassName: "bg-[#86c99b]",
-        textClassName: "text-[#86c99b]",
+        dotClassName: "bg-neutral-400",
+        textClassName: "text-neutral-300",
       };
     case "partial":
       return {

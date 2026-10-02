@@ -22,6 +22,8 @@ import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/components/ui";
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
+import { SlidingControlIndicator } from "@/components/console/ConsoleMotion";
+import { countConsoleConnections } from "@/lib/console-connections";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
 import { countSourceHealthStatuses } from "@/lib/source-health";
@@ -272,6 +274,7 @@ export default function SourcesPage() {
         }
     }, [addBusy, removeBusy]);
 
+    const [reconnectQueue, setReconnectQueue] = useState<any[]>([]);
     const handleFixConnection = useCallback((integration: any) => {
         const catalogId = integration.catalogId;
         if (!catalogId) {
@@ -324,6 +327,7 @@ export default function SourcesPage() {
         connectionsUrl,
         fetcher,
         {
+            refreshInterval: 30000,
             errorRetryInterval: 3000,
             errorRetryCount: 3,
             dedupingInterval: 4000,
@@ -344,7 +348,7 @@ export default function SourcesPage() {
     });
 
     const connectedSourceCount = useMemo(() => {
-        return Array.isArray(sourceConnections) ? sourceConnections.length : 0;
+        return Array.isArray(sourceConnections) ? countConsoleConnections(sourceConnections) : 0;
     }, [sourceConnections]);
 
     const lastSyncSummary = useMemo(() => {
@@ -754,6 +758,7 @@ export default function SourcesPage() {
                           ? new Date(relatedPipeline.lastSyncedAt).toISOString()
                           : "Never",
                     dataThroughDate: conn.dataThroughDate,
+                    syncAttemptAt: conn.updatedAt,
                     logoSrc: logo,
                     pipelineId: relatedPipeline?.id,
                     accountTags,
@@ -763,28 +768,8 @@ export default function SourcesPage() {
                 return connectedSourceSortRank(a.catalogId) - connectedSourceSortRank(b.catalogId);
             });
 
-        // Deduplicate connections that point to the exact same manager identity (e.g. identical MCC ID)
-        const seenManagerKeys = new Set<string>();
-        const deduplicatedConnectedSources: typeof connectedSources = [];
-
-        for (const source of connectedSources) {
-            const managerKey = source.managerBadge 
-                ? `${source.provider}:${source.managerBadge}`
-                : source.provider === 'google_ads' && source.accountTags?.length
-                    ? `${source.provider}:${typeof source.accountTags[0] === 'object' ? source.accountTags[0].id : source.accountTags[0]}`
-                    : null;
-
-            if (managerKey) {
-                if (seenManagerKeys.has(managerKey)) {
-                    continue;
-                }
-                seenManagerKeys.add(managerKey);
-            }
-            deduplicatedConnectedSources.push(source);
-        }
-
         const filteredAvailable = catalogIntegrations;
-        const combined = [...deduplicatedConnectedSources, ...filteredAvailable];
+        const combined = [...connectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {
             const query = searchQuery.trim().toLowerCase();
@@ -804,7 +789,7 @@ export default function SourcesPage() {
 
             if (activeFilter === 'connected') return integration.status !== 'available';
             if (activeFilter === 'available') return integration.status === 'available';
-            if (activeFilter === 'attention') return ["error", "stale", "disconnected", "unknown", "partial"].includes(integration.status);
+            if (activeFilter === 'attention') return ["error", "stale", "disconnected", "unknown", "partial", "stuck"].includes(integration.status);
             return integration.status !== 'available';
         });
     }, [searchQuery, activeFilter, sourceConnections, pipelines, activeWorkspaceId, catalogIntegrations]);
@@ -831,16 +816,11 @@ export default function SourcesPage() {
     }, [workspaces, activeWorkspaceId]);
 
     const filterStats = useMemo(() => {
-        return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
-    }, [filteredIntegrations]);
+        return countSourceHealthStatuses((Array.isArray(sourceConnections) ? sourceConnections : []).map((connection: { healthState?: string; status: string }) => ({ status: connection.healthState ?? connection.status })));
+    }, [sourceConnections]);
     const needsAttentionCount = useMemo(() => {
         const connections = Array.isArray(sourceConnections) ? sourceConnections : [];
-        const deduped = new Map<string, string>();
-        for (const connection of connections) {
-            const key = `${connection.provider ?? ""}:${connection.remoteAccountId ?? connection.id}`;
-            if (!deduped.has(key)) deduped.set(key, String(connection.healthState ?? connection.status ?? "unknown"));
-        }
-        return Array.from(deduped.values()).filter((status) => ["error", "stale", "disconnected", "unknown", "partial"].includes(status)).length;
+        return connections.filter((connection: { healthState?: string; status?: string }) => ["error", "stale", "disconnected", "unknown", "partial", "stuck"].includes(String(connection.healthState ?? connection.status ?? "unknown"))).length;
     }, [sourceConnections]);
 
     // Error State (only block the screen when the failing endpoint has NO cached data)
@@ -1129,6 +1109,7 @@ export default function SourcesPage() {
 
             <div className="mb-6 flex flex-col gap-4 border-b border-line lg:flex-row lg:items-center lg:justify-between">
                 <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations">
+                    <SlidingControlIndicator />
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
@@ -1140,7 +1121,7 @@ export default function SourcesPage() {
                                 : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
                         )}
                     >
-                        <span>Connected</span>
+                        <span>Connections</span>
                         <span className="rounded border border-line/60 bg-panel px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
                             {isLoading ? '…' : connectedSourceCount}
                         </span>
@@ -1259,6 +1240,7 @@ export default function SourcesPage() {
                                 onSync={handleSync}
                                 onDirectSync={handleDirectSync}
                                 onDisconnect={disconnectSource}
+                                onBulkReconnect={(rows) => { setReconnectQueue(rows.slice(1)); handleFixConnection(rows[0]); }}
                                 onFixConnection={handleFixConnection}
                                 onRenameConnection={handleRenameConnection}
                             />
@@ -1285,7 +1267,7 @@ export default function SourcesPage() {
                                                 <Plus className="h-3 w-3 text-ink-mute" aria-hidden />
                                             </button>
                                         ))}
-                                        {discoverableCards.length === 0 && <p className="text-xs text-ink-mute">All available platforms are connected.</p>}
+                                        {discoverableCards.length === 0 && <p className="text-xs text-ink-mute">Every available platform has a saved connection. Review any that need reconnection.</p>}
                                     </div>
                                     <div className="flex items-center gap-4 lg:border-l lg:border-line lg:pl-5">
                                         <button type="button" onClick={() => setActiveFilter("available")} className="inline-flex items-center gap-1.5 text-xs font-medium text-ink transition-colors hover:text-[#a9d9b9]">Browse catalog <ChevronRight className="h-3.5 w-3.5" aria-hidden /></button>
@@ -1354,10 +1336,16 @@ export default function SourcesPage() {
 
             {/* P1: Fix It Modal for one-click reconnection */}
             <FixConnectionModal
+                key={fixConnectionTarget?.id ?? "closed"}
                 isOpen={fixConnectionTarget !== null}
-                onClose={() => setFixConnectionTarget(null)}
+                onClose={() => { setReconnectQueue([]); setFixConnectionTarget(null); }}
                 connection={fixConnectionTarget}
                 onReconnected={() => {
+                    if (reconnectQueue.length) {
+                        const [next, ...rest] = reconnectQueue;
+                        setReconnectQueue(rest);
+                        handleFixConnection(next);
+                    }
                     // Refresh data after successful reconnection
                     mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"));
                     setSourceOutcome({

@@ -150,6 +150,30 @@ describe("operations summary: freshness with an injected clock", () => {
     assert.equal(data.escalationHours, 26);
   });
 
+  it("uses the connection attempt time before calling provider processing stuck", () => {
+    const processingError = "Report task is still processing";
+    const recent = summarizeFreshness(
+      [{ ...base, status: "error", lastError: processingError, syncAttemptAt: NOW }],
+      { now: NOW },
+    );
+    assert.equal(recent.totals.syncing, 1);
+    assert.equal(recent.totals.stuck, 0);
+
+    const old = summarizeFreshness(
+      [{ ...base, status: "error", lastError: processingError, syncAttemptAt: new Date(NOW.getTime() - HOUR_MS - 1) }],
+      { now: NOW },
+    );
+    assert.equal(old.totals.stuck, 1);
+    assert.equal(old.totals.syncing, 0);
+
+    const missing = summarizeFreshness(
+      [{ ...base, status: "error", lastError: processingError, syncAttemptAt: null }],
+      { now: NOW },
+    );
+    assert.equal(missing.totals.syncing, 1);
+    assert.equal(missing.totals.stuck, 0);
+  });
+
   it("classifies disconnected, partial and errored sources as needing attention", () => {
     const data = summarizeFreshness(
       [

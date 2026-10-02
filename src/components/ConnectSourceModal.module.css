@@ -1,6 +1,6 @@
 .surface {
   --dialog-ease: cubic-bezier(.2,.8,.2,1);
-  background: radial-gradient(ellipse 80% 48% at 50% 7%, rgba(255,255,255,.055), transparent 70%), #111213;
+  background: radial-gradient(ellipse 85% 55% at 50% 0%, rgba(255,255,255,.045), transparent 75%), #141414;
 }
 
 .pickerItem {
@@ -29,12 +29,12 @@
 
 .pickerTile:not(:disabled):hover {
   transform: translateY(-3px);
-  border-color: rgba(156,213,172,.38);
-  background-color: rgba(156,213,172,.045);
+  border-color: rgba(212,212,212,.38);
+  background-color: rgba(212,212,212,.045);
   box-shadow: 0 16px 30px -20px #000, inset 0 1px 0 rgba(255,255,255,.07);
 }
 
-.pickerTile:focus-visible { outline: 2px solid #a3dab2; outline-offset: 3px; }
+.pickerTile:focus-visible { outline: 2px solid #d4d4d4; outline-offset: 3px; }
 .pickerTile:active:not(:disabled) { transform: translateY(-1px) scale(.995); }
 
 .pickerLogo {
@@ -50,188 +50,217 @@
 }
 
 .pickerTile:hover .pickerLogo { transform: translateY(-2px) rotate(-3deg); }
-.pickerArrow { flex: none; color: #909991; transform: translateX(-3px); transition: color 280ms ease, transform 400ms cubic-bezier(.16, 1, .3, 1); }
-.pickerTile:hover .pickerArrow { color: #acdcbc; transform: translateX(2px); }
-.pickerStatus { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 14px; color: #898e8a; font-size: 10px; line-height: 1; }
+.pickerArrow { flex: none; color: #969696; transform: translateX(-3px); transition: color 280ms ease, transform 400ms cubic-bezier(.16, 1, .3, 1); }
+.pickerTile:hover .pickerArrow { color: #ededed; transform: translateX(2px); }
+.pickerStatus { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 14px; color: #adadad; font-size: 10px; line-height: 1; }
 .pickerConnected { color: #9ecfad; }
-.pickerDot { width: 5px; height: 5px; border-radius: 50%; background: #777e78; }
+.pickerDot { width: 5px; height: 5px; border-radius: 50%; background: #808080; }
 .pickerConnected .pickerDot { background: #9bd5ac; box-shadow: 0 0 0 3px #9bd5ac1c; }
 
 @keyframes pickerEnter {
   from { opacity: 0; transform: translateY(12px) scale(.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-
 .visual {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 120px;
-  overflow: hidden;
-  isolation: isolate;
-  background: radial-gradient(ellipse 45% 65% at 50% 50%, rgba(255,255,255,.045), transparent 85%);
-}
-
-.visual::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: .28;
-  background-image: radial-gradient(rgba(255,255,255,.26) .55px, transparent .55px);
-  background-size: 17px 17px;
-  mask-image: radial-gradient(ellipse 55% 65% at center, black, transparent);
-  pointer-events: none;
-}
-
-.visual::after {
-  content: "";
-  position: absolute;
-  width: 320px;
-  height: 115px;
-  left: calc(50% - 160px);
-  top: 36px;
-  border-top: 1px solid #a8e8c32c;
-  border-radius: 50%;
-  box-shadow: 0 -10px 45px #76cba613;
-  transform: rotate(-12deg);
-  animation: orbitDrift 9s ease-in-out infinite alternate;
-  pointer-events: none;
+  gap: 22px;
+  padding: 36px 0 31px;
+  transition: padding 350ms var(--dialog-ease);
 }
 
 .node {
   position: relative;
-  z-index: 2;
   display: grid;
+  width: 78px;
+  height: 78px;
   place-items: center;
-  width: 62px;
-  height: 62px;
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 18px;
-  background: linear-gradient(145deg, #292a2b, #161718);
-  box-shadow: 0 16px 34px #0008, inset 0 1px #ffffff16;
-  animation: nodeEnter 650ms var(--dialog-ease) both;
-  transition: transform 520ms var(--dialog-ease), box-shadow 520ms ease;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid #ffffff;
+  border-radius: 21px;
+  background: #f7f7f7;
+  box-shadow: 0 1px 1px #ffffff23 inset, 0 12px 30px rgba(0,0,0,.22);
 }
 
-.providerNode {
-  box-shadow: 0 16px 34px #0008, 0 0 40px -17px var(--provider-accent), inset 0 1px #ffffff16;
+.node::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 25%, rgba(200,200,200,.2) 50%, transparent 75%);
+  opacity: 0;
+  transform: translateX(-120%);
+  pointer-events: none;
 }
 
-.monsteraNode {
+.connecting .node::after {
+  opacity: 1;
+  animation: tileShimmer 1.45s ease-in-out infinite;
+}
+
+.connecting .node:last-child::after { animation-delay: 180ms; }
+
+.node :global(span) {
   border: 0;
-  background: transparent;
-  box-shadow: 0 15px 34px #0007, 0 0 30px #9ccfab14;
-  animation-delay: 110ms;
+}
+
+.node :global(img) {
+  width: 30px;
+  height: 30px;
 }
 
 .bridge {
-  position: relative;
-  width: 116px;
-  height: 1px;
-  margin-inline: 12px;
-  background: linear-gradient(90deg, var(--provider-accent), #a1d6af);
-  opacity: .7;
-  transform-origin: left;
-  animation: bridgeDraw 750ms var(--dialog-ease) 90ms both;
-  transition: opacity 420ms ease, filter 420ms ease;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
-.bridge::after {
-  content: "";
-  position: absolute;
-  inset: -8px 0;
-  background: linear-gradient(90deg, var(--provider-accent), #a1d6af);
-  filter: blur(11px);
-  opacity: .33;
-}
-
-.pulse {
-  position: absolute;
-  top: -3px;
-  left: 0;
-  z-index: 1;
-  width: 7px;
-  height: 7px;
+.bridge span {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: #e7fff0;
-  box-shadow: 0 0 12px #b1ffd0;
-  opacity: 0;
+  background: #999999;
 }
 
-.connecting .pulse {
-  animation: travel 1.5s ease-in-out infinite;
+.connecting .bridge span {
+  animation: dotPulse 1.3s ease-in-out infinite;
 }
 
-.waitingRing {
-  position: absolute;
-  z-index: 1;
-  width: 84px;
-  height: 84px;
-  border: 1px solid color-mix(in srgb, var(--provider-accent), transparent 62%);
-  border-radius: 25px;
-  opacity: 0;
+.connecting .bridge span:nth-child(2) { animation-delay: 150ms; }
+.connecting .bridge span:nth-child(3) { animation-delay: 300ms; }
+
+.accessDetails {
+  margin-top: 26px;
+  overflow: hidden;
+  border: 1px solid rgba(212,212,212,.15);
+  border-radius: 16px;
+  background: #1c1c1c;
 }
 
-.connecting .waitingRing {
-  animation: breathe 2.2s ease-in-out infinite;
+.accessIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgba(212,212,212,.15);
+  border-radius: 10px;
+  background: rgba(212,212,212,.08);
 }
 
-.connecting .node { animation: none; }
-.connecting .providerNode { transform: translateX(-4px); }
-.connecting .monsteraNode { transform: translateX(4px); box-shadow: 0 15px 34px #0007, 0 0 34px #a8e8c32e; }
-.connecting .bridge { opacity: 1; filter: brightness(1.4); }
+.accessDetails summary {
+  list-style: none;
+}
 
-.surface:has(button:hover) .bridge { opacity: 1; filter: brightness(1.25); }
-.surface:has(button:hover) .monsteraNode { box-shadow: 0 15px 34px #0007, 0 0 34px #a8e8c32b; }
+.accessDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.accessDetails summary:focus-visible {
+  outline: 2px solid #d4d4d4;
+  outline-offset: -2px;
+}
+
+.accessChevron {
+  flex: none;
+  color: #adadad;
+  transition: transform 180ms ease;
+}
+
+.accessDetails[open] .accessChevron {
+  transform: rotate(90deg);
+}
 
 .idlePanel, .waitingPanel {
   overflow: hidden;
-  transition: max-height 570ms var(--dialog-ease), opacity 270ms ease, transform 520ms var(--dialog-ease);
+  transition: opacity 220ms ease, transform 350ms var(--dialog-ease);
 }
 
 .idlePanel { max-height: 700px; opacity: 1; transform: translateY(0); }
-.idlePanelHidden { max-height: 0; opacity: 0; transform: translateY(-14px); pointer-events: none; }
-.waitingPanel { max-height: 0; opacity: 0; transform: translateY(14px); pointer-events: none; }
-.waitingPanelActive { max-height: 300px; opacity: 1; transform: translateY(0); pointer-events: auto; }
-.waitingPanel > div { padding-top: 14px; }
+.idlePanelHidden { max-height: 0; opacity: 0; transform: translateY(-8px); pointer-events: none; }
+.waitingPanel { max-height: 0; opacity: 0; transform: translateY(8px); pointer-events: none; }
+.waitingPanelActive { max-height: 220px; opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+.connecting .visual { padding-top: 48px; padding-bottom: 32px; }
+.connecting .waitingPanelActive { max-height: 300px; }
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto 18px;
+  padding: 7px 12px;
+  border: 1px solid rgba(212,212,212,.22);
+  border-radius: 999px;
+  background: rgba(212,212,212,.09);
+  color: #ededed;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d4d4d4;
+  box-shadow: 0 0 0 3px rgba(212,212,212,.12);
+  animation: statusBreathe 1.4s ease-in-out infinite;
+}
+
+.progressTrack {
+  width: min(260px, 76%);
+  height: 6px;
+  margin: 26px auto 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(212,212,212,.2);
+}
+
+.progressSweep {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(212,212,212,.15), #d4d4d4);
+  box-shadow: 0 0 12px rgba(212,212,212,.32);
+  animation: progressSweep 1.35s cubic-bezier(.45, 0, .55, 1) infinite;
+}
 
 .footer {
-  max-height: 120px;
+  max-height: 180px;
   opacity: 1;
   overflow: hidden;
-  transition: max-height 480ms var(--dialog-ease), opacity 220ms ease, padding 480ms var(--dialog-ease), border-color 300ms ease;
+  transition: opacity 220ms ease;
 }
-.footerHidden { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-color: transparent; pointer-events: none; }
+.footerHidden { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; pointer-events: none; }
 
-@keyframes nodeEnter {
-  from { opacity: 0; transform: translateY(12px) scale(.92); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes bridgeDraw {
-  from { opacity: 0; transform: scaleX(0); }
-  to { opacity: .7; transform: scaleX(1); }
+@keyframes dotPulse {
+  0%, 70%, 100% { opacity: .4; transform: scale(.75); }
+  35% { opacity: 1; transform: scale(1.15); background: #d4d4d4; }
 }
 
-@keyframes orbitDrift {
-  from { transform: translateY(0) rotate(-12deg); opacity: .45; }
-  to { transform: translateY(7px) rotate(-7deg); opacity: .8; }
+@keyframes statusBreathe {
+  0%, 100% { opacity: .65; box-shadow: 0 0 0 3px rgba(212,212,212,.1); }
+  50% { opacity: 1; box-shadow: 0 0 0 5px rgba(212,212,212,.2); }
 }
 
-@keyframes travel {
-  from { transform: translateX(0); opacity: 0; }
-  20%, 80% { opacity: 1; }
-  to { transform: translateX(116px); opacity: 0; }
+@keyframes tileShimmer {
+  0%, 12% { transform: translateX(-120%); }
+  68%, 100% { transform: translateX(120%); }
 }
 
-@keyframes breathe {
-  0%, 100% { transform: scale(.94); opacity: .35; }
-  50% { transform: scale(1.08); opacity: .8; }
+@keyframes progressSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(330%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .surface *, .visual::after { animation: none !important; transition: none !important; }
-  .connecting .pulse { left: 54px; opacity: 1; }
-  .connecting .waitingRing { opacity: .55; }
+  .surface * { animation: none !important; transition: none !important; }
+  .connecting .bridge span { opacity: 1; transform: none; }
+  .connecting .node::after { opacity: 0; }
+  .progressSweep { width: 100%; opacity: .65; }
 }

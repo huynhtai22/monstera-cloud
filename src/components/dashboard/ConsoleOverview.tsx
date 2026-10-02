@@ -1,5 +1,6 @@
 "use client";
 
+import { ConsoleCountUp } from "@/components/console/ConsoleMotion";
 import type { ReactNode, Ref } from "react";
 import Link from "next/link";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
@@ -127,9 +128,9 @@ function EmptyState({
 }
 
 const channelColors = [
-  "#b8c8dc",
-  "#828b99",
-  "#575d67",
+  "#5eead4",
+  "#a78bfa",
+  "#fbbf24",
   "#a5a5a5",
   "#8f8181",
   "#777777",
@@ -172,7 +173,7 @@ export function ConsoleOverview({
       <>
         {metrics.byCurrency.map((item) => (
           <span key={item.currency} className={styles.currencyValue}>
-            {formatCurrency(item[key], item.currency)}
+            <ConsoleCountUp value={item[key]} format={value => formatCurrency(value, item.currency)} />
             {mixedCurrency && <small>{item.currency}</small>}
           </span>
         ))}
@@ -202,7 +203,7 @@ export function ConsoleOverview({
         : mixedCurrency
           ? "Multiple currencies"
           : singleRoas
-            ? `${firstCurrency.roas.toFixed(2)}×`
+            ? <ConsoleCountUp value={firstCurrency.roas} format={value => `${value.toFixed(2)}×`} />
             : "—",
       detail: mixedCurrency
         ? "Review each currency in the warehouse"
@@ -211,7 +212,7 @@ export function ConsoleOverview({
     {
       name: "Impressions",
       icon: <MousePointer2 />,
-      value: hasMetrics ? formatCompactNumber(metrics.impressions) : "—",
+      value: hasMetrics ? <ConsoleCountUp value={metrics.impressions} format={value => formatCompactNumber(Math.round(value))} /> : "—",
       detail: hasMetrics
         ? `${formatCompactNumber(metrics.clicks)} clicks · ${formatCompactNumber(metrics.conversions)} conversions`
         : "Traffic appears after your first import",
@@ -282,6 +283,7 @@ export function ConsoleOverview({
         </div>
       )}
 
+      <section className={styles.statusGroup} aria-label="Workspace status">
       <div
         className={styles.healthStrip}
         data-working={workInProgress ? "true" : undefined}
@@ -321,19 +323,10 @@ export function ConsoleOverview({
           <span>
             {warehouseSnapshot.dataThroughDate
               ? `Data through ${warehouseSnapshot.dataThroughDate}`
-              : "Awaiting first import"}
+              : warehouse.totalRows > 0 ? "Stored history available" : summaryCards.syncs.successful7d > 0 ? "Sync completed without metric rows" : "Awaiting first import"}
           </span>
         </div>
       </div>
-
-      {!wizardDismissed && (
-        <SetupWizard
-          activation={overview.pilotActivation}
-          plan={workspace.plan}
-          workspaceStatus={workspace.status}
-          onDismiss={onWizardDismiss}
-        />
-      )}
 
       {needsAttention.length > 0 && (
         <section
@@ -374,6 +367,16 @@ export function ConsoleOverview({
         </section>
       )}
 
+      </section>
+      {!wizardDismissed && (
+        <SetupWizard
+          activation={overview.pilotActivation}
+          plan={workspace.plan}
+          workspaceStatus={workspace.status}
+          onDismiss={onWizardDismiss}
+        />
+      )}
+
       <section
         id="performance-spend"
         ref={performancePanelRef}
@@ -391,7 +394,21 @@ export function ConsoleOverview({
             </Link>
           </div>
         </div>
-        <div className={styles.metrics}>
+        {!hasMetrics && (
+          <div className={styles.guidedEmpty}>
+            <h3>{warehouse.totalRows > 0 ? "No metrics in the last 7 days" : summaryCards.syncs.successful7d > 0 ? "Sync completed; no metric rows returned" : "Build your first performance report"}</h3>
+            <p>{warehouse.totalRows > 0 ? "Your stored history is available in the data explorer. Review the date window or sync recent data." : "Follow these steps to bring source data into a report."}</p>
+            <ol className={styles.checklist}>
+              {[{ label: "Connect", href: "/sources", done: sourcesList.some(source => !["disconnected", "error", "unknown"].includes(source.state)) },
+                { label: "Sync", href: "/explorer", done: warehouse.totalRows > 0 },
+                { label: "Review", href: "/explorer", done: Boolean(overview.pilotActivation.dashboardReviewedAt) },
+                { label: "Report", href: "/reports", done: false }].map((step, index) => (
+                <li key={step.label}><Link href={hrefFor(step.href)}><span aria-label={step.done ? "Complete" : "Incomplete"}>{step.done ? <Check size={15} /> : index + 1}</span>{step.label}<ArrowRight size={14} /></Link></li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {hasMetrics && <div className={styles.metrics}>
           {metricsCards.map((card) => (
             <article
               key={card.name}
@@ -420,11 +437,12 @@ export function ConsoleOverview({
               <p className={styles.metricDetail}>
                 {hasMetrics
                   ? card.detail
-                  : "Waiting for your first data import"}
+                  : "No metric rows for this date window"}
               </p>
             </article>
           ))}
         </div>
+        }
         {hasMetrics && metrics.byPlatform.length > 0 && (
           <div className={styles.channelMix}>
             <div className={styles.channelHeading}>
@@ -525,7 +543,7 @@ export function ConsoleOverview({
                         <div className={styles.sourceIds}>
                           {source.managerBadge && (
                             <CopyableBadge
-                              text={source.managerBadge}
+                              text={source.managerBadge.replace(/^\[|\]$/g, "")}
                               copyValue={source.managerBadge
                                 .replace(/^\[|\]$/g, "")
                                 .replace(/^(MCC|BM|BC):\s*/, "")}
@@ -616,7 +634,7 @@ export function ConsoleOverview({
                 <span>LAST SUCCESSFUL REFRESH</span>
                 <p>
                   {warehouseSnapshot.lastRefreshAt
-                    ? formatDateTime(warehouseSnapshot.lastRefreshAt)
+                    ? warehouseSnapshot.lastRefreshAt
                     : "Your first import will appear here"}
                 </p>
               </div>
@@ -746,8 +764,8 @@ export function ConsoleOverview({
           <span className={styles.footerMark}>✳</span> Monstera Cloud
         </span>
         <p>
-          {summaryCards.syncs.lastSyncTimeAgo
-            ? `Last successful sync ${summaryCards.syncs.lastSyncTimeAgo}`
+          {warehouseSnapshot.lastRefreshAt
+            ? `Last successful sync ${warehouseSnapshot.lastRefreshAt}`
             : "Built around your data"}
         </p>
         <span>Workspace overview</span>
