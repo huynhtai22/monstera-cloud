@@ -421,7 +421,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                 title: "Plan limit reached",
                 detail: params.get("message") || "This workspace cannot connect another source on the current plan.",
                 action: {
-                    href: params.get("upgrade") || "/settings?tab=billing",
+                    href: "/settings?tab=billing",
                     label: "View plans",
                 },
             });

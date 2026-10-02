@@ -442,7 +442,7 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
       jobId: recoveryJobId,
     });
 
-    assert.equal(fullOutcome.verified, true);
+    assert.equal(fullOutcome.verified, true, JSON.stringify(fullOutcome));
     assert.equal(fullOutcome.caseClosed, true);
 
     caseCheck = await db.agentCase.findUnique({ where: { id: detectedCaseId } });
