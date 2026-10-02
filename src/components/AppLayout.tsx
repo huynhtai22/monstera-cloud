@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { ConsoleRouteTransition } from './console/ConsoleMotion';
 import { ConsoleSupportControl } from './LiveChatWidget';
+import { LogoMark } from "./Logo";
+import { ConsoleSectionGuide } from "./console/ConsoleSectionGuide";
 import { Sidebar } from './Sidebar';
 import { useWorkspaceStartupActions } from './WorkspaceStartup';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
@@ -37,7 +39,7 @@ function mobileSectionTitle(pathname: string | null): string {
         reports: "Reports",
         settings: "Settings",
         console: "Dashboard",
-        explorer: "Warehouse",
+        explorer: "Data explorer",
         transformations: "Transformations",
         "internal-templates": "Templates",
         "google-ads": "Google Ads",
@@ -169,6 +171,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                 {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
                 <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/70 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
                     <nav className="pointer-events-auto flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
+                        <LogoMark className="h-5 w-5 shrink-0" />
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">Monstera</span>
                         <ChevronRight className="h-3.5 w-3.5 text-line" strokeWidth={1.5} aria-hidden />
                         <span className="font-medium text-ink">{mobileTitle}</span>
@@ -180,6 +183,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                     </div>
                 </div>
                 {!visualPreview && <UpgradeNudge />}
+                {!visualPreview && <ConsoleSectionGuide />}
                 {!visualPreview && <ClientContextBarGate />}
                 <main className="relative z-10 flex-1 overflow-x-hidden">
                     <DemoModeBanner />

@@ -1121,7 +1121,7 @@ export default function SourcesPage() {
                                 : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
                         )}
                     >
-                        <span>Connections</span>
+                        <span>Your sources</span>
                         <span className="rounded border border-line/60 bg-panel px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
                             {isLoading ? '…' : connectedSourceCount}
                         </span>
@@ -1151,7 +1151,7 @@ export default function SourcesPage() {
                                 : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
                         )}
                     >
-                        <span>Catalog</span>
+                        <span>Integration library</span>
                     </button>
                     <button
                         role="tab"
