@@ -259,6 +259,17 @@ export async function confirmResponsibility(
     throw new AgentConsoleError("stale_version", "Responsibility version changed; refresh before confirming", 409);
   }
 
+  if (resp.kind === "data_health") {
+    const limits = input.limits ?? {};
+    const permittedModes = limits.permittedRecoveryModes;
+    if (input.allowlistedTools.length !== 1 || input.allowlistedTools[0] !== "submit_recovery_import") {
+      throw new AgentConsoleError("invalid_policy", "Connected data health responsibilities may only authorize bounded recovery imports", 400);
+    }
+    if (!Array.isArray(permittedModes) || permittedModes.length !== 1 || permittedModes[0] !== "retry_failed_window") {
+      throw new AgentConsoleError("invalid_policy", "Connected data health responsibilities may only retry the failed import window", 400);
+    }
+  }
+
   // 1. Tool registry validation: every allowlisted tool must be registered
   if (!input.allowlistedTools || input.allowlistedTools.length === 0) {
     throw new AgentConsoleError("invalid_tool", "At least one allowlisted tool is required", 422);
@@ -381,7 +392,11 @@ export async function confirmResponsibility(
       scopeRevision: targetScopeRev,
       policyRevision: nextPolicyRev,
       version: { increment: 1 },
-      nextDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Next daily slot
+      // Run the first data-health check promptly after explicit customer
+      // approval; other responsibility types retain their existing daily slot.
+      nextDueAt: resp.kind === "data_health"
+        ? new Date(Date.now() - 1000)
+        : new Date(Date.now() + 24 * 60 * 60 * 1000),
     },
   });
 
@@ -1606,4 +1621,143 @@ export async function cleanupRetention(
     purgedEvidenceCount,
     deletedEventsCount,
   };
+}
+
+export interface ReconcileLostLeasesInput {
+  workspaceId: string;
+  now?: Date;
+}
+
+/**
+ * Reconciles lost operation leases and crashes after submission:
+ * Finds running operations whose lease has expired, increments attempts,
+ * resets to 'queued' if attempts < maxAttempts, or transitions to 'failed' if attempts exhausted.
+ * Preserves existing jobReference and recovery identity across retries.
+ */
+export async function reconcileLostOperationLeases(
+  tx: ConsoleTransaction,
+  input: ReconcileLostLeasesInput
+) {
+  const now = input.now ?? new Date();
+  const lostOps = await tx.agentOperation.findMany({
+    where: {
+      workspaceId: input.workspaceId,
+      state: "running",
+      leaseExpiresAt: { lt: now },
+    },
+  });
+
+  let requeuedCount = 0;
+  let failedCount = 0;
+
+  for (const op of lostOps) {
+    const nextAttempts = op.attempts + 1;
+    if (nextAttempts >= op.maxAttempts) {
+      await tx.agentOperation.update({
+        where: { workspaceId_id: { workspaceId: input.workspaceId, id: op.id } },
+        data: {
+          state: "failed",
+          attempts: nextAttempts,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          error: { reason: "lease_expired_attempts_exhausted", message: "Worker lease expired and max retry attempts exhausted" },
+          version: { increment: 1 },
+        },
+      });
+      await appendConsoleEvent(tx, {
+        workspaceId: input.workspaceId,
+        caseId: op.caseId ?? undefined,
+        operationId: op.id,
+        actorType: "system",
+        type: "operation_failed_lost_lease",
+        payload: { attempts: nextAttempts, maxAttempts: op.maxAttempts, jobReference: op.jobReference },
+      });
+      failedCount++;
+    } else {
+      await tx.agentOperation.update({
+        where: { workspaceId_id: { workspaceId: input.workspaceId, id: op.id } },
+        data: {
+          state: "queued",
+          attempts: nextAttempts,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          version: { increment: 1 },
+        },
+      });
+      await appendConsoleEvent(tx, {
+        workspaceId: input.workspaceId,
+        caseId: op.caseId ?? undefined,
+        operationId: op.id,
+        actorType: "system",
+        type: "operation_requeued_lost_lease",
+        payload: { attempts: nextAttempts, maxAttempts: op.maxAttempts, jobReference: op.jobReference },
+      });
+      requeuedCount++;
+    }
+  }
+
+  return {
+    reconciledTotal: lostOps.length,
+    requeuedCount,
+    failedCount,
+  };
+}
+
+export interface FencedOperationUpdateInput {
+  workspaceId: string;
+  operationId: string;
+  workerId: string;
+  data: Prisma.AgentOperationUpdateInput;
+}
+
+/**
+ * Updates an operation strictly guarded by worker lease fencing:
+ * Fails closed if the lease has expired or the lease is held by another worker.
+ */
+export async function updateOperationWithFencedLease(
+  tx: ConsoleTransaction,
+  input: FencedOperationUpdateInput
+) {
+  const op = await tx.agentOperation.findFirst({
+    where: { id: input.operationId, workspaceId: input.workspaceId },
+  });
+
+  if (!op) {
+    throw new AgentConsoleError("operation_not_found", "Operation not found in workspace", 404);
+  }
+
+  const now = new Date();
+  if (!op.leaseOwner || op.leaseOwner !== input.workerId) {
+    throw new AgentConsoleError(
+      "lease_fencing_conflict",
+      `Stale worker write rejected: lease is owned by '${op.leaseOwner ?? "nobody"}', expected '${input.workerId}'`,
+      409
+    );
+  }
+
+  if (!op.leaseExpiresAt || op.leaseExpiresAt < now) {
+    throw new AgentConsoleError(
+      "lease_fencing_conflict",
+      `Stale worker write rejected: lease expired at ${op.leaseExpiresAt?.toISOString() ?? "unknown"}`,
+      409
+    );
+  }
+
+  const changed = await tx.agentOperation.updateMany({
+    where: {
+      workspaceId: input.workspaceId,
+      id: input.operationId,
+      version: op.version,
+      leaseOwner: input.workerId,
+      leaseExpiresAt: { gt: now },
+      state: "running",
+    },
+    data: { ...input.data, version: { increment: 1 } },
+  });
+  if (changed.count !== 1) {
+    throw new AgentConsoleError("lease_fencing_conflict", "Stale worker write rejected: lease changed during update", 409);
+  }
+  return tx.agentOperation.findFirstOrThrow({
+    where: { workspaceId: input.workspaceId, id: input.operationId },
+  });
 }

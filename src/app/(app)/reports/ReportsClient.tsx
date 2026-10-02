@@ -262,14 +262,14 @@ export function ReportsClient() {
     return (
         <PageShell section="reports">
             <div className="relative z-10 mb-6">
-                <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div data-console-section-header="true" data-console-page-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-xl font-semibold tracking-tight text-ink">
                             {viewMode === "performance" ? "Executive Performance" : "Sync activity"}
                         </h1>
                         <p className="mt-1 max-w-2xl text-sm text-ink-mute">
                             {viewMode === "performance"
-                                ? `Holistic marketing performance, ROAS, and campaign analytics for ${activeWorkspace?.name ?? "the active workspace"}.`
+                                ? `Review performance totals and campaign comparisons for ${activeWorkspace?.name ?? "the active workspace"}.`
                                 : `Destination pipeline run history and row counts for ${activeWorkspace?.name ?? "the active workspace"}.`}
                         </p>
                     </div>
@@ -278,7 +278,7 @@ export function ReportsClient() {
                     <div className="flex items-center rounded-lg border border-line bg-panel p-1">
                         <button
                             type="button"
-                            aria-pressed={viewMode === "performance"}
+                            data-console-view-switch aria-pressed={viewMode === "performance"}
                             onClick={() => setViewMode("performance")}
                             className={cn(
                                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
@@ -292,7 +292,7 @@ export function ReportsClient() {
                         </button>
                         <button
                             type="button"
-                            aria-pressed={viewMode === "sync"}
+                            data-console-view-switch aria-pressed={viewMode === "sync"}
                             onClick={() => setViewMode("sync")}
                             className={cn(
                                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",

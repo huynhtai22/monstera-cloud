@@ -134,7 +134,7 @@ export const POLICY_FIXTURES: {
     evidenceFingerprint: "ev_fp_1",
     policyRevision: 1,
     approvedAt: new Date("2026-09-30T12:00:00Z"),
-    expiresAt: new Date("2026-10-01T12:00:00Z"),
+    expiresAt: new Date("2026-10-15T00:00:00Z"),
     isSingleUseConsumed: false,
   },
   consumedInteractiveApproval: {

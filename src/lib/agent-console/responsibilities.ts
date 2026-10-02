@@ -8,6 +8,10 @@ import {
   updateResponsibilityStatus,
   AgentConsoleError,
 } from "./persistence";
+import { safeDecrypt } from "@/lib/encryption";
+import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
+import { authorizedConnectionAccountIds, validateConnectionAccountSelection, type AccountSelectionProvider } from "@/lib/connection-account-selection";
+import { isAgentConsoleMonitoringAvailable } from "./availability";
 
 export const CreateResponsibilitySchema = z.object({
   workspaceId: z.string().min(1),
@@ -37,9 +41,43 @@ export async function createResponsibilityDraft(
   rawInput: unknown
 ) {
   const input = CreateResponsibilitySchema.parse(rawInput);
+  if (input.kind === "data_health" && input.cadence !== "daily") {
+    throw new AgentConsoleError("unsupported_cadence", "Connected data health checks currently support daily cadence only", 400);
+  }
 
   return agentConsoleTransaction(async (tx) => {
     await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin", "member"]);
+
+    if (input.kind === "data_health" && input.scopeItems?.length) {
+      const supportedProviders: AccountSelectionProvider[] = ["meta_ads", "google_ads", "tiktok_business"];
+      for (const item of input.scopeItems) {
+        if (!supportedProviders.includes(item.provider as AccountSelectionProvider)) {
+          throw new AgentConsoleError("account_scope_unverified", `Account selection is not supported for provider '${item.provider}'`, 400);
+        }
+        const connection = await tx.connection.findFirst({
+          where: { id: item.connectionId, workspaceId: input.workspaceId },
+          select: { provider: true, credentials: true },
+        });
+        if (!connection || connection.provider !== item.provider) {
+          throw new AgentConsoleError("connection_not_found", `Connection '${item.connectionId}' does not match the selected provider`, 404);
+        }
+        let credentials: Record<string, unknown>;
+        try {
+          credentials = parseConnectionCredentialsJson(safeDecrypt(connection.credentials)) as Record<string, unknown>;
+        } catch {
+          throw new AgentConsoleError("account_scope_unverified", `Could not verify the saved account list for '${item.connectionId}'. Reconnect or refresh this source first.`, 409);
+        }
+        const authorizedIds = authorizedConnectionAccountIds(item.provider as AccountSelectionProvider, credentials);
+        const selection = validateConnectionAccountSelection({
+          provider: item.provider as AccountSelectionProvider,
+          selectedIds: [item.providerAccountId],
+          authorizedIds,
+        });
+        if (!selection.ok || selection.selectedIds[0] !== item.providerAccountId) {
+          throw new AgentConsoleError("account_scope_unverified", `Account '${item.providerAccountId}' is not in the saved authorized account list for '${item.connectionId}'`, 400);
+        }
+      }
+    }
 
     const responsibility = await createResponsibility(tx, {
       workspaceId: input.workspaceId,
@@ -159,6 +197,13 @@ export async function confirmResponsibilityAction(
   return agentConsoleTransaction(async (tx) => {
     // Only owner or admin can authorize policy and activate responsibility
     await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin"]);
+    if (!isAgentConsoleMonitoringAvailable(input.workspaceId)) {
+      throw new AgentConsoleError(
+        "monitoring_unavailable",
+        "Connected data monitoring cannot be started until its scheduled worker is enabled",
+        503
+      );
+    }
 
     const result = await confirmResponsibility(tx, {
       workspaceId: input.workspaceId,
@@ -203,6 +248,14 @@ export async function handleResponsibilityAction(
 
   return agentConsoleTransaction(async (tx) => {
     await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin"]);
+
+    if (input.action === "resume" && !isAgentConsoleMonitoringAvailable(input.workspaceId)) {
+      throw new AgentConsoleError(
+        "monitoring_unavailable",
+        "Connected data monitoring cannot be resumed until its scheduled worker is enabled",
+        503
+      );
+    }
 
     if (input.action === "pause" || input.action === "resume" || input.action === "disable") {
       const targetStatus = input.action === "resume" ? "active" : input.action === "pause" ? "paused" : "disabled";

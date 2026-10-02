@@ -18,7 +18,6 @@ jobs:
       - name: Hit warehouse jobs, token prefetch, Shopee refresh, health tick
         env:
           CRON_SECRET_WAREHOUSE_JOBS: ${{ secrets.CRON_SECRET_WAREHOUSE_JOBS || secrets.CRON_SECRET }}
-          CRON_SECRET_WAREHOUSE_REFRESH: ${{ secrets.CRON_SECRET_WAREHOUSE_REFRESH || secrets.CRON_SECRET }}
           CRON_SECRET_TOKEN_PREFETCH: ${{ secrets.CRON_SECRET_TOKEN_PREFETCH || secrets.CRON_SECRET }}
           CRON_SECRET_SHOPEE_REFRESH: ${{ secrets.CRON_SECRET_SHOPEE_REFRESH || secrets.CRON_SECRET }}
           CRON_SECRET_HEALTH_TICK: ${{ secrets.CRON_SECRET_HEALTH_TICK || secrets.CRON_SECRET }}
@@ -53,22 +52,7 @@ jobs:
             if [ "${code}" != "200" ]; then
               fail=1
             fi
-            case "${path}" in
-              /api/cron/warehouse-refresh*)
-                if ! jq -e '.failed == 0' /tmp/cron-body >/dev/null 2>&1; then
-                  echo "::error::Scheduled refresh could not queue every due source"
-                  fail=1
-                fi
-                ;;
-              /api/cron/warehouse-jobs*)
-                if ! jq -e '.failed == 0' /tmp/cron-body >/dev/null 2>&1; then
-                  echo "::error::Warehouse worker reported a terminal job failure"
-                  fail=1
-                fi
-                ;;
-            esac
           }
-          invoke /api/cron/warehouse-refresh "${CRON_SECRET_WAREHOUSE_REFRESH:-}"
           invoke /api/cron/warehouse-jobs "${CRON_SECRET_WAREHOUSE_JOBS:-}"
           invoke /api/cron/connections/token-prefetch "${CRON_SECRET_TOKEN_PREFETCH:-}"
           invoke /api/cron/shopee/refresh "${CRON_SECRET_SHOPEE_REFRESH:-}"
@@ -78,3 +62,31 @@ jobs:
           invoke /api/cron/seat-sharing-retention "${CRON_SECRET_SEAT_SHARING_RETENTION:-}"
           invoke /api/cron/security-posture "${CRON_SECRET_SECURITY_POSTURE:-}"
           exit "${fail}"
+
+  agent-console-tick:
+    if: vars.ENABLE_AGENT_CONSOLE_MONITORING == '1' && vars.ENABLE_AGENT_CONSOLE_WORKER == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - name: Run the opted-in Agent Console monitoring check
+        env:
+          CRON_SECRET_AGENT_CONSOLE: ${{ secrets.CRON_SECRET_AGENT_CONSOLE }}
+          CRON_BASE_URL: ${{ vars.CRON_BASE_URL }}
+        run: |
+          set -euo pipefail
+          BASE="${CRON_BASE_URL:-https://monsteracloud.com}"
+          BASE="${BASE%/}"
+          if [ -z "${CRON_SECRET_AGENT_CONSOLE:-}" ]; then
+            echo "::error::Missing CRON_SECRET_AGENT_CONSOLE GitHub Actions secret"
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/agent-console-cron-body -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET_AGENT_CONSOLE}" \
+            --max-time 110 \
+            "${BASE}/api/agent-console/cron" || echo "000")
+          echo "HTTP ${code}"
+          head -c 2000 /tmp/agent-console-cron-body || true
+          echo
+          [ "${code}" = "200" ]

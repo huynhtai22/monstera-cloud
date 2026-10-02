@@ -13,11 +13,10 @@ export function LogoMark({
       className={className}
       aria-hidden
     >
-      <rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="#0C0C0C" stroke="#2B2B2B" strokeWidth="1.5" />
-      <path d="M18 7C24 6 26 9 23 13C19 14 17 11 18 7Z" fill="#ededed" />
+      <rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="var(--color-panel, #0C0C0C)" stroke="var(--color-line, #2B2B2B)" strokeWidth="1.5" />
       <path
-        d="M16 8V24M8 16H24M10 9L13 12M19 20L22 23"
-        stroke="#EDEDED"
+        d="M16 8V24M8 16H24"
+        stroke="var(--color-ink, #EDEDED)"
         strokeWidth="2.5"
         strokeLinecap="square"
       />

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, useCallback } from 'react';
 import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell, MonitorSmartphone } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -23,6 +24,9 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
+    const pathname = usePathname();
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api' | 'sessions'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
@@ -51,15 +55,19 @@ export default function SettingsPage() {
         telegramChatId: "",
     });
 
-    // Persistence of Tab
+    // Tabs share the navigation contract with subsection links and browser history.
+    const requestedTab = searchParams.get("tab") ?? "workspace";
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get("tab") as any;
-        if (['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'].includes(tab)) {
-            setActiveTab(tab);
-        }
-    }, []);
+        const valid = ['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'];
+        setActiveTab((valid.includes(requestedTab) ? requestedTab : "workspace") as typeof activeTab);
+    }, [requestedTab]);
+    const selectTab = (tab: typeof activeTab) => {
+        if (tab === activeTab) return;
+        const next = new URLSearchParams(searchParams.toString());
+        next.set("tab", tab);
+        window.dispatchEvent(new Event("monstera:navigation-start"));
+        router.push(`${pathname}?${next}`, { scroll: false });
+    };
 
     // --- API Handlers ---
 
@@ -231,7 +239,7 @@ export default function SettingsPage() {
 
     return (
         <div data-console-page="true" data-console-section="settings" className="console-page w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
-            <div className="mb-6 flex items-center gap-3">
+            <div data-console-page-header="true" className="mb-6 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
                     <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />
                 </div>
@@ -257,7 +265,7 @@ export default function SettingsPage() {
                                 <button
                                     key={tab.id}
                                     aria-pressed={activeTab === tab.id}
-                                    onClick={() => setActiveTab(tab.id as any)}
+                                    onClick={() => selectTab(tab.id as typeof activeTab)}
                                     className={cn(
                                         "flex items-center w-full px-3 py-2.5 rounded-md text-sm transition-colors",
                                         activeTab === tab.id

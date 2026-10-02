@@ -15,6 +15,7 @@ export function hasBearerSecret(request: Request, secret: string | undefined): b
 export const CRON_SCOPES = [
   "master",
   "agent_jobs",
+  "agent_console",
   "billing_expiry",
   "token_prefetch",
   "connector_artifacts_cleanup",

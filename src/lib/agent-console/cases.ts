@@ -10,6 +10,7 @@ import {
 } from "./persistence";
 import { sanitizeProvenance } from "./evidence";
 import { InspectSourceInputSchema } from "./tools";
+import { prepareCaseRecovery, executeRecoveryImportOperation } from "./recovery";
 
 export const ListCasesQuerySchema = z.object({
   workspaceId: z.string().min(1),
@@ -179,12 +180,15 @@ export async function getCaseDetail(
 export const CaseActionSchema = z.object({
   workspaceId: z.string().min(1),
   expectedVersion: z.number().int().min(0),
-  action: z.enum(["snooze", "assign", "manual_resolve", "investigate"]),
+  action: z.enum(["snooze", "assign", "manual_resolve", "investigate", "recover"]),
   snoozedUntil: z.string().datetime().optional(),
   ownerId: z.string().optional(),
   // Disallow automated_recovery from customer interactive actions to prevent false-resolution
   resolutionType: z.enum(["manual_resolved", "false_positive", "automated_recovery"]).optional(),
   resolutionReason: z.string().optional(),
+  mode: z.enum(["retry_failed_window", "full_window_reimport"]).optional(),
+  since: z.string().optional(),
+  until: z.string().optional(),
 });
 
 export async function handleCaseAction(
@@ -401,6 +405,59 @@ export async function handleCaseAction(
       });
 
       return { case: updated, operation };
+    }
+
+    if (input.action === "recover") {
+      // 1. Prepare recovery using existing authorization boundary
+      const prepOutcome = await prepareCaseRecovery(
+        {
+          workspaceId: input.workspaceId,
+          caseId,
+          userId,
+          mode: input.mode,
+          since: input.since,
+          until: input.until,
+        },
+        tx
+      );
+
+      if (prepOutcome.actionType === "reconnect") {
+        return {
+          case: caseRecord,
+          actionType: "reconnect",
+          requiresReconnect: true,
+          reconnectProvider: prepOutcome.reconnectProvider,
+          reconnectConnectionId: prepOutcome.reconnectConnectionId,
+          reason: prepOutcome.reason,
+        };
+      }
+
+      // 2. Dispatch queued operation
+      const op = prepOutcome.operation as { id: string } | undefined;
+      if (!op || !op.id) {
+        throw new AgentConsoleError("recovery_failed", "Failed to enqueue recovery operation", 500);
+      }
+
+      const dispatchResult = await executeRecoveryImportOperation(
+        {
+          workspaceId: input.workspaceId,
+          operationId: op.id,
+          userId,
+        },
+        tx
+      );
+
+      const refreshedCase = await tx.agentCase.findFirst({
+        where: { id: caseId, workspaceId: input.workspaceId },
+      });
+
+      return {
+        case: refreshedCase ?? caseRecord,
+        actionType: "queued",
+        requiresReconnect: false,
+        operation: op,
+        dispatch: dispatchResult,
+      };
     }
 
     throw new AgentConsoleError("unsupported_action", "Unsupported case action", 400);

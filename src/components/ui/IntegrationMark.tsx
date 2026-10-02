@@ -31,7 +31,7 @@ export function IntegrationMark({
             )}
         >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={alt} width={s.img} height={s.img} className="object-contain" />
+            <img src={src} alt={alt} width={s.img} height={s.img} className="block shrink-0 object-contain" loading="eager" decoding="async" />
         </span>
     );
 }

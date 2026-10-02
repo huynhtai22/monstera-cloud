@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { ConsoleRouteTransition } from './console/ConsoleMotion';
 import { ConsoleSupportControl } from './LiveChatWidget';
+import { LogoMark } from "@/components/Logo";
 import { Sidebar } from './Sidebar';
-import { useWorkspaceStartupActions } from './WorkspaceStartup';
+import { GlobeLoader } from './GlobeLoader';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
 import { SessionHeartbeat } from './SessionHeartbeat';
 import { DemoModeBanner } from './DemoModeBanner';
@@ -37,7 +38,7 @@ function mobileSectionTitle(pathname: string | null): string {
         reports: "Reports",
         settings: "Settings",
         console: "Dashboard",
-        explorer: "Warehouse",
+        explorer: "Data explorer",
         transformations: "Transformations",
         "internal-templates": "Templates",
         "google-ads": "Google Ads",
@@ -52,7 +53,7 @@ function mobileSectionTitle(pathname: string | null): string {
     return first ? first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, " ") : "Home";
 }
 
-export function AppLayout({ children, visualPreview = false, previewTitle = "Dashboard" }: { children: React.ReactNode; visualPreview?: boolean; previewTitle?: string }) {
+export function AppLayout({ children, visualPreview = false, previewTitle = "Dashboard", previewPath, previewHref, previewDirectory, previewDirectories }: { children: React.ReactNode; visualPreview?: boolean; previewTitle?: string; previewPath?: string; previewHref?: (href: string) => string; previewDirectory?: readonly { label: string; href: string }[]; previewDirectories?: Readonly<Record<string, readonly { label: string; href: string }[]>> }) {
     const pathname = usePathname();
     const { status } = useSession();
     const loading = status === 'loading';
@@ -60,11 +61,6 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const startup = useWorkspaceStartupActions();
-    const configureStartup = startup?.configure;
-    useEffect(() => {
-        configureStartup?.(status !== 'loading', Boolean(pathname?.endsWith('/console')), status === 'authenticated');
-    }, [configureStartup, status, pathname]);
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
     const themeReady = useRef(false);
 
@@ -116,11 +112,13 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     if (pathname?.startsWith("/invite/")) return <>{children}</>;
 
     return (
-        <KeyboardShortcutsProvider>
+        <KeyboardShortcutsProvider hrefTransform={visualPreview ? previewHref : undefined}>
         <PendingNavigationProvider>
         {!visualPreview && <WorkspaceSessionSync />}
         {!visualPreview && <SessionHeartbeat />}
-        <div data-workspace-shell data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
+        {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
+        {loading ? <GlobeLoader visible /> : null}
+        <div data-console-theme={isDarkMode ? "dark" : "light"} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
@@ -132,8 +130,9 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                     >
                         <Menu className="h-5 w-5" strokeWidth={1.5} />
                     </button>
-                    <div className="ml-1 flex min-w-0 items-baseline gap-2">
-                        <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
+                    <div className="ml-1 flex min-w-0 items-center gap-2">
+                        <LogoMark className="h-5 w-5 shrink-0" />
+                        <span className="hidden sm:inline shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
                             Monstera
                         </span>
                         <span className="truncate text-sm font-semibold text-ink">{mobileTitle}</span>
@@ -160,6 +159,9 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
                 toggleDarkMode={toggleDarkMode}
                 collapsed={sidebarCollapsed}
                 setCollapsed={setSidebarCollapsed}
+                previewPath={visualPreview ? previewPath : undefined}
+                previewDirectory={visualPreview ? previewDirectory : undefined}
+                previewDirectories={visualPreview ? previewDirectories : undefined}
             />
 
             <div
@@ -167,8 +169,9 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
             >
                 <div className="h-14 shrink-0 lg:hidden" />
                 {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
-                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/70 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
+                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/70 px-6 py-2.5 lg:px-10 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
                     <nav className="pointer-events-auto flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
+                        <LogoMark className="h-5 w-5 shrink-0" />
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">Monstera</span>
                         <ChevronRight className="h-3.5 w-3.5 text-line" strokeWidth={1.5} aria-hidden />
                         <span className="font-medium text-ink">{mobileTitle}</span>

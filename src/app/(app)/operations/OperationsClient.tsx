@@ -644,13 +644,13 @@ export function OperationsClient() {
     return (
         <PageShell section="operations">
             <div data-testid="operations-page" className="mx-auto w-full max-w-6xl">
-                <header className="mb-6 flex flex-col justify-between gap-3 border-b border-line pb-6 sm:flex-row sm:items-center">
+                <header data-console-page-header="true" className="mb-6 flex flex-col justify-between gap-3 border-b border-line pb-6 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-4">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-ink">
                             <Activity className="h-5 w-5" aria-hidden />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold tracking-tight text-ink">Operations Hub</h1>
+                            <h1 className="text-xl font-bold tracking-tight text-ink">Operations</h1>
                             <p className="mt-1 text-xs text-ink-mute">
                                 Read-only operational health across connectors, freshness, ingestion, readiness,
                                 delivery and anomalies.

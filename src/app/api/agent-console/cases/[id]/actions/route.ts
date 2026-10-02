@@ -12,6 +12,7 @@ export async function POST(
     const result = await handleCaseAction(userId, params.id, body);
     return Response.json(result, { status: 200 });
   } catch (error) {
+    console.error("[cases/actions] Failed to execute case action:", error);
     return consoleErrorResponse(error);
   }
 }

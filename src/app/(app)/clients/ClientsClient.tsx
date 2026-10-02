@@ -314,10 +314,10 @@ export function ClientsClient() {
   return (
     <PageShell section="clients">
       {/* ─── 1. PORTFOLIO HEADER ─── */}
-      <div className="relative z-10 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-5">
+      <div data-console-page-header="true" className="relative z-10 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-5">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-semibold tracking-tight text-ink">Agency Portfolio</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-ink">Clients</h1>
             <span className="rounded-full bg-white/[0.06] border border-line px-2 py-0.5 text-[10px] font-mono text-ink-mute">
               {displayViewMode === "clients" ? `${clientsList.length} Brands` : `${workspacesList.length} Workspaces`}
             </span>

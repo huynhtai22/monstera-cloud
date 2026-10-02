@@ -16,7 +16,7 @@ function isEditableTarget(t: EventTarget | null): boolean {
 /**
  * P2: g s → Sources, g d → Dashboard, g r → Reports, ? → shortcut sheet
  */
-export function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
+export function KeyboardShortcutsProvider({ children, hrefTransform }: { children: React.ReactNode; hrefTransform?: (href: string) => string }) {
     const router = useRouter();
     const [helpOpen, setHelpOpen] = useState(false);
     const gPending = useRef(false);
@@ -54,19 +54,19 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
                 const k = e.key.toLowerCase();
                 if (k === "s") {
                     e.preventDefault();
-                    router.push("/sources");
+                    router.push(hrefTransform?.("/sources") ?? "/sources");
                     clearG();
                     return;
                 }
                 if (k === "d") {
                     e.preventDefault();
-                    router.push("/console");
+                    router.push(hrefTransform?.("/console") ?? "/console");
                     clearG();
                     return;
                 }
                 if (k === "r") {
                     e.preventDefault();
-                    router.push("/reports");
+                    router.push(hrefTransform?.("/reports") ?? "/reports");
                     clearG();
                     return;
                 }
@@ -77,12 +77,12 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
             window.removeEventListener("keydown", onKey);
             if (gTimer.current) clearTimeout(gTimer.current);
         };
-    }, [router, clearG]);
+    }, [router, clearG, hrefTransform]);
 
     return (
         <>
             {children}
-            <CommandPalette />
+            <CommandPalette hrefTransform={hrefTransform} />
             {helpOpen ? (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="kbd-shortcuts-title">
                     <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Close" onClick={() => setHelpOpen(false)} />

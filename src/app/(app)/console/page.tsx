@@ -5,7 +5,6 @@ export const metadata: Metadata = {
     title: "Console",
     description: "Workspace dashboard — connections, sync health, and quick actions.",
 };
-
 export const dynamic = "force-dynamic";
 
 export default function ConsolePage() {

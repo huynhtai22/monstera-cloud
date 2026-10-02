@@ -19,6 +19,9 @@ import { GET as getEvidenceGet } from "@/app/api/agent-console/evidence/[id]/rou
 import { computeCanonicalScopeHash } from "@/lib/agent-console/persistence";
 
 describe("C2 Scoped HTTP API Route Handlers against real PostgreSQL", () => {
+  const initialMonitoringFlag = process.env.ENABLE_AGENT_CONSOLE_MONITORING;
+  const initialWorkerFlag = process.env.ENABLE_AGENT_CONSOLE_WORKER;
+  const initialWorkspaceCohort = process.env.AGENT_CONSOLE_WORKSPACE_IDS;
   const db = new PrismaClient({
     datasources: {
       db: {
@@ -42,6 +45,9 @@ describe("C2 Scoped HTTP API Route Handlers against real PostgreSQL", () => {
 
   before(async () => {
     process.env.ENABLE_AGENT_CONSOLE = "1";
+    process.env.ENABLE_AGENT_CONSOLE_MONITORING = "1";
+    process.env.ENABLE_AGENT_CONSOLE_WORKER = "1";
+    process.env.AGENT_CONSOLE_WORKSPACE_IDS = workspaceIdA;
     await db.$connect();
 
     // Create users
@@ -107,6 +113,12 @@ describe("C2 Scoped HTTP API Route Handlers against real PostgreSQL", () => {
   after(async () => {
     setAuthSessionOverride(null);
     delete process.env.ENABLE_AGENT_CONSOLE;
+    if (initialMonitoringFlag === undefined) delete process.env.ENABLE_AGENT_CONSOLE_MONITORING;
+    else process.env.ENABLE_AGENT_CONSOLE_MONITORING = initialMonitoringFlag;
+    if (initialWorkerFlag === undefined) delete process.env.ENABLE_AGENT_CONSOLE_WORKER;
+    else process.env.ENABLE_AGENT_CONSOLE_WORKER = initialWorkerFlag;
+    if (initialWorkspaceCohort === undefined) delete process.env.AGENT_CONSOLE_WORKSPACE_IDS;
+    else process.env.AGENT_CONSOLE_WORKSPACE_IDS = initialWorkspaceCohort;
     // Clean up created test entities
     await db.workspace.deleteMany({ where: { id: { in: [workspaceIdA, workspaceIdB] } } });
     await db.user.deleteMany({ where: { id: { in: [ownerId, adminId, memberId, viewerId, outsiderId] } } });
