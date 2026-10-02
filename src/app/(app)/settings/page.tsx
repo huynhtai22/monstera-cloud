@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, useCallback } from 'react';
 import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell, MonitorSmartphone } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -23,7 +24,18 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
-    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api' | 'sessions'>('workspace');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const tabs = ['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'] as const;
+    type SettingsTab = typeof tabs[number];
+    const requestedTab = searchParams.get('tab');
+    const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? requestedTab as SettingsTab : 'workspace';
+    const setActiveTab = (tab: SettingsTab) => {
+        const query = new URLSearchParams(searchParams.toString());
+        query.set('tab', tab);
+        router.push(`${pathname}?${query}`, { scroll: false });
+    };
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
@@ -50,16 +62,6 @@ export default function SettingsPage() {
         violations: [],
         telegramChatId: "",
     });
-
-    // Persistence of Tab
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get("tab") as any;
-        if (['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'].includes(tab)) {
-            setActiveTab(tab);
-        }
-    }, []);
 
     // --- API Handlers ---
 

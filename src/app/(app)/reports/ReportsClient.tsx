@@ -12,6 +12,7 @@ import { PageShell, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@
 import { EmptyState } from "@/components/ui/EmptyState";
 import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports-source-filters";
 import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
+import { ReportReadinessView } from "@/components/reports/ReportReadinessView";
 import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
 import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
 import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
@@ -40,7 +41,7 @@ export function ReportsClient() {
     const clientFilterRaw = searchParams.get("clientId") ?? "";
     const clientFilter = clientFilterRaw === ALL_CLIENTS_TOKEN ? "" : clientFilterRaw;
     const viewParam = searchParams.get("view");
-    const viewMode: "performance" | "sync" = viewParam === "sync" ? "sync" : "performance";
+    const viewMode: "performance" | "readiness" | "sync" = viewParam === "sync" ? "sync" : viewParam === "readiness" ? "readiness" : "performance";
 
     const statusParam = searchParams.get("status");
     const statusFilter: "all" | "success" | "error" = statusParam === "success" || statusParam === "error"
@@ -92,12 +93,12 @@ export function ReportsClient() {
         if (Object.keys(changes).length > 0) updateFilters(changes);
     }, [dateFrom, dateTo, searchParams, sourceFilter, sourceParam, statusFilter, statusParam, updateFilters]);
 
-    const setViewMode = React.useCallback((mode: "performance" | "sync") => {
+    const setViewMode = React.useCallback((mode: "performance" | "readiness" | "sync") => {
         const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
         const { search } = mergePendingUrlState({
             observedSearch: live,
             pendingSearch: pending.pendingFor(pathname),
-            patch: mode === "sync" ? { view: "sync" } : { view: null },
+            patch: { view: mode === "performance" ? null : mode },
         });
         pending.stage(pathname, live, search);
         router.push(search ? `${pathname}${search}` : pathname, { scroll: false });
@@ -130,7 +131,7 @@ export function ReportsClient() {
                 statusFilter?: "all" | "success" | "error";
                 dateFrom?: string;
                 dateTo?: string;
-                viewMode?: "performance" | "sync";
+                viewMode?: "performance" | "readiness" | "sync";
             };
             const q = new URLSearchParams(searchParams.toString());
             let changed = false;
@@ -150,8 +151,8 @@ export function ReportsClient() {
                 q.set("dateTo", v.dateTo!);
                 changed = true;
             }
-            if (v.viewMode && !searchParams.get("view") && v.viewMode === "sync") {
-                q.set("view", "sync");
+            if (v.viewMode && !searchParams.get("view") && (v.viewMode === "sync" || v.viewMode === "readiness")) {
+                q.set("view", v.viewMode);
                 changed = true;
             }
             if (changed) {
@@ -236,7 +237,7 @@ export function ReportsClient() {
                     viewMode,
                 })
             );
-            toast.success(`Saved as your default ${viewMode === "performance" ? "Executive Performance" : "Sync Activity"} view on this browser.`);
+            toast.success(`Saved as your default ${viewMode === "performance" ? "Executive Performance" : viewMode === "readiness" ? "Report readiness" : "Sync Activity"} view on this browser.`);
         } catch {
             toast.error("Could not save view.");
         }
@@ -265,11 +266,12 @@ export function ReportsClient() {
                 <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-xl font-semibold tracking-tight text-ink">
-                            {viewMode === "performance" ? "Executive Performance" : "Sync activity"}
+                            {viewMode === "performance" ? "Executive Performance" : viewMode === "readiness" ? "Report readiness" : "Sync activity"}
                         </h1>
                         <p className="mt-1 max-w-2xl text-sm text-ink-mute">
                             {viewMode === "performance"
                                 ? `Holistic marketing performance, ROAS, and campaign analytics for ${activeWorkspace?.name ?? "the active workspace"}.`
+                                : viewMode === "readiness" ? "Check account coverage and delivery evidence for a client and reporting window."
                                 : `Destination pipeline run history and row counts for ${activeWorkspace?.name ?? "the active workspace"}.`}
                         </p>
                     </div>
@@ -290,6 +292,7 @@ export function ReportsClient() {
                             <TrendingUp className="h-3.5 w-3.5" />
                             Executive Performance
                         </button>
+                        <button type="button" aria-pressed={viewMode === "readiness"} onClick={() => setViewMode("readiness")} className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition-colors", viewMode === "readiness" ? "bg-white/[0.08] text-ink" : "text-ink-mute hover:text-ink")}>Report readiness</button>
                         <button
                             type="button"
                             aria-pressed={viewMode === "sync"}
@@ -309,7 +312,9 @@ export function ReportsClient() {
                 </div>
             </div>
 
-            {viewMode === "performance" ? (
+            {viewMode === "readiness" ? (
+                <ReportReadinessView workspaceId={activeWorkspaceId ?? ""} clients={clients} clientId={clientFilter} onClientChange={setClient} onWindowChange={(changes) => updateFilters(changes)} />
+            ) : viewMode === "performance" ? (
                 <>
                     <WeeklyPerformanceBlueprint
                         workspaceId={activeWorkspaceId ?? ""}
