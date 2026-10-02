@@ -295,7 +295,7 @@ test.describe("client context navigation", () => {
     await expect(page).toHaveURL(/platform=google_ads/);
     await followSidebarLink(page, "Sources");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
-    await followSidebarLink(page, "Warehouse");
+    await followSidebarLink(page, "Data explorer");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await expect(page.getByText("Northwind Exclusive Campaign")).toBeVisible();
 
