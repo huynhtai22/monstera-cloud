@@ -36,6 +36,7 @@ async function runAgentConsoleCron() {
     const activeResponsibilities = await prisma.agentResponsibility.findMany({
       where: {
         status: "active",
+        kind: "data_health",
         nextDueAt: { lte: now },
         ...(workspaceIds.length ? { workspaceId: { in: workspaceIds } } : {}),
       },

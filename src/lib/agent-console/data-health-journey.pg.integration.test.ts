@@ -13,6 +13,7 @@ import {
 import { confirmResponsibilityAction, handleResponsibilityAction } from "./responsibilities";
 import { executeScheduledDataHealthCheck } from "./scheduler";
 import {
+  heartbeatRecoveryOperationLease,
   prepareCaseRecovery,
   executeRecoveryImportOperation,
   verifyRecoveryAndCloseCase,
@@ -161,7 +162,7 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
         clientId,
         ownerId: adminId,
         createdByUserId: adminId,
-        kind: "source_health",
+        kind: "data_health",
         cadence: "daily",
         configuration: { checkFrequency: "daily" },
       });
@@ -208,13 +209,13 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
         expectedVersion: 0,
         scopeHash,
         authorizingUserId: adminId,
-        allowlistedTools: ["inspect_source", "query_coverage", "submit_recovery_import", "verify_coverage"],
+        allowlistedTools: ["submit_recovery_import"],
         allowedPairs: [
           { provider: "meta_ads", connectionId: connMetaId, providerAccountId: "act_101" },
           { provider: "tiktok_business", connectionId: connTikTokId, providerAccountId: "tt_adv_202" },
         ],
         limits: {
-          permittedRecoveryModes: ["retry_failed_window", "full_window_reimport"],
+          permittedRecoveryModes: ["retry_failed_window"],
         },
         expiresAt: new Date(Date.now() + 30 * 86400000), // 30 days
       });
@@ -341,18 +342,26 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
       },
     });
 
+    for (const [since, until] of [["2026-02-30", "2026-09-27"], ["2026-09-27", "2026-09-20"], ["2026-09-20", "2099-01-01"]]) {
+      await assert.rejects(() => prepareCaseRecovery({ workspaceId, caseId: detectedCaseId, userId: adminId, since, until }),
+        (error: any) => error.code === "invalid_recovery_range");
+    }
+    await db.workspace.update({ where: { id: workspaceId }, data: { plan: "free" } });
     const queuedOutcome = await prepareCaseRecovery({
       workspaceId,
       caseId: detectedCaseId,
       userId: adminId,
-      since: "2026-09-20",
+      since: "2026-01-01",
       until: "2026-09-27",
     });
+    await db.workspace.update({ where: { id: workspaceId }, data: { plan: "professional" } });
 
     assert.equal(queuedOutcome.actionType, "queued");
     assert.equal(queuedOutcome.requiresReconnect, false);
     assert.ok(queuedOutcome.operation);
     recoveryOperationId = (queuedOutcome.operation as any).id;
+    const boundedOp = await db.agentOperation.findUniqueOrThrow({ where: { id: recoveryOperationId } });
+    assert.equal((boundedOp.arguments as any).since, "2026-09-13");
   });
 
   it("Step 5: Execute recovery import dispatches durable warehouse import job", async () => {
@@ -370,6 +379,23 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
     });
     assert.ok(job);
     assert.equal(job.workspaceId, workspaceId);
+    const queuedOp = await db.agentOperation.findUniqueOrThrow({ where: { id: recoveryOperationId } });
+    assert.equal(queuedOp.state, "queued");
+    assert.equal(queuedOp.leaseExpiresAt, null);
+    await db.agentOperation.update({ where: { id: queuedOp.id }, data: { createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+    const repeat = await executeRecoveryImportOperation({ workspaceId, operationId: recoveryOperationId, userId: adminId });
+    assert.equal(repeat.jobId, recoveryJobId);
+    const workerLease = "recovery-warehouse-lease";
+    await db.warehouseImportJob.update({ where: { id: recoveryJobId }, data: { status: "running", leaseId: workerLease, leaseExpiresAt: new Date(Date.now() + 60_000) } });
+    assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, "stale-worker"), false);
+    await db.agentAuthorization.updateMany({ where: { workspaceId, responsibilityId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, workerLease), false);
+    await db.agentAuthorization.updateMany({ where: { workspaceId, responsibilityId }, data: { expiresAt: new Date(Date.now() + 86400000) } });
+    assert.equal(await heartbeatRecoveryOperationLease(workspaceId, recoveryJobId, workerLease), true);
+    const claimedOp = await db.agentOperation.findUniqueOrThrow({ where: { id: queuedOp.id } });
+    assert.equal(claimedOp.leaseOwner, workerLease);
+    assert.equal(claimedOp.state, "running");
+
   });
 
   it("Step 6: Verification rejects partial imports and confirms restored health before closing case", async () => {
@@ -419,7 +445,7 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
     });
 
     // Insert actual warehouse metrics for the recovered account covering the entire recovery window (2026-09-20 to 2026-09-27)
-    for (let day = 20; day <= 27; day++) {
+    for (let day = 13; day <= 27; day++) {
       await db.campaignMetric.create({
         data: {
           workspaceId,
@@ -1215,8 +1241,8 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
     assert.equal(totalJobsAfter, totalJobsBefore, "Must NOT create duplicate import job on recovery dispatch");
 
     const recoveredOp = await db.agentOperation.findUniqueOrThrow({ where: { id: crashOp.id } });
-    assert.equal(recoveredOp.state, "running");
-    assert.equal(recoveredOp.leaseOwner, "worker-recovery-restart");
+    assert.equal(recoveredOp.state, "queued");
+    assert.equal(recoveredOp.leaseOwner, null);
     assert.equal(recoveredOp.jobReference, crashJob.id);
   });
 
@@ -1249,6 +1275,10 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
         where: { workspaceId_id: { workspaceId: foreignWorkspaceId, id: outsideCohortResponsibility.id } },
         data: { status: "active", nextDueAt: overdueAt },
       });
+      const budgetResponsibility = await agentConsoleTransaction((tx) => createResponsibility(tx, {
+        workspaceId, ownerId, createdByUserId: ownerId, kind: "budget_pacing", cadence: "daily", configuration: {},
+      }));
+      await db.agentResponsibility.update({ where: { id: budgetResponsibility.id }, data: { status: "active", nextDueAt: overdueAt } });
       const beforeCount = await db.agentEvaluation.count({ where: { workspaceId, responsibilityId } });
 
       process.env.CRON_SECRET_AGENT_CONSOLE = cronSecret;
@@ -1286,6 +1316,9 @@ describe("C4 plus minimum C5 Data Health Journey against real PostgreSQL", () =>
         where: { id: responsibilityId },
       });
       assert.ok(afterCatchup.nextDueAt && afterCatchup.nextDueAt.getTime() > Date.now(), "restored work advances the next due time");
+      const untouchedBudget = await db.agentResponsibility.findUniqueOrThrow({ where: { id: budgetResponsibility.id } });
+      assert.equal(untouchedBudget.nextDueAt?.getTime(), overdueAt.getTime());
+      assert.equal(await db.agentEvaluation.count({ where: { workspaceId, responsibilityId: budgetResponsibility.id } }), 0);
       const afterCount = await db.agentEvaluation.count({ where: { workspaceId, responsibilityId } });
       assert.equal(afterCount, beforeCount + 1, "the missed slot is evaluated once without colliding with today's slot");
       const outsideCohort = await db.agentResponsibility.findUniqueOrThrow({

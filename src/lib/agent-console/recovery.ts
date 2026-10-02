@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { clampTimeRangeToPlanMaxDays } from "@/lib/plan-config";
 import { Prisma } from "@prisma/client";
 import {
   agentConsoleTransaction,
@@ -14,6 +15,22 @@ import {
 import { createImportJob } from "@/lib/warehouse-import-job";
 import { evaluateProviderCapability } from "./capabilities";
 import { resolveSourceHealthState, SOURCE_HEALTH_STALE_AFTER_MS } from "@/lib/source-health";
+
+// Recovery retries are bounded even on plans with unlimited history. Larger
+// reimports use the existing explicitly approved historical-import workflow.
+function boundedRecoveryRange(plan: string, since: string, until: string) {
+  for (const date of [since, until]) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(new Date(date).getTime()) || new Date(date).toISOString().slice(0, 10) !== date) {
+      throw new AgentConsoleError("invalid_recovery_range", "Recovery dates must be valid calendar dates", 400);
+    }
+  }
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (since > until || until > yesterday) {
+    throw new AgentConsoleError("invalid_recovery_range", "Recovery range must be ordered and end by yesterday", 400);
+  }
+  const earliest = new Date(new Date(until).getTime() - 14 * 86400000).toISOString().slice(0, 10);
+  return clampTimeRangeToPlanMaxDays(plan, { since: since < earliest ? earliest : since, until });
+}
 
 export interface PrepareRecoveryInput {
   workspaceId: string;
@@ -167,8 +184,10 @@ export async function prepareCaseRecovery(
     const sevenDaysPrior = new Date(yesterday.getTime() - 6 * 86400000);
     const defaultSince = sevenDaysPrior.toISOString().slice(0, 10);
 
-    const since = input.since ?? defaultSince;
-    const until = input.until ?? defaultUntil;
+    const rawSince = input.since ?? defaultSince;
+    const rawUntil = input.until ?? defaultUntil;
+    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: input.workspaceId }, select: { plan: true } });
+    const { since, until } = boundedRecoveryRange(workspace.plan, rawSince, rawUntil);
 
     // Accounts for this target connection ONLY (never combine unrelated account IDs under one connection)
     const targetAccountIds = currentScopes
@@ -218,18 +237,34 @@ export interface ExecuteRecoveryJobInput {
   workerId?: string;
 }
 
-export async function heartbeatRecoveryOperationLease(workspaceId: string, jobId: string, workerId = "worker-recovery") {
-  const now = new Date();
-  const updated = await prisma.agentOperation.updateMany({
-    where: { workspaceId, jobReference: jobId, toolName: "submit_recovery_import", state: "running", leaseOwner: workerId, leaseExpiresAt: { gt: now } },
-    data: { leaseExpiresAt: new Date(now.getTime() + 60_000), version: { increment: 1 } },
+export async function heartbeatRecoveryOperationLease(workspaceId: string, jobId: string, workerId: string) {
+  return agentConsoleTransaction(async (tx: ConsoleTransaction) => {
+    const now = new Date();
+    const op = await tx.agentOperation.findFirst({
+      where: { workspaceId, jobReference: jobId, toolName: "submit_recovery_import" },
+      include: { case: { include: { responsibility: true } } },
+    });
+    if (!op) return true;
+    const job = await tx.warehouseImportJob.findFirst({
+      where: { id: jobId, workspaceId, status: "running", leaseId: workerId, leaseExpiresAt: { gt: now } },
+    });
+    if (!job) return false;
+    const resp = op.case?.responsibility;
+    if (!resp || resp.status !== "active" || resp.scopeHash !== op.scopeHash || resp.policyRevision !== op.policyRevision) return false;
+    const auth = await tx.agentAuthorization.findFirst({
+      where: { workspaceId, responsibilityId: resp.id, revokedAt: null, scopeHash: op.scopeHash, policyRevision: op.policyRevision, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    });
+    if (!auth || !auth.allowlistedTools.includes("submit_recovery_import")) return false;
+    const updated = await tx.agentOperation.updateMany({
+      where: { workspaceId, id: op.id, version: op.version, OR: [
+        { state: "queued" },
+        { state: "running", leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+        { state: "running", leaseExpiresAt: { lte: now } },
+      ] },
+      data: { state: "running", leaseOwner: workerId, leaseExpiresAt: new Date(now.getTime() + 60_000), version: { increment: 1 } },
+    });
+    return updated.count === 1;
   });
-  if (updated.count > 0) return true;
-  const recoveryOp = await prisma.agentOperation.findFirst({
-    where: { workspaceId, jobReference: jobId, toolName: "submit_recovery_import" },
-    select: { id: true },
-  });
-  return !recoveryOp;
 }
 
 /**
@@ -408,8 +443,6 @@ export async function executeRecoveryImportOperation(
       }
     }
 
-    const leaseDurationMs = 60 * 1000; // 60 seconds
-    const leaseExpiresAt = new Date(Date.now() + leaseDurationMs);
 
     if (!job) {
       const workspace = await tx.workspace.findUniqueOrThrow({
@@ -417,6 +450,10 @@ export async function executeRecoveryImportOperation(
         select: { plan: true },
       });
 
+      const permittedRange = boundedRecoveryRange(workspace.plan, since, until);
+      if (permittedRange.since !== since || permittedRange.until !== until) {
+        throw new AgentConsoleError("recovery_range_superseded", "Recovery window exceeds current limits; prepare recovery again", 409);
+      }
       job = await createImportJob({
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -432,10 +469,14 @@ export async function executeRecoveryImportOperation(
       });
     }
 
-    // Claim by version and state so concurrent dispatchers cannot both own the operation.
+    if (op.jobReference === job.id) {
+      return { jobId: job.id, status: job.status, outcome: "already_active" };
+    }
+
+    // Bind the job once; the warehouse worker acquires the execution lease.
     const claimed = await tx.agentOperation.updateMany({
       where: { id: op.id, workspaceId: input.workspaceId, state: "queued", version: op.version },
-      data: { state: "running", jobReference: job.id, leaseOwner: assignedWorkerId, leaseExpiresAt, version: { increment: 1 } },
+      data: { jobReference: job.id, leaseOwner: null, leaseExpiresAt: null, version: { increment: 1 } },
     });
     if (claimed.count !== 1) {
       throw new AgentConsoleError("lease_active_conflict", "Recovery operation was claimed by another worker", 409);

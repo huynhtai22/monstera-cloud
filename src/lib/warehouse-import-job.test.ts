@@ -444,14 +444,16 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
       jobId,
       claim.leaseId!,
       [{ connectionId: "conn-1", accountId: "failed-account" }],
-      [{ connectionId: "conn-1", provider: "meta_ads", outcome: "partial", ok: false, retryable: true }],
+      [{ connectionId: "conn-1", provider: "meta_ads", outcome: "partial", ok: false, retryable: true, retryAfterMs: 180000 }],
       10,
       "Partial import: failed-account was rate limited",
     );
     assert.equal(requeued.status, "queued");
     assert.equal(requeued.retryCount, 1);
+    assert.ok(new Date(requeued.scheduledAt!).getTime() >= Date.now() + 179000, "Provider retry delay must dominate local backoff");
     assert.deepEqual(requeued.items, [{ connectionId: "conn-1", accountId: "failed-account" }]);
 
+    mockDb.get(jobId).scheduledAt = new Date(0);
     const retryClaim = await claimImportJob(jobId);
     const partial = await completeImportJob(
       jobId,

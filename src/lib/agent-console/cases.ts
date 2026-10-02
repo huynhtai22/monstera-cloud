@@ -243,6 +243,11 @@ export async function handleCaseAction(
         throw new AgentConsoleError("invalid_input", "ownerId is required to assign case", 400);
       }
 
+      const assignee = await tx.workspaceMember.findFirst({
+        where: { workspaceId: input.workspaceId, userId: input.ownerId },
+      });
+      if (!assignee) throw new AgentConsoleError("assignee_outside_workspace", "Assignee must belong to this workspace", 400);
+
       const updated = await tx.agentCase.update({
         where: { workspaceId_id: { workspaceId: input.workspaceId, id: caseId } },
         data: {

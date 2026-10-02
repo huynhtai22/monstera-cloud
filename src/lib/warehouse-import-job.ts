@@ -38,6 +38,7 @@ export interface BatchImportJobResult {
   error?: string;
   retryable?: boolean;
   retryItems?: BatchImportItem[];
+  retryAfterMs?: number;
 }
 
 export interface BatchImportJobState {
@@ -640,7 +641,7 @@ export async function retryPartialImportJob(
     );
   }
 
-  const delayMs = computeBackoffMs(current.retryCount);
+  const delayMs = Math.max(computeBackoffMs(current.retryCount), ...results.filter(result => result.retryable && Number.isFinite(result.retryAfterMs)).map(result => Math.max(0, result.retryAfterMs ?? 0)));
   const updated = await prisma.warehouseImportJob.updateMany({
     where: { id: jobId, leaseId, status: "running", leaseExpiresAt: { gte: now } },
     data: {

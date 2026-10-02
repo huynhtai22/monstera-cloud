@@ -627,6 +627,15 @@ describe("C2 Scoped HTTP API Route Handlers against real PostgreSQL", () => {
     assert.ok(jsonSnooze.case.snoozedUntil);
     caseVersion = jsonSnooze.case.version;
 
+    const assignResponse = await handleCaseActionPost(new Request(`http://localhost/api/agent-console/cases/${caseId}/actions`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceId: workspaceIdA, expectedVersion: caseVersion, action: "assign", ownerId: outsiderId }),
+    }), { params: Promise.resolve({ id: caseId }) });
+    assert.equal(assignResponse.status, 400);
+    assert.equal((await assignResponse.json()).code, "assignee_outside_workspace");
+    const unchangedCase = await db.agentCase.findUniqueOrThrow({ where: { id: caseId } });
+    assert.equal(unchangedCase.version, caseVersion);
+
     // 6f. False-resolution prevention: Interactive user claiming automated_recovery -> 403
     const reqFakeAuto = new Request(`http://localhost/api/agent-console/cases/${caseId}/actions`, {
       method: "POST",

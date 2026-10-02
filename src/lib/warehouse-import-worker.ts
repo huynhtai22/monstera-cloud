@@ -151,6 +151,7 @@ export async function processBatchItems(opts: {
         upserted: sync.rowsIngested,
         error: sync.error,
         retryable: syncChildren.some((child) => !child.optional && !child.ok && child.retryable),
+        retryAfterMs: Math.max(0, ...syncChildren.filter(child => !child.optional && !child.ok && child.retryable).map(child => child.retryAfterMs ?? 0)),
         retryItems: syncChildren
           .filter((child) => !child.optional && !child.ok && child.retryable)
           .map((child) => ({
@@ -346,11 +347,14 @@ export async function runDurableImportWorker(
 
     // Fence execution before the first provider call, not only after 10 seconds.
     await heartbeatImportJob(jobId, leaseId);
+    if (!(await heartbeatRecoveryOperationLease(jobRecord.workspaceId, jobId, leaseId))) {
+      throw new LeaseLostError(jobId, leaseId);
+    }
     // Start continuous heartbeat while processing (every 10s)
     heartbeatTimer = setInterval(async () => {
       try {
         await heartbeatImportJob(jobId, leaseId);
-        if (!(await heartbeatRecoveryOperationLease(jobRecord.workspaceId, jobId))) {
+        if (!(await heartbeatRecoveryOperationLease(jobRecord.workspaceId, jobId, leaseId))) {
           isLeaseLost = true;
           if (heartbeatTimer) clearInterval(heartbeatTimer);
           return;
