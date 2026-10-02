@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import { ConsoleRouteTransition } from './console/ConsoleMotion';
 import { ConsoleSupportControl } from './LiveChatWidget';
 import { Sidebar } from './Sidebar';
-import { GlobeLoader } from './GlobeLoader';
+import { useWorkspaceStartupActions } from './WorkspaceStartup';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
 import { SessionHeartbeat } from './SessionHeartbeat';
 import { DemoModeBanner } from './DemoModeBanner';
@@ -60,6 +60,11 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const startup = useWorkspaceStartupActions();
+    const configureStartup = startup?.configure;
+    useEffect(() => {
+        configureStartup?.(status !== 'loading', Boolean(pathname?.endsWith('/console')), status === 'authenticated');
+    }, [configureStartup, status, pathname]);
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
     const themeReady = useRef(false);
 
@@ -115,9 +120,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         <PendingNavigationProvider>
         {!visualPreview && <WorkspaceSessionSync />}
         {!visualPreview && <SessionHeartbeat />}
-        {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
-        {loading ? <GlobeLoader visible /> : null}
-        <div data-console-theme={isDarkMode ? "dark" : "light"} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
+        <div data-workspace-shell data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">

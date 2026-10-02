@@ -28,6 +28,35 @@ enum WorkspaceStatus {
   SUSPENDED
 }
 
+enum WorkCategory {
+  BUSINESS_OWNER
+  GROWTH_MARKETER
+  AGENCY_CONSULTANT
+  ECOMMERCE_SELLER
+  OPERATIONS_ANALYST
+  OTHER
+}
+
+enum AgentRunStatus {
+  in_progress
+  waiting_user
+  ready_to_review
+  completed
+  paused
+}
+
+enum AgentTaskState {
+  waiting_authorization
+  discovering_accounts
+  waiting_selection
+  queued
+  importing
+  verifying
+  ready
+  needs_attention
+  deferred
+}
+
 model Account {
   id                       String  @id @default(cuid())
   userId                   String
@@ -85,6 +114,10 @@ model User {
   plan                        String                       @default("free")
   subscriptionId              String?                      @unique
   platformRole                PlatformRole                 @default(USER)
+  workCategory                WorkCategory?
+  workContext                 String?                      @db.VarChar(500)
+  workProfileAnsweredAt       DateTime?
+  agentRuns                   AgentRun[]
   accounts                    Account[]
   sessions                    Session[]
   loginEvents                 LoginEvent[]
@@ -202,6 +235,7 @@ model Workspace {
   supportTickets              SupportTicket[]
   aiPolicy                    WorkspaceAiPolicy?
   agentJobs                   AgentJob[]
+  agentRuns                   AgentRun[]
   agentTraces                 AgentTrace[]
   evidencePacks               EvidencePackRecord[]
   connectorRunArtifacts       ConnectorRunArtifact[]
@@ -301,6 +335,7 @@ model Client {
   reportEmailDeliveryAttempts    ReportEmailDeliveryAttempt[]
   accountAssignments             ClientProviderAccountAssignment[]
   freshnessState                 ClientFreshnessState?
+  agentRuns                      AgentRun[]
 
   @@unique([workspaceId, id])
   @@index([workspaceId])
@@ -572,13 +607,16 @@ model OAuthAttempt {
   workspaceId           String
   provider              String
   reconnectConnectionId String?
+  agentTaskId           String?
   expiresAt             DateTime
   consumedAt            DateTime?
   createdAt             DateTime  @default(now())
   workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentTask             AgentTask? @relation(fields: [workspaceId, agentTaskId], references: [workspaceId, id], onDelete: Cascade)
 
   @@index([userId, provider, expiresAt])
   @@index([workspaceId, consumedAt])
+  @@index([workspaceId, agentTaskId])
 }
 
 model AuditEvent {
@@ -625,6 +663,7 @@ model Connection {
 
   reportingContexts  AccountReportingContext[]
   accountAssignments ClientProviderAccountAssignment[]
+  agentTaskConnections AgentTaskConnection[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, id, provider])
@@ -1289,11 +1328,115 @@ model WarehouseImportJob {
 
   workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   chunks    WarehouseBackfillChunk[]
+  agentTasks AgentTask[]
 
+  @@unique([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])
+}
+
+/// Persistent goal/session. Each explicit onboarding continuation has its own stable resumeKey
+/// Reloading resumes the latest workflow; explicit continuation preserves completed runs.
+model AgentRun {
+  id                String         @id @default(cuid())
+  workspaceId       String
+  initiatorUserId   String
+  clientId          String?
+  kind              String         @default("onboarding")
+  status            AgentRunStatus @default(in_progress)
+  version           Int            @default(0)
+  resumeKey         String?
+  lastEventSequence Int            @default(0)
+  reviewedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  initiator         User           @relation(fields: [initiatorUserId], references: [id], onDelete: Cascade)
+  client            Client?        @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  tasks             AgentTask[]
+  messages          AgentRunMessage[]
+  events            AgentRunEvent[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, resumeKey])
+  @@index([workspaceId, initiatorUserId, status])
+}
+
+model AgentTask {
+  id                    String         @id @default(cuid())
+  workspaceId           String
+  runId                 String
+  taskKey               String
+  type                  String         @default("connect_provider")
+  provider              String
+  state                 AgentTaskState @default(waiting_authorization)
+  reasonCode            String?
+  version               Int            @default(0)
+  scopeRevision         Int            @default(0)
+  requestedScope        Json?
+  confirmedScope        Json?
+  confirmedAt           DateTime?
+  confirmedByUserId     String?
+  importJobId           String?
+  result                Json?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  run                   AgentRun       @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  importJob             WarehouseImportJob? @relation(fields: [workspaceId, importJobId], references: [workspaceId, id], onDelete: Restrict)
+  connections           AgentTaskConnection[]
+  events                AgentRunEvent[]
+  oAuthAttempts         OAuthAttempt[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, runId, id])
+  @@unique([runId, taskKey])
+  @@index([workspaceId, runId, state])
+}
+
+model AgentTaskConnection {
+  id                 String     @id @default(cuid())
+  workspaceId        String
+  taskId             String
+  connectionId       String
+  selectedAccountIds String[]   @default([])
+  task               AgentTask  @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  connection         Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([taskId, connectionId])
+  @@index([workspaceId, taskId])
+}
+
+model AgentRunMessage {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  runId              String
+  messageKey         String
+  role               String
+  content            String   @db.VarChar(4000)
+  structuredResponse Json?
+  createdAt          DateTime @default(now())
+  run                AgentRun @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([runId, messageKey])
+  @@index([workspaceId, runId, createdAt])
+}
+
+model AgentRunEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  runId       String
+  taskId      String?
+  sequence    Int
+  type        String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  run         AgentRun  @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  task        AgentTask? @relation(fields: [workspaceId, runId, taskId], references: [workspaceId, runId, id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@index([workspaceId, runId, sequence])
 }
 
 // Durable executable slice of a warehouse backfill job (checkpoint-worker

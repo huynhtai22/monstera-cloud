@@ -28,6 +28,8 @@ export interface SyncChildResult {
   retryAfterMs?: number;
   /** Account intentionally not attempted (quarantined / reconnect required). */
   skipped?: string;
+  /** Coverage attempted outside the required import; never changes required readiness. */
+  optional?: boolean;
   /** Opaque provider continuation data persisted only by the internal worker. */
   retryState?: ProviderRetryState;
 }
@@ -61,9 +63,10 @@ export function isRetryableSyncError(error: unknown): boolean {
 }
 
 export function summarizeSyncOutcome(children: SyncChildResult[]): Pick<SyncResult, "success" | "outcome" | "rowsIngested" | "error"> {
-  const rowsIngested = children.reduce((total, child) => total + (child.rowsIngested ?? 0), 0);
-  const failed = children.filter((child) => !child.ok);
-  const succeeded = children.length - failed.length;
+  const required = children.filter(child => !child.optional);
+  const rowsIngested = required.reduce((total, child) => total + (child.rowsIngested ?? 0), 0);
+  const failed = required.filter((child) => !child.ok);
+  const succeeded = required.length - failed.length;
   const outcome: SyncOutcome = failed.length === 0 ? "success" : succeeded > 0 ? "partial" : "failed";
   const error = failed.length
     ? failed.slice(0, 3).map((child) => `${child.id}: ${child.error ?? "sync failed"}`).join(" | ") +
@@ -80,5 +83,5 @@ export function makeFailedSyncResult(error: string, retryable = isRetryableSyncE
 
 /** The durable worker uses this set to retry only work which has not succeeded. */
 export function retryableFailedTargetIds(children: SyncChildResult[]): string[] {
-  return children.filter((child) => !child.ok && child.retryable).map((child) => child.id);
+  return children.filter((child) => !child.optional && !child.ok && child.retryable).map((child) => child.id);
 }

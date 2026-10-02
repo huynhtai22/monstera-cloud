@@ -460,7 +460,7 @@ export class GoogleAdsReportClient {
 
       // Non-manager (standalone) accounts reject customer_client; preserve the
       // intentional leaf fallback for those account shapes.
-      if (error instanceof GoogleAdsProviderError && error.status && error.status < 500 && !error.retryable) {
+      if (error instanceof GoogleAdsProviderError && error.status && error.status === 400 && !error.retryable && /not a manager|NOT_MANAGER|customer_client.*not.*support/i.test(error.message)) {
         return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
       }
       throw error;

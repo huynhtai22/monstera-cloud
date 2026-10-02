@@ -1,3 +1,4 @@
+import { mergeTargetedImportReceipts } from "./warehouse-retry-receipts";
 import prisma from "@/lib/prisma";
 import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
@@ -153,10 +154,10 @@ export async function processBatchItems(opts: {
         rowsIngested: sync.rowsIngested,
         upserted: sync.rowsIngested,
         error: sync.error,
-        retryable: syncChildren.some((child) => !child.ok && child.retryable),
-        retryAfterMs: Math.max(0, ...syncChildren.filter((child) => !child.ok && child.retryable).map((child) => child.retryAfterMs ?? 0)) || undefined,
+        retryable: syncChildren.some((child) => !child.optional && !child.ok && child.retryable),
+        retryAfterMs: Math.max(0, ...syncChildren.filter((child) => !child.optional && !child.ok && child.retryable).map((child) => child.retryAfterMs ?? 0)) || undefined,
         retryItems: syncChildren
-          .filter((child) => !child.ok && child.retryable)
+          .filter((child) => !child.optional && !child.ok && child.retryable)
           .map((child) => ({
             connectionId: conn.id,
             ...(child.kind === "connection" ? {} : { accountId: child.id }),
@@ -377,7 +378,8 @@ export async function runDurableImportWorker(
       isLeaseLost: () => isLeaseLost,
     });
 
-    const results = checkpointedResults ?? (await processBatchItems({
+    const previousReceipts = (Array.isArray(jobRecord.results) ? jobRecord.results : []) as unknown as BatchImportJobResult[];
+    const freshResults = checkpointedResults ?? (await processBatchItems({
       workspaceId: jobRecord.workspaceId,
       since: jobRecord.since,
       until: jobRecord.until,
@@ -389,18 +391,20 @@ export async function runDurableImportWorker(
       isLeaseLost: () => isLeaseLost,
       onProgress: async ({ completed, results: currentResults }) => {
         if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
-        const approxRows = currentResults.reduce(
+        const retainedResults = mergeTargetedImportReceipts(previousReceipts, currentResults);
+        const approxRows = retainedResults.reduce(
           (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
           0
         );
         await updateImportJobProgress(jobId, leaseId, {
           completedItems: completed,
           approximateRows: approxRows,
-          results: currentResults,
+          results: retainedResults,
         });
       },
     }));
 
+    const results = checkpointedResults ?? mergeTargetedImportReceipts(previousReceipts, freshResults);
     if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
 
     // Run post-refresh data quality checks for each successfully refreshed connection (deduplicated)

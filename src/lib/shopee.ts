@@ -397,6 +397,7 @@ export class ShopeeDataClient {
   async getShopInfo(opts: ShopeeApiOptions): Promise<ShopeeShopInfo> {
     const raw = await shopeeGet("/api/v2/shop/get_shop_info", {}, opts);
     const resp = (raw.response || raw) as Record<string, unknown>;
+    if (typeof (resp.shop_name ?? resp.shopName) !== "string" || !(resp.shop_name ?? resp.shopName) || typeof resp.status !== "string" || !resp.status) throw new Error("Shopee returned incomplete shop information");
     return {
       shop_name: String(resp.shop_name || resp.shopName || `Shop ${opts.shopId}`),
       region: String(resp.region || "").toUpperCase().trim(),
