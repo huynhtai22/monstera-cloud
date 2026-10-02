@@ -24,6 +24,7 @@ import type {
   DashboardOverviewDTO,
   DashboardIssueItem,
 } from "@/lib/dashboard-overview";
+import type { DataHealthSetupDraft } from "@/lib/agent-console/setup-contracts";
 import { ConnectedDataResponsibilitySetup } from "./ConnectedDataResponsibilitySetup";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
@@ -66,6 +67,7 @@ type Props = {
     lastSuccessfulCheck: string | null;
     dataThroughCoverage: string | null;
     activeBlockers: string[];
+    setupDrafts?: DataHealthSetupDraft[];
     responsibilities?: Array<{
       id: string;
       kind: string;
@@ -542,10 +544,12 @@ export function ConsoleOverview({
       )}
 
       </section>
-      {agentConsoleSummary && !agentConsoleSummary.responsibilities?.some((responsibility) => responsibility.kind === "data_health") && (
+      {agentConsoleSummary && !agentConsoleSummary.responsibilities?.some((responsibility) => responsibility.kind === "data_health" && ["active", "paused"].includes(responsibility.status)) && (
         <ConnectedDataResponsibilitySetup
           workspaceId={workspace.id}
           sources={sourcesList}
+          drafts={agentConsoleSummary.setupDrafts}
+          onSaved={onRefreshSummary}
           monitoringAvailable={agentConsoleSummary.monitoringAvailable}
           onActivated={async () => {
             await onRefreshSummary?.();
