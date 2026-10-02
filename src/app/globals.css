@@ -27,7 +27,8 @@
 :root {
     --background: #050505;
     --foreground: #ededed;
-    --console-motion-accent: #86c99b;
+    --console-brand-green: #86c99b;
+    --console-motion-accent: var(--console-brand-green);
 }
 
 /* Design tokens and animation durations (moved from UI system modules) */

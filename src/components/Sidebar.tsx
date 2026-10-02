@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { consoleDirectory } from "@/lib/console-navigation";
 import { LogoMark } from "./Logo";
 import { usePathname, useSearchParams } from "next/navigation";
 import { shouldPropagateClientContext } from "@/lib/client-context";
@@ -98,21 +99,20 @@ export function Sidebar({
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [expandedSubsections, setExpandedSubsections] = useState<Record<string, boolean>>(() => ({ [`/${pathname?.split("/")[1]}`]: true }));
-    const previewNavigation = Boolean(previewDirectories);
+    const subsectionStorageKey = previewDirectories ? "monstera:preview:expanded-sections" : "monstera:console:expanded-sections";
     const [subsectionsRestored, setSubsectionsRestored] = useState(false);
     useEffect(() => {
-        if (!previewNavigation) return;
         try {
-            const saved = JSON.parse(sessionStorage.getItem("monstera:preview:expanded-sections") ?? "{}");
+            const saved = JSON.parse(sessionStorage.getItem(subsectionStorageKey) ?? "{}");
             const entries = Object.entries(saved).filter((entry): entry is [string, boolean] => entry[0].startsWith("/") && typeof entry[1] === "boolean");
             setExpandedSubsections(current => ({ ...current, ...Object.fromEntries(entries) }));
         } catch { /* Keep navigation usable when storage is unavailable. */ }
         setSubsectionsRestored(true);
-    }, [previewNavigation]);
+    }, [subsectionStorageKey]);
     useEffect(() => {
-        if (!previewNavigation || !subsectionsRestored) return;
-        try { sessionStorage.setItem("monstera:preview:expanded-sections", JSON.stringify(expandedSubsections)); } catch { /* storage is optional */ }
-    }, [expandedSubsections, previewNavigation, subsectionsRestored]);
+        if (!subsectionsRestored) return;
+        try { sessionStorage.setItem(subsectionStorageKey, JSON.stringify(expandedSubsections)); } catch { /* storage is optional */ }
+    }, [expandedSubsections, subsectionStorageKey, subsectionsRestored]);
     useEffect(() => {
         const section = `/${pathname?.split("/")[1]}`;
         setExpandedSubsections(current => current[section] !== undefined ? current : { ...current, [section]: true });
@@ -366,7 +366,7 @@ export function Sidebar({
                             {group.items.map((item) => {
                                 const isActive = navIsActive(pathname, item.href);
                                 const href = navHref(item.href);
-                                const directory = previewDirectories?.[item.href] ?? (isActive ? previewDirectory : undefined);
+                                const directory = previewDirectories?.[item.href] ?? (isActive ? previewDirectory : undefined) ?? consoleDirectory.find(section => section.path === item.href)?.entries;
                                 const hasSubsection = !collapsed && Boolean(directory && directory.length > 1);
                                 const subsectionOpen = expandedSubsections[item.href] ?? false;
                                 const subsectionId = `sidebar-subsection-${item.href.slice(1)}`;
@@ -425,8 +425,9 @@ export function Sidebar({
                                         <nav id={subsectionId} className="ml-7 my-2 space-y-1 border-l border-line pl-3" aria-label={`${item.name} directory`}>
                                             {directory?.map((entry, index) => {
                                                 const query = new URL(entry.href, "https://preview.invalid").searchParams;
-                                                const selected = isActive && [...query.entries()].every(([key, value]) => searchParams.get(key) === value || (!searchParams.has(key) && index === 0));
-                                                return <Link key={entry.href} href={entry.href} aria-current={selected ? "page" : undefined} className={cn("block rounded-md px-2 py-2 text-[11px]", selected ? "bg-panel text-ink" : "text-ink-mute hover:text-ink")} onClick={() => setIsOpen?.(false)}>{entry.label}</Link>;
+                                                const entryPath = new URL(entry.href, "https://console.invalid").pathname;
+                                                const selected = (previewDirectories ? isActive : navIsActive(pathname, entryPath)) && [...query.entries()].every(([key, value]) => searchParams.get(key) === value || (!searchParams.has(key) && index === 0));
+                                                return <Link key={entry.href} href={navHref(entry.href)} aria-current={selected ? "page" : undefined} className={cn("block rounded-md px-2 py-2 text-[11px]", selected ? "bg-panel text-ink" : "text-ink-mute hover:text-ink")} onClick={() => setIsOpen?.(false)}>{entry.label}</Link>;
                                             })}
                                         </nav>
                                             </div>
