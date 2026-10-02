@@ -322,7 +322,7 @@ export function ConsoleOverview({
           />
           <span>
             {warehouseSnapshot.dataThroughDate
-              ? `Data through ${formatDateTime(`${warehouseSnapshot.dataThroughDate}T00:00:00`).split(",")[0]}`
+              ? `Data through ${warehouseSnapshot.dataThroughDate}`
               : warehouse.totalRows > 0 ? "Stored history available" : summaryCards.syncs.successful7d > 0 ? "Sync completed without metric rows" : "Awaiting first import"}
           </span>
         </div>
@@ -634,7 +634,7 @@ export function ConsoleOverview({
                 <span>LAST SUCCESSFUL REFRESH</span>
                 <p>
                   {warehouseSnapshot.lastRefreshAt
-                    ? formatDateTime(warehouseSnapshot.lastRefreshAt)
+                    ? warehouseSnapshot.lastRefreshAt
                     : "Your first import will appear here"}
                 </p>
               </div>
@@ -765,7 +765,7 @@ export function ConsoleOverview({
         </span>
         <p>
           {warehouseSnapshot.lastRefreshAt
-            ? `Last successful sync ${formatDateTime(warehouseSnapshot.lastRefreshAt)}`
+            ? `Last successful sync ${warehouseSnapshot.lastRefreshAt}`
             : "Built around your data"}
         </p>
         <span>Workspace overview</span>

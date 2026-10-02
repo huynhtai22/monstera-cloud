@@ -44,7 +44,8 @@ export function resolveSourceHealthState(input: {
   const providerProcessing = /will resume this task automatically|still processing|did not complete before the bounded polling|report task.*\b(processing|queuing|running|init)\b/i.test(input.lastError ?? "");
   if (providerProcessing && (status === "connected" || status === "error")) {
     const attempted = input.syncAttemptAt ? new Date(input.syncAttemptAt).getTime() : NaN;
-    return Number.isFinite(attempted) && (input.now ?? new Date()).getTime() - attempted <= 60 * 60 * 1000 ? "syncing" : "stuck";
+    if (!Number.isFinite(attempted)) return "syncing";
+    return (input.now ?? new Date()).getTime() - attempted > 60 * 60 * 1000 ? "stuck" : "syncing";
   }
   if (isPartialSyncError(input.lastError)) return "partial";
   if (status === "error" || Boolean(input.lastError)) return "error";

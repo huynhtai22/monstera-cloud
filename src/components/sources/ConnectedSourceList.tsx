@@ -267,13 +267,7 @@ export function ConnectedSourceList({
     }
   };
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
   const anySelected = selectedIds.size > 0;
-
-  const toggleSelectAll = () => {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(rows.map((r) => r.id)));
-  };
 
   const toggleSelectOne = (id: string) => {
     setSelectedIds((prev) => {
@@ -322,10 +316,24 @@ export function ConnectedSourceList({
     return groupConsoleConnections(list).flat();
   }, [rows, selectedPlatform, searchQuery, sortKey, sortDir]);
 
+  const allSelected = filteredAndSortedRows.length > 0 && filteredAndSortedRows.every((row) => selectedIds.has(row.id));
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredAndSortedRows.map((row) => row.id)));
+  };
+
+  useEffect(() => {
+    const visibleIds = new Set(filteredAndSortedRows.map((row) => row.id));
+    setSelectedIds((previous) => {
+      const next = new Set([...previous].filter((id) => visibleIds.has(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [filteredAndSortedRows]);
+
   const rowMotionRef = useConsoleRowReorder(`${viewMode}:${filteredAndSortedRows.map(row => row.id).join(",")}`);
 
   const bulkSync = () => {
-    for (const r of rows) {
+    for (const r of filteredAndSortedRows) {
       if (!selectedIds.has(r.id)) continue;
       if (r.pipelineId) {
         onSync(r.pipelineId, r.id);
@@ -338,7 +346,7 @@ export function ConnectedSourceList({
   };
 
   const bulkDisconnect = () => {
-    for (const r of rows) {
+    for (const r of filteredAndSortedRows) {
       if (!selectedIds.has(r.id)) continue;
       onDisconnect(r.id, r.name);
     }
@@ -517,7 +525,7 @@ export function ConnectedSourceList({
             <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
               <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
             </PrimaryButton>
-            {onBulkReconnect && <SecondaryButton onClick={() => onBulkReconnect(rows.filter(row => selectedIds.has(row.id)))}>Reconnect selected</SecondaryButton>}
+            {onBulkReconnect && <SecondaryButton onClick={() => onBulkReconnect(filteredAndSortedRows.filter(row => selectedIds.has(row.id)))}>Reconnect selected</SecondaryButton>}
             <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
               <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
             </SecondaryButton>
