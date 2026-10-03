@@ -518,7 +518,8 @@ export function ConsoleOverview({
               )}
             </div>
           ))}
-          {needsAttention.map((issue) => (
+          {[...Map.groupBy(needsAttention, issue => JSON.stringify([issue.title, issue.explanation, issue.actionType])).values()].map(group => {
+            const rows = group.map(issue => (
             <div key={issue.id} className={styles.issue}>
               <div>
                 <h3>{issue.title}</h3>
@@ -543,7 +544,14 @@ export function ConsoleOverview({
                 </Link>
               )}
             </div>
-          ))}
+            ));
+            return group.length > 1 ? (
+              <details key={group[0].id} className={styles.issueGroup}>
+                <summary>{group[0].title} <span>· {group.length} sources — review actions</span></summary>
+                {rows}
+              </details>
+            ) : rows;
+          })}
         </section>
       )}
 

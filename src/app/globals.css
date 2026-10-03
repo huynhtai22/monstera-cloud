@@ -27,25 +27,25 @@
 /* Document scope also supplies theme tokens to body-level dialog portals. */
 html[data-console-theme="light"] {
   color-scheme: light;
-  --color-canvas: #f8faf8;
+  --color-canvas: #f6f7f9;
   --color-panel: #ffffff;
-  --console-surface-raised: #eef2ee;
-  --console-surface-muted: #eef2ee;
-  --console-line-soft: #d9e1da;
-  --color-line: #d9e1da;
+  --console-surface-raised: #ffffff;
+  --console-surface-muted: #f0f2f4;
+  --console-line-soft: #dce1e6;
+  --color-line: #dce1e6;
   --color-ink: #18231c;
   --color-ink-mute: #526057;
   --color-primary: #18231c;
   --color-primary-foreground: #ffffff;
-  --color-primary-muted: #eef2ee;
+  --color-primary-muted: #f0f2f4;
   --color-primary-ring: #286b40;
   --color-accent: #286b40;
   --color-primary-hover: #2c3d31;
-  --color-surface-muted: #eef2ee;
-  --ui-bg-rgb: 248 250 248;
+  --color-surface-muted: #f0f2f4;
+  --ui-bg-rgb: 246 247 249;
   --ui-fg-rgb: 24 35 28;
-  --ui-border-rgb: 217 225 218;
-  --ui-muted-bg-rgb: 238 242 238;
+  --ui-border-rgb: 220 225 230;
+  --ui-muted-bg-rgb: 240 242 244;
   --ui-muted-fg-rgb: 82 96 87;
   --ui-primary-rgb: 24 35 28;
   --ui-primary-foreground-rgb: 255 255 255;
@@ -59,7 +59,7 @@ html[data-console-theme="dark"] { color-scheme: dark; --console-scroll-thumb: #5
 html[data-console-theme="light"] {
     color-scheme: light;
     --console-scroll-thumb: #a2afa4;
-    --background: #f8faf8;
+    --background: #f6f7f9;
     --foreground: #18231c;
 }
 html[data-console-theme], html[data-console-theme] * {

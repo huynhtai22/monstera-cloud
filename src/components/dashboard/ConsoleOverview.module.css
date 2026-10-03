@@ -1435,3 +1435,44 @@
 .metric, .sourceCard { background: var(--color-surface-muted); border-color: var(--color-line); }
 .primaryButton { background: var(--color-primary); color: var(--color-primary-foreground); border-color: var(--color-primary); border-radius: 8px; box-shadow: none; }
 .primaryButton:hover { background: var(--color-primary-hover); }
+
+/* Semantic surfaces cover both themes, including loading and warning states. */
+.button { background: var(--color-panel); color: var(--color-ink); }
+.button:hover { background: var(--color-surface-muted); border-color: var(--color-ink-mute); }
+.healthStrip, .healthStrip[data-working="true"], .flow { background: var(--color-panel); border-color: var(--color-line); }
+.healthHeadline p, .metricDetail, .metricTop h3, .metricTop svg,
+.resume button, .sourceIds button, .timeline time, .footer,
+.flowStep > svg, .deliveryNote svg { color: var(--color-ink-mute); }
+.textLink, .period, .channelHeading h3, .footer > span:first-child,
+.featuredMetric .metricValue, .addSource { color: var(--color-ink); }
+.healthIcon, .eventIcon, .destinationIcon { background: var(--color-surface-muted); color: var(--color-ink-mute); border-color: var(--color-line); }
+.flowStep:hover { background: var(--color-surface-muted); }
+.addSource { border-color: var(--color-line); }
+.stackedBar { background: var(--color-surface-muted); }
+:global(html[data-console-theme="light"]) .console {
+  --console-warning-bg: #fff8e8;
+  --console-warning-line: #e9cd91;
+  --console-warning-ink: #76500b;
+}
+:global(html[data-console-theme="light"]) .warning,
+:global(html[data-console-theme="light"]) .attention {
+  background: var(--console-warning-bg); border-color: var(--console-warning-line); color: #352b19;
+}
+:global(html[data-console-theme="light"]) .attentionHeading,
+:global(html[data-console-theme="light"]) .issue p,
+:global(html[data-console-theme="light"]) .issue time,
+:global(html[data-console-theme="light"]) .warning > svg { color: var(--console-warning-ink); }
+:global(html[data-console-theme="light"]) .issue { border-color: var(--console-warning-line); }
+:global(html[data-console-theme="light"]) .metric,
+:global(html[data-console-theme="light"]) .sourceCard { background: var(--color-panel); box-shadow: none; }
+:global(html[data-console-theme="light"]) .metric:hover,
+:global(html[data-console-theme="light"]) .sourceCard:hover { border-color: #abb8af; box-shadow: none; }
+:global(html[data-console-theme="light"]) .status:global(.text-emerald-400) { color: #286b40; }
+:global(html[data-console-theme="light"]) .status:global(.text-sky-400) { color: #036487; }
+:global(html[data-console-theme="light"]) .status:global(.text-amber-400) { color: #875600; }
+:global(html[data-console-theme="light"]) .status:global(.text-rose-400) { color: #a6233f; }
+
+.issueGroup { margin-top: 14px; border-top: 1px solid var(--color-line); padding-top: 14px; }
+.issueGroup summary { cursor: pointer; font-size: 12px; font-weight: 500; line-height: 1.7; }
+.issueGroup summary span { font-weight: 400; color: var(--color-ink-mute); }
+.issueGroup summary:focus-visible { outline: 2px solid var(--color-primary-ring); outline-offset: 4px; }

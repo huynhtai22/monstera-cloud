@@ -1,6 +1,6 @@
 /* Visual treatment for the real app shell. Page behavior stays in its existing components. */
 .root[data-console-theme="light"] { color-scheme: light; }
-.root[data-console-theme="light"] > aside { background: #f0f4f0; }
+.root[data-console-theme="light"] > aside { background: #f0f3f1; }
 .root[data-console-theme="light"] :global([aria-selected="true"]),
 .root[data-console-theme="light"] :global([aria-current="page"]) { color: #286b40; }
 .root[data-console-theme="light"] :where(button, a):focus-visible {
@@ -436,3 +436,16 @@
   background-color: var(--console-brand-green);
   color: #101010;
 }
+
+/* Light mode uses neutral working surfaces and green only for orientation. */
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) {
+  background: #e3f0e7; color: #245e38; border-color: #c1d9c9; box-shadow: inset 3px 0 #286b40;
+}
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) svg { color: #245e38; }
+
+.root[data-console-theme="light"] main :global([aria-pressed="true"]),
+.root[data-console-theme="light"] main :global([data-state="active"]) { background-color: #e3f0e7; color: #245e38; border-color: #c1d9c9; }
+.root[data-console-theme="light"] main :global(.console-source-list [aria-label="Connection view"] button[aria-pressed="true"]) { background-color: #e3f0e7; color: #245e38; }
+.root[data-console-theme="light"] main :global(thead th) { background: #f0f2f4; color: var(--color-ink-mute); }
+.root[data-console-theme="light"] main :global(.console-scorecard),
+.root[data-console-theme="light"] main :global(.console-source-summary > div) { background: var(--color-panel); }
