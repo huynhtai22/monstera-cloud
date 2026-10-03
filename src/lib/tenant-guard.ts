@@ -93,6 +93,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "AgentOperation",
   "AgentResponsibility",
   "AgentResponsibilityScope",
+  "TikTokGmvMaxMetric",
 ]);
 
 /**

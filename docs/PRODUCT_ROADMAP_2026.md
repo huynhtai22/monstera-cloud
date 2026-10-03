@@ -84,6 +84,10 @@ Potential deliverables: Sheets and Looker templates, canonical fields, explicit 
 
 Sequence only after customer validation: Shopee depth, TikTok Ads, Lazada, TikTok Shop, regional currency/time-zone support, Vietnamese and regional documentation. Gate: no connector without confirmed pilot demand and an ownership/maintenance plan.
 
+| Feature / decision | User problem and target | Evidence and expected outcome | Dependencies / risk / maintenance | Gate and status |
+| --- | --- | --- | --- | --- |
+| TikTok GMV Max reporting (Shop-scoped) | SEA ecommerce advertisers need store/product/livestream GMV Max, not only standard TikTok campaign ROAS | PR #126 sandbox catalog only; no store_id; live call skipped | TikTok Shop store_id + sandbox/live advertiser token as env, not in repo. Ownership/maintenance plan. Confirmed pilot demand (existing Phase 5 gate) | **Blocked — no Shop store_id.** Do not merge #126 to main. Do not advertise GMV Max as a certified route. Reopen only when a store_id exists and the harness records works / 403 / empty from a real call. |
+
 ### Phase 6 — Governed Intelligence (**Later**)
 
 **Goal:** provide read-only, evidence-linked insight on verified data.
@@ -98,6 +102,7 @@ Potential deliverables: performance briefs, governed MCP tools, Signal Desk, hum
 - Do not build AI analysis before data-health context is available.
 - Do not advertise blended cross-channel reporting before currency and metric semantics are explicit.
 - Do not move beyond controlled pilot based only on CI; require real-account, real-destination, and operator recovery evidence.
+- Do not merge TikTok GMV Max (PR #126) or advertise it until a TikTok Shop store_id proves the report endpoint.
 
 ## 6. Prioritization model
 
@@ -114,3 +119,5 @@ Do not build yet: hundreds of shallow connectors; a full BI dashboard builder; f
 ## Current evidence and release posture
 
 Google Ads is **code verified — live validation pending**. The deployed connector uses OAuth and the access level of the Google Cloud project that owns its OAuth client; code verification does not prove OAuth, MCC behavior, correct production configuration, metric completeness, tenant safety in a live flow, Sheets delivery, Looker delivery, or controlled-pilot readiness. The detailed evidence procedure is in [google-ads-basic-access.md](./google-ads-basic-access.md).
+
+TikTok GMV Max remains sandbox-only on unmerged #126. No store_id or live certification has been recorded.

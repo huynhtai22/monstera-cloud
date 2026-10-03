@@ -274,6 +274,7 @@ model Workspace {
   agentEventSequence          AgentEventSequence?
 
   @@index([subscriptionProvider, subscriptionEndsAt])
+  tiktokGmvMaxMetrics TikTokGmvMaxMetric[]
 }
 
 /// UTC-day usage counters for the seat-sharing measurement framework.
@@ -690,6 +691,7 @@ model Connection {
   @@unique([workspaceId, id])
   @@unique([workspaceId, id, provider])
   @@unique([workspaceId, provider, remoteAccountId])
+  tiktokGmvMaxMetrics TikTokGmvMaxMetric[]
 }
 
 model Pipeline {
@@ -2060,4 +2062,39 @@ model AgentEventSequence {
   lastSequence Int       @default(0)
   updatedAt    DateTime  @updatedAt
   workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+
+model TikTokGmvMaxMetric {
+  id                 String     @id @default(cuid())
+  workspaceId        String
+  connectionId       String
+  advertiserId       String     @default("")
+  storeId            String
+  storeName          String?
+  date               DateTime
+  campaignType       String     @default("PRODUCT")
+  campaignId         String     @default("")
+  campaignName       String     @default("")
+  itemId             String?    @default("")
+  itemName           String?
+  itemGroupId        String?    @default("")
+  itemGroupName      String?
+  liveRoomId         String?    @default("")
+  roomTitle          String?
+  gmvMaxCost         Float      @default(0)
+  gmvMaxGrossRevenue Float      @default(0)
+  gmvMaxOrders       Int        @default(0)
+  gmvMaxRoi          Float      @default(0)
+  currency           String?    @default("USD")
+  rawData            String?
+  syncJobId          String?
+  ingestedAt         DateTime   @default(now())
+  createdAt          DateTime   @default(now())
+  workspace          Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, storeId, campaignId, itemId, liveRoomId, date], map: "TikTokGmvMaxMetric_unique_dim_key")
+  @@index([workspaceId, storeId, date])
+  @@index([connectionId, date])
 }
