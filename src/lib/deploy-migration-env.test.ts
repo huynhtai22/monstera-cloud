@@ -185,7 +185,10 @@ describe("trusted production deployment origin", () => {
   it("places the complete trust condition on the job before checkout", () => {
     const deployAt = workflow.indexOf("  deploy:");
     const conditionAt = workflow.indexOf("    if:", deployAt);
-    const checkoutAt = workflow.indexOf("- uses: actions/checkout@v4", deployAt);
+    const checkoutOffset = workflow.slice(deployAt).search(
+      /^\s+- uses: actions\/checkout@(?:v4|[0-9a-f]{40})(?:\s+# v4)?$/m,
+    );
+    const checkoutAt = checkoutOffset === -1 ? -1 : deployAt + checkoutOffset;
     assert.ok(deployAt !== -1 && conditionAt > deployAt);
     assert.ok(checkoutAt > conditionAt, "the trust gate must run before checkout");
     assert.match(condition, /github\.event\.workflow_run\.conclusion\s*==\s*['"]success['"]/);

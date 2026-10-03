@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
 import { assertShopeeRegionEligible } from "@/lib/provider-market-policy";
+import { resolveShopeeRowPerformance } from "@/lib/shopee-performance-fields";
 import prisma from "@/lib/prisma";
 
 export async function GET(request: Request) {
@@ -81,15 +82,15 @@ export async function GET(request: Request) {
         }
       }
 
-      const broadMetrics = rawObj.broad_metrics || {};
-      const directMetrics = rawObj.direct_metrics || {};
-
-      const broadOrders = Number(broadMetrics.orders ?? m.conversions);
-      const broadUnits = Number(broadMetrics.units_sold ?? broadOrders);
-      const broadGmv = Number(broadMetrics.gmv ?? m.revenue);
-      const directOrders = Number(directMetrics.orders ?? 0);
-      const directUnits = Number(directMetrics.units_sold ?? 0);
-      const directGmv = Number(directMetrics.gmv ?? 0);
+      const {
+        broadOrders,
+        broadUnits,
+        broadGmv,
+        directOrders,
+        directUnits,
+        directGmv,
+        keywordSettingsCount,
+      } = resolveShopeeRowPerformance(m, rawObj);
 
       totalBroadOrders += broadOrders;
       totalBroadUnits += broadUnits;
@@ -126,7 +127,7 @@ export async function GET(request: Request) {
         directCr: m.clicks > 0 ? directOrders / m.clicks : 0,
         directCostPerConversion: directOrders > 0 ? m.spend / directOrders : 0,
         currency: m.currency || "VND",
-        keywordSettingsCount: rawObj.keyword_settings_count ?? 0,
+        keywordSettingsCount,
       };
     });
 

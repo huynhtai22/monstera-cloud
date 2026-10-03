@@ -24,6 +24,19 @@ import {
 const NOW = new Date("2026-09-10T12:00:00.000Z");
 const HOUR_MS = 60 * 60 * 1000;
 
+it("a recent delivery is stale when canonical dataset evidence changed", () => {
+  const receipt: DeliveryReceiptRow = {
+    id: "receipt", clientId: "client", destination: "google_sheets",
+    windowStart: "2026-09-01", windowEnd: "2026-09-07",
+    dataThroughDate: "2026-09-07", rowCount: 7, retrievedAt: NOW,
+    evidenceCurrent: false,
+  };
+  const stale = summarizeDelivery([receipt], { now: NOW });
+  assert.equal(stale.totals.stale, 1);
+  assert.equal(stale.latest[0].stale, true);
+  assert.equal(summarizeDelivery([{ ...receipt, evidenceCurrent: true }], { now: NOW }).totals.stale, 0);
+});
+
 describe("operations summary: sanitization", () => {
   it("strips control characters, collapses whitespace and returns null for blanks", () => {
     assert.equal(sanitizeEvidenceText("  token\n\texpired\u0000  "), "token expired");
@@ -135,6 +148,30 @@ describe("operations summary: freshness with an injected clock", () => {
     const data = summarizeFreshness([], { now: NOW });
     assert.equal(data.sourceFreshnessHours, 24);
     assert.equal(data.escalationHours, 26);
+  });
+
+  it("uses the connection attempt time before calling provider processing stuck", () => {
+    const processingError = "Report task is still processing";
+    const recent = summarizeFreshness(
+      [{ ...base, status: "error", lastError: processingError, syncAttemptAt: NOW }],
+      { now: NOW },
+    );
+    assert.equal(recent.totals.syncing, 1);
+    assert.equal(recent.totals.stuck, 0);
+
+    const old = summarizeFreshness(
+      [{ ...base, status: "error", lastError: processingError, syncAttemptAt: new Date(NOW.getTime() - HOUR_MS - 1) }],
+      { now: NOW },
+    );
+    assert.equal(old.totals.stuck, 1);
+    assert.equal(old.totals.syncing, 0);
+
+    const missing = summarizeFreshness(
+      [{ ...base, status: "error", lastError: processingError, syncAttemptAt: null }],
+      { now: NOW },
+    );
+    assert.equal(missing.totals.syncing, 1);
+    assert.equal(missing.totals.stuck, 0);
   });
 
   it("classifies disconnected, partial and errored sources as needing attention", () => {

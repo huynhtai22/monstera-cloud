@@ -2,6 +2,11 @@ import { Resend } from 'resend';
 import { logger } from "@/lib/logger";
 import { assertMailSimulationAllowed } from "@/lib/e2e-env-guard";
 import { classifyTransportFailure } from "@/lib/dispatch-outcome";
+import {
+  classifyApprovedEmailException,
+  classifyApprovedEmailResponse,
+  type ApprovedBlueprintEmailOutcome,
+} from "@/lib/report-email-outcome";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
@@ -290,6 +295,48 @@ export const sendClientWeeklyReport = async (
   }
 };
 
+export type ApprovedBlueprintEmail = {
+  to: string;
+  subject: string;
+  html: string;
+  idempotencyKey: string;
+};
+
+/**
+ * Send an already-rendered, approved snapshot email and preserve the
+ * provider's acceptance boundary. A Resend API rejection is definitive;
+ * transport exceptions are ambiguous unless the socket provably never
+ * connected. Raw provider errors and recipient details are never returned.
+ */
+export async function sendApprovedBlueprintEmail(
+  message: ApprovedBlueprintEmail,
+): Promise<ApprovedBlueprintEmailOutcome> {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating approved report email");
+    return { status: "ACCEPTED", providerMessageId: null };
+  }
+
+  try {
+    const response = await getResendClient().emails.send({
+      from: "Monstera Cloud <no-reply@monsteracloud.com>",
+      to: [message.to],
+      subject: message.subject,
+      html: message.html,
+    }, { idempotencyKey: message.idempotencyKey });
+    if (response.error) {
+      logger.warn("[MAIL] Approved report email rejected by provider");
+    }
+    return classifyApprovedEmailResponse(response);
+  } catch (error) {
+    const outcome = classifyApprovedEmailException(error);
+    logger.warn("[MAIL] Approved report email transport ended without a provider response", {
+      status: outcome.status,
+    });
+    return outcome;
+  }
+}
+
 export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
   try {
     const { data, error } = await getResendClient().emails.send({
@@ -416,5 +463,62 @@ export const sendClientBriefEmail = async (
     // A transport failure after the request may have been sent is ambiguous:
     // the provider acceptance cannot be disproved from the client side.
     return { success: false, ambiguous: classifyTransportFailure(err) === "AMBIGUOUS", error: err };
+  }
+};
+
+/**
+ * P3 seat-sharing hardening: new-device sign-in nudge.
+ * Sent when a login arrives from a previously unseen network. Contains no
+ * IP address (raw values are never stored) — just time, method, and a
+ * pointer to Settings → Sessions. Fail-open: returns success:false on error.
+ */
+export const sendNewDeviceEmail = async (
+  email: string,
+  opts: { method: string; when?: Date },
+) => {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating new-device delivery");
+    return { success: true, data: { simulated: true } };
+  }
+
+  try {
+    const when = (opts.when ?? new Date()).toUTCString();
+    const sessionsUrl = new URL(
+      "/settings?tab=sessions",
+      process.env.NEXTAUTH_URL?.trim() || "https://monsteracloud.com",
+    ).toString();
+    const { data, error } = await getResendClient().emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [email],
+      subject: 'New sign-in to your Monstera Cloud account',
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">New sign-in</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 16px;">
+            Your Monstera Cloud account was just signed in from a new device or network
+            (<strong>${when}</strong>, via ${opts.method}).
+          </p>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 24px;">
+            If this was you, no action is needed. If you don't recognize it, change your
+            password and <a href="${sessionsUrl}" style="color: #059669;">review Settings → Sessions</a>
+            to sign out unknown devices.
+          </p>
+          <p style="color: #718096; font-size: 13px;">
+            You can use Monstera on several personal devices. Invite teammates so each
+            person has their own accountable access while sharing workspace connections.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      logger.error('[MAIL] NewDevice Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    logger.error('[MAIL] NewDevice Unexpected Error:', err);
+    return { success: false, error: err };
   }
 };

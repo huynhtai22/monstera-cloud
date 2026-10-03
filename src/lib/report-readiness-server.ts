@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { withDatabaseTenantContext } from "./database-tenant-context";
 import { Prisma } from "@prisma/client";
 import type { ScopedTransaction } from "./warehouse-query";
 import { RbacError } from "@/lib/rbac";
@@ -32,7 +33,7 @@ function outcome(value: unknown): SyncEvidence["status"] {
   return "unknown";
 }
 
-export type LoadReportReadinessOptions = { clientId?: string; after?: string; limit?: number; tx?: ScopedTransaction };
+export type LoadReportReadinessOptions = { clientId?: string; after?: string; limit?: number; tx?: ScopedTransaction; now?: Date };
 
 /**
  * Read-only, bounded, consistent readiness snapshot. Caller must authorize
@@ -42,17 +43,18 @@ export type LoadReportReadinessOptions = { clientId?: string; after?: string; li
  * their own metric rows, dataset fingerprints and delivery receipts.
  */
 export async function loadReportReadiness(workspaceId: string, window: ReportingWindow, options: LoadReportReadinessOptions = {}) {
-  const { tx: _tx, ...validationOptions } = options;
+  const { tx: _tx, now: _now, ...validationOptions } = options;
   void _tx;
+  void _now;
   if (!parseReadinessRequest({ workspaceId, start: window.start, end: window.end, ...validationOptions })) {
     throw new RbacError("Invalid readiness request", "INVALID_REQUEST", 400);
   }
   const run = (tx: ScopedTransaction) => loadReportReadinessInTransaction(tx, workspaceId, window, options);
   if (options.tx) return run(options.tx);
-  return prisma.$transaction(run, { isolationLevel: "RepeatableRead", timeout: 15_000 });
+  return withDatabaseTenantContext(prisma, workspaceId, run, { isolationLevel: "RepeatableRead", timeout: 15_000 });
 }
 
-async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspaceId: string, window: ReportingWindow, options: { clientId?: string; after?: string; limit?: number }) {
+async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspaceId: string, window: ReportingWindow, options: { clientId?: string; after?: string; limit?: number; now?: Date }) {
     const limit = options.clientId ? 1 : Math.min(options.limit ?? 50, 50);
     const clients = await tx.client.findMany({
       where: { workspaceId, ...(options.clientId ? { id: options.clientId } : options.after ? { id: { gt: options.after } } : {}) },
@@ -198,7 +200,7 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
         },
       });
     const limited = [sources, days, accounts, runs, jobs, destinations, pipelines].some(rows => rows.length > CAP);
-    const now = new Date();
+    const now = options.now ?? new Date();
     const syncByConnection = new Map<string, SyncEvidence[]>();
     const idSet = new Set(ids);
     const add = (id: string, sync: SyncEvidence) => {

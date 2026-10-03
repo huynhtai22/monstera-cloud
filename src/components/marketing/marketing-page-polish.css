@@ -1,0 +1,31 @@
+/* Shared visual rhythm for integrations and pricing. */
+html:has(.marketing-polish) { scroll-behavior:smooth; scroll-padding-top:86px; }
+.marketing-polish { --polish-mint:#c9efdb; --polish-muted:#9aa99e; --polish-line:rgba(212,239,221,.13); --polish-ease:cubic-bezier(.22,1,.36,1); background:#080b09; color:#f0f3f0; overflow-x:clip; }
+.marketing-polish .polish-container { width:min(1180px,calc(100% - 64px)); margin-inline:auto; }
+.marketing-polish .polish-eyebrow { display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-size:10px; font-weight:500; line-height:1.5; letter-spacing:.14em; text-transform:uppercase; color:#9fb4a4; }
+.marketing-polish .polish-eyebrow::before { content:""; width:5px; height:5px; flex-shrink:0; border-radius:50%; background:#b7edc9; box-shadow:0 0 9px #b7edc960; }
+.marketing-polish h1 { font-size:clamp(67px,8.2vw,112px); line-height:.98; letter-spacing:-.067em; font-weight:500; }
+.marketing-polish h1 span,.marketing-polish h2 span { color:var(--polish-mint); }
+.marketing-polish h2 { font-size:clamp(36px,4.2vw,58px); line-height:1.06; letter-spacing:-.05em; font-weight:500; }
+.marketing-polish a:focus-visible,.marketing-polish button:focus-visible,.marketing-polish select:focus-visible,.marketing-polish summary:focus-visible { outline:2px solid #c9efdb; outline-offset:4px; }
+.marketing-polish .polish-link { display:inline-flex; align-items:center; gap:11px; color:#d3e8d9; font-size:13px; transition:color 250ms ease; }
+.marketing-polish .polish-link:hover { color:#fff; }
+.marketing-polish .polish-link svg,.marketing-polish .polish-button svg { transition:transform 350ms var(--polish-ease); }
+.marketing-polish .polish-link:hover svg,.marketing-polish .polish-button:hover svg { transform:translateX(3px); }
+.marketing-polish .polish-button { display:inline-flex; align-items:center; justify-content:center; gap:13px; min-height:49px; padding:13px 20px; border-radius:7px; background:#edf6ee; color:#13251a; font-size:13px; font-weight:600; transition:background 250ms ease,box-shadow 350ms ease,transform 350ms var(--polish-ease); }
+.marketing-polish .polish-button:hover { background:#c9efdb; box-shadow:0 10px 35px #9aefb422; transform:translateY(-2px); }
+.marketing-polish .mh-motion-reveal[data-reveal-pending="true"]:not(.reveal-enter) { opacity:0; transform:translateY(28px); }
+.marketing-polish .mh-motion-reveal.reveal-enter { animation:polish-arrive 850ms var(--polish-ease) both; }
+.marketing-polish .mh-motion-reveal[data-reveal-focused="true"] { opacity:1; transform:none; animation:none; }
+@keyframes polish-arrive { from { opacity:0; transform:translateY(28px); } to { opacity:1; transform:translateY(0); } }
+@media (max-width:700px) {
+ .marketing-polish .polish-container { width:calc(100% - 36px); }
+ .marketing-polish h1 { font-size:clamp(55px,12vw,84px); }
+ .marketing-polish .polish-eyebrow { font-size:9px; }
+ .marketing-polish .mh-motion-reveal.reveal-enter { animation-duration:700ms; animation-delay:0ms !important; }
+}
+@media (prefers-reduced-motion:reduce) {
+ html:has(.marketing-polish) { scroll-behavior:auto; }
+ .marketing-polish .mh-motion-reveal[data-reveal-pending="true"],.marketing-polish .mh-motion-reveal.reveal-enter { opacity:1; transform:none; animation:none; }
+ .marketing-polish *, .marketing-polish *::before,.marketing-polish *::after { animation:none !important; transition:none !important; }
+}

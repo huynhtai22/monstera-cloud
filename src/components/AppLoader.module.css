@@ -1,0 +1,73 @@
+.overlay { --loader-entrance: 450ms; --loader-exit: 250ms; position: fixed; inset: 0; z-index: 10000; color: var(--color-ink); isolation: isolate; overflow: hidden; }
+.backdrop { position: absolute; inset: 0; background: var(--color-canvas); }
+.visual { position: absolute; width: 320px; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+.scene { height: 224px; position: relative; }
+.connections { position: absolute; inset: 0; width: 320px; height: 224px; overflow: visible; }
+.connections > g { animation: enter 250ms cubic-bezier(.22,1,.36,1) both; }
+.track { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; opacity: .28; stroke-dasharray: 1; stroke-dashoffset: 1; animation: lineEnter 350ms 200ms cubic-bezier(.22,1,.36,1) forwards; }
+.branch { position: absolute; inset: 0; pointer-events: none; animation: enter 250ms 200ms cubic-bezier(.22,1,.36,1) both; }
+.nodeShell { position: absolute; width: 26px; height: 26px; transform: translate(-50%, -50%); animation: nodeEnter 300ms cubic-bezier(.22,1,.36,1) both; }
+.nodeFace { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid var(--color-ink-mute); border-radius: 50%; background: var(--color-canvas); opacity: .85; transition: opacity 200ms ease-in-out; }
+.sourceGlyph { display: block; width: 14px; height: 14px; mask-size: contain; mask-position: center; mask-repeat: no-repeat; background: var(--color-ink-mute); animation: enter 250ms ease-in-out both; }
+.branch[data-state="done"] .nodeFace { border-color: var(--console-motion-accent); background: var(--console-motion-accent); opacity: .85; }
+.branch[data-state="done"] .sourceGlyph { background: var(--color-canvas); }
+.branch[data-state="active"] .sourceGlyph { background: var(--color-ink); }
+.branch[data-state="active"] .nodeFace { border-color: var(--console-motion-accent); opacity: 1; box-shadow: 0 0 12px color-mix(in srgb, var(--console-motion-accent) 18%, transparent); }
+.nodePulse { position: absolute; inset: 0; border: 1px solid var(--console-motion-accent); border-radius: 50%; opacity: 0; }
+.branch[data-state="active"] .nodePulse { animation: ringPulse 1600ms ease-in-out infinite; }
+.packet { position: absolute; left: 0; top: 0; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--console-motion-accent); box-shadow: 0 0 7px color-mix(in srgb, var(--console-motion-accent) 75%, transparent); opacity: 0; will-change: transform, opacity; }
+/* Before hydration, the active neutral node still has compositor motion. */
+.packet[data-line="0"][data-loop="true"] { animation: bootPacket 1600ms 200ms ease-in-out infinite; }
+.emblem { position: absolute; top: 50%; left: 50%; width: 80px; height: 80px; transform: translate(-50%, -50%); animation: tileEnter var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) both; will-change: transform; }
+.emblem::before { content: ""; position: absolute; inset: -40px; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 16%, transparent), transparent 68%); animation: glow 1600ms ease-in-out infinite; }
+.face { position: relative; width: 100%; height: 100%; }
+.mark { position: relative; display: block; width: 100%; height: 100%; }
+.innerGradient { position: absolute; inset: 5px; border-radius: 10px; background: linear-gradient(145deg, color-mix(in srgb, var(--console-motion-accent) 14%, transparent), transparent 65%); pointer-events: none; }
+.topHighlight { position: absolute; inset: 5px 15px auto; height: 1px; background: linear-gradient(90deg, transparent, var(--console-motion-accent), transparent); opacity: .65; }
+.outline { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.outline rect { fill: none; stroke: var(--console-motion-accent); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: outline var(--loader-entrance) 200ms cubic-bezier(.22,1,.36,1) forwards; }
+.completionGlow { position: absolute; inset: -40px; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--console-motion-accent) 22%, transparent), transparent 70%); animation: completionPulse 450ms ease-in-out both; }
+.copy { animation: copyEnter var(--loader-entrance) 320ms cubic-bezier(.22,1,.36,1) both; }
+.wordmark { margin: -18px 0 18px; font-size: 30px; font-weight: 500; letter-spacing: -.045em; line-height: 1.25; }
+.wordmark span { color: var(--color-ink-mute); font-weight: 400; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; color: var(--color-ink-mute); margin: 0; }
+.step { display: flex; flex-direction: column-reverse; gap: 10px; animation: enter 150ms ease-in-out both; }
+.status { margin: 0; color: var(--color-ink); display: grid; place-content: center; font-size: 15px; line-height: 1.55; min-height: 47px; }
+.overlay[data-phase="exit"] { pointer-events: none; }
+.overlay[data-phase="exit"] .backdrop { animation: leave 80ms ease-in-out forwards; }
+.overlay[data-phase="resolve"] .track { stroke-dashoffset: 0; animation: resolveLine 125ms var(--resolve-delay) ease-in-out both; }
+.overlay[data-phase="resolve"] .connections, .overlay[data-phase="resolve"] .branch, .overlay[data-phase="resolve"] .copy { animation: leave 70ms 155ms ease-in-out forwards; }
+.overlay[data-phase="resolve"] .emblem::before { animation: resolveGlow 225ms ease-in-out both; }
+.overlay[data-phase="resolve"] .innerGradient, .overlay[data-phase="resolve"] .topHighlight, .overlay[data-phase="resolve"] .outline { animation: leave 70ms 155ms ease-in-out forwards; }
+.overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .branch, .overlay[data-phase="exit"] .copy, .overlay[data-phase="exit"] .innerGradient, .overlay[data-phase="exit"] .topHighlight, .overlay[data-phase="exit"] .outline { visibility: hidden; }
+.overlay[data-phase="exit"] .emblem::before, .overlay[data-phase="exit"] .outline, .overlay[data-phase="exit"] .completionGlow, :global(html[data-monstera-tile-flight="true"]) .emblem::before, :global(html[data-monstera-tile-flight="true"]) .outline, :global(html[data-monstera-tile-flight="true"]) .completionGlow { visibility: hidden; animation: none; }
+.timeoutNotice { position: fixed; right: 24px; bottom: 24px; z-index: 10000; max-width: min(360px, calc(100vw - 48px)); padding: 16px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink); font-size: 14px; }
+.timeoutNotice p { margin: 0 0 12px; }
+.timeoutNotice button { padding: 6px 14px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-canvas); color: var(--color-ink); cursor: pointer; }
+.timeoutNotice button:focus-visible { outline: 2px solid var(--console-motion-accent); outline-offset: 3px; }
+:global(html[data-monstera-startup="skip"]) .overlay { display: none; }
+@keyframes enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tileEnter { from { opacity: 0; transform: translate(-50%, -50%) scale(.94); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes nodeEnter { from { opacity: 0; transform: translate(-50%, -50%) scale(.8); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes lineEnter { to { stroke-dashoffset: 0; } }
+@keyframes outline { to { stroke-dashoffset: 0; } }
+@keyframes copyEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ringPulse { from { opacity: .8; transform: scale(1); } to { opacity: 0; transform: scale(1.65); } }
+@keyframes glow { from, to { opacity: .4; transform: scale(.96); } 50% { opacity: .7; transform: scale(1.04); } }
+@keyframes completionPulse { from, to { opacity: 0; transform: scale(.92); } 40% { opacity: .8; transform: scale(1.05); } }
+@keyframes bootPacket { from { transform: translate3d(24px,52px,0); opacity: .3; } 50% { transform: translate3d(84px,77px,0); opacity: 1; } to { transform: translate3d(124px,104px,0); opacity: 0; } }
+@keyframes resolveLine { from, to { opacity: .28; } 45% { opacity: .9; } }
+@keyframes resolveGlow { from { opacity: .5; transform: scale(1); } 50%, 75% { opacity: 1; transform: scale(1.1); } to { opacity: 0; transform: scale(1.1); } }
+@keyframes leave { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .connections > g, .nodeShell, .copy, .emblem { animation: enter 150ms 200ms ease-in-out both; }
+  .emblem::before, .track, .outline rect { animation: none; }
+  .track, .outline rect { stroke-dashoffset: 0; }
+  .nodePulse, .packet, .completionGlow { display: none; }
+  .step { animation: enter 150ms ease-in-out; }
+  .overlay[data-phase="exit"] .backdrop, .overlay[data-phase="exit"] .connections, .overlay[data-phase="exit"] .copy { animation-duration: 150ms; }
+}
+@media (forced-colors: active) { .backdrop { background: Canvas; } .track, .outline rect { stroke: Highlight; } .nodeFace { border-color: Highlight; } .status, .eyebrow, .wordmark span { color: CanvasText; } .emblem::before, .completionGlow { display: none; } }
+
+@media (max-width: 420px) { .visual { width: 320px; } .copy { padding: 0 20px; } .status { min-height: 47px; } .wordmark { font-size: 28px; } }
+@media (max-width: 360px) { .scene { transform: scale(.92); } }

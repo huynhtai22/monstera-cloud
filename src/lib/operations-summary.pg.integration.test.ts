@@ -4,6 +4,8 @@ import { PrismaClient } from "@prisma/client";
 
 import { assertAllowedTestDatabase } from "./pg-test-discipline";
 import { ClientContextError } from "./client-context-server";
+import { reportingDataset } from "./report-delivery";
+import guardedPrisma from "./prisma";
 import {
   loadOperationsSummary,
   OPERATIONS_INGESTION_WINDOW_DAYS,
@@ -255,6 +257,31 @@ describe("PostgreSQL integration: operations summary isolation", () => {
       summary.sections.readiness.data?.clients.some((client) => client.clientId === ids.clB),
       false,
     );
+  });
+
+  it("invalidates a recent receipt after metric correction and accepts a matching receipt", async () => {
+    const where = { workspaceId: ids.wsA, clientId: ids.clA, destination: "google_sheets" };
+    const receipt = await db.destinationDeliveryReceipt.findFirstOrThrow({ where });
+    const metric = await db.campaignMetric.findFirstOrThrow({ where: { workspaceId: ids.wsA, accountId: "111" } });
+    try {
+      const dataset = await guardedPrisma.$transaction((tx) => reportingDataset(tx, ids.wsA, ids.clA,
+        { start: receipt.windowStart, end: receipt.windowEnd }), { isolationLevel: "RepeatableRead" });
+      assert.ok(dataset.rowCount > 0);
+      await db.destinationDeliveryReceipt.update({ where: { id: receipt.id }, data: {
+        datasetFingerprint: dataset.fingerprint, rowCount: dataset.rowCount, dataThroughDate: dataset.dataThroughDate!,
+      } });
+      const current = await loadOperationsSummary({ workspaceId: ids.wsA, requestedClientId: ids.clA, now: NOW });
+      assert.equal(current.sections.delivery.state, "ready");
+      await db.campaignMetric.update({ where: { id: metric.id }, data: { spend: Number(metric.spend) + 1 } });
+      const changed = await loadOperationsSummary({ workspaceId: ids.wsA, requestedClientId: ids.clA, now: NOW });
+      assert.equal(changed.sections.delivery.state, "attention");
+      assert.equal(changed.sections.delivery.data?.latest[0].stale, true);
+    } finally {
+      await db.campaignMetric.update({ where: { id: metric.id }, data: { spend: metric.spend } });
+      await db.destinationDeliveryReceipt.update({ where: { id: receipt.id }, data: {
+        datasetFingerprint: receipt.datasetFingerprint, rowCount: receipt.rowCount, dataThroughDate: receipt.dataThroughDate,
+      } });
+    }
   });
 
   it("isolates a concrete client from a sibling client on the SAME shared root connection", async () => {
@@ -603,8 +630,8 @@ describe("PostgreSQL integration: operations summary isolation", () => {
       // Authoritative totals count BOTH pairs, including the stale one that the
       // bounded display scan could not retain.
       assert.equal(section.data?.totals.receipts, 2);
-      assert.equal(section.data?.totals.stale, 1);
-      assert.equal(section.data?.latest.length, 1, "the bounded scan only retained the fresh pair");
+      assert.equal(section.data?.totals.stale, 2, "recent but fabricated fingerprint is also stale");
+      assert.equal(section.data?.latest.length, 2, "fetch latest evidence for pairs outside the bounded history scan");
       assert.equal(section.truncated, true);
       assert.equal(section.state, "attention");
     } finally {

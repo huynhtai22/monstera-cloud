@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -34,8 +35,8 @@ jobs:
       PILOT_MODE: "1"
       CLIENT_ASSIGNMENT_TEST_DB: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -50,6 +51,7 @@ jobs:
       - name: Run Node tests
         env:
           CONNECTOR_RESILIENCE_TEST_DB: "1"
+          REQUIRE_POSTGRES_TESTS: "1"
         run: npm test
       - name: Production build
         env:
@@ -81,6 +83,8 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
           MONSTERA_E2E_ISOLATED: "1"
           CLIENT_ASSIGNMENT_TEST_DB: "1"
+          # Exercise guided setup only with the explicit disposable test cohort.
+          ENABLE_AGENT_ONBOARDING: "1"
           # Enables server-side analyst routes during browser QA execution.
           ENABLE_GOVERNED_ANALYST: "1"
           # The application records the actually tested commit in report

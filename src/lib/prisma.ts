@@ -8,7 +8,7 @@ declare global {
   var prismaGlobal: undefined | ReturnType<typeof createGuardedPrisma>;
 }
 
-function createGuardedPrisma(base: PrismaClient) {
+export function createGuardedPrisma(base: PrismaClient) {
   return base.$extends({
     query: {
       $allModels: {

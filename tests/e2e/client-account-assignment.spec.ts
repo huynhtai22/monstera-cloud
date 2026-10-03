@@ -353,8 +353,11 @@ test.describe("client account assignment journeys", () => {
   test("Manage sources deep-link selects the accounts tab and preserves five-client identity", async ({ authenticatedFixturePage: page }) => {
     await page.goto("/clients", { waitUntil: "domcontentloaded" });
 
-    const manage = page.locator(`a[href="/sources?clientId=${fixture.clients.one.id}&tab=accounts"]`);
+    const manage = page
+      .locator(`a[href="/sources?clientId=${fixture.clients.one.id}&tab=accounts"]`)
+      .filter({ hasText: /^Manage sources$/ });
     await expect(manage).toBeVisible();
+    await expect(manage).toHaveAttribute("href", `/sources?clientId=${fixture.clients.one.id}&tab=accounts`);
     await expect(manage).toHaveAccessibleName("Manage sources");
     await manage.click();
 
@@ -526,8 +529,8 @@ test.describe("client account assignment journeys", () => {
       headers: { Authorization: `Bearer ${fixture.apiKeySecret}` },
     });
     expect(exportResponse.ok()).toBeTruthy();
-    const exported = await exportResponse.json() as { rows: Array<Array<string | number>> };
-    const exportText = exported.rows.flat().join(" ");
+    const exported = await exportResponse.json() as Array<Array<string | number>>;
+    const exportText = exported.flat().join(" ");
     expect(exportText).toContain("Tuple included bulk one");
     expect(exportText).toContain("Tuple included bulk two");
     expect(exportText).not.toContain("Tuple excluded wrong root");

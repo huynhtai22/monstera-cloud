@@ -139,7 +139,7 @@ describe("Report Lifecycle v1 contracts", () => {
       assert.equal(state, "Approved — ready to send");
     });
 
-    it("4. Approved snapshot with verified destination yields 'Delivered'", () => {
+    it("4. Approved snapshot with verified dataset retrieval is labeled accurately", () => {
       const state = deriveReportLifecycleState({
         dataStatus: "READY",
         currentSnapshot,
@@ -147,10 +147,10 @@ describe("Report Lifecycle v1 contracts", () => {
         latestReportApproval: sampleApproval(),
         destinationVerified: true,
       });
-      assert.equal(state, "Delivered");
+      assert.equal(state, "Dataset retrieval verified");
     });
 
-    it("5. Delivery receipt without human approval NEVER yields 'Delivered' or 'Approved'", () => {
+    it("5. Delivery receipt without human approval never claims email delivery or approval", () => {
       const state = deriveReportLifecycleState({
         dataStatus: "READY",
         currentSnapshot,
@@ -158,11 +158,11 @@ describe("Report Lifecycle v1 contracts", () => {
         latestReportApproval: null,
         destinationVerified: true, // Destination proof exists, but NO operator approved
       });
-      assert.notEqual(state, "Delivered");
+      assert.notEqual(state, "Dataset retrieval verified");
       assert.notEqual(state, "Approved — ready to send");
       assert.equal(
         state,
-        "Delivered (unapproved)",
+        "Dataset retrieval verified (unapproved)",
         "A delivery receipt alone must never imply human approval",
       );
     });
@@ -227,7 +227,7 @@ describe("Report Lifecycle v1 contracts", () => {
       assert.equal(state, "Approval outdated");
     });
 
-    it("8. Delivered-but-unapproved is represented honestly across all three axes", () => {
+    it("8. Dataset evidence without approval is represented honestly across all three axes", () => {
       const lifecycle = deriveReportLifecycle({
         dataStatus: "READY",
         currentSnapshot,
@@ -239,7 +239,7 @@ describe("Report Lifecycle v1 contracts", () => {
         dataStatus: "READY",
         approvalStatus: "NOT_APPROVED",
         deliveryStatus: "DELIVERED",
-        summaryLabel: "Delivered (unapproved)",
+        summaryLabel: "Dataset retrieval verified (unapproved)",
       });
     });
 
@@ -254,7 +254,7 @@ describe("Report Lifecycle v1 contracts", () => {
       assert.equal(full.dataStatus, "READY");
       assert.equal(full.approvalStatus, "APPROVED");
       assert.equal(full.deliveryStatus, "DELIVERED");
-      assert.equal(full.summaryLabel, "Delivered");
+      assert.equal(full.summaryLabel, "Dataset retrieval verified");
 
       // Complete data, approved, not delivered
       const approvedOnly = deriveReportLifecycle({

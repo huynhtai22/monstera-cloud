@@ -11,15 +11,16 @@ import {
   Lock,
   RefreshCcw,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
   Users,
 } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { trackEvent } from "@/lib/analytics-events";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
-import { SignaturePipeline } from "./SignaturePipeline";
 import { MarketingScrollReveal } from "./MarketingScrollReveal";
+
+import { MarketingProductTour } from "./MarketingProductTour";
+import "./marketing-home.css";
 
 const MARKETING_LANG_KEY = "marketing_lang";
 type Lang = "en" | "vi";
@@ -30,7 +31,7 @@ const COPY = {
       eyebrow: "Dành cho performance agency tại Việt Nam",
       title: ["Thêm khách hàng.", "Bớt giờ làm báo cáo."],
       description:
-        "Đưa Meta Ads, Google Ads, TikTok Ads và Shopee vào workspace riêng cho từng khách hàng. Theo dõi chi tiêu, doanh thu do nền tảng ghi nhận, ROAS và tình trạng dữ liệu—sau đó đưa dữ liệu sạch sang Google Sheets hoặc Looker Studio.",
+        "Gom báo cáo Meta Ads, Google Ads, TikTok Ads và Shopee theo từng khách hàng. Theo dõi KPI, tình trạng dữ liệu và đưa báo cáo sang Sheets hoặc Looker Studio.",
       primary: "Dùng thử Agency Pro 7 ngày",
       secondary: "Xem dashboard mẫu",
       note: "Không cần thẻ · Có hướng dẫn thiết lập · Dữ liệu tách biệt theo workspace",
@@ -42,11 +43,16 @@ const COPY = {
       spend: "Chi tiêu",
       revenue: "Doanh thu nền tảng",
       roas: "ROAS",
-      pacing: "Tiến độ ngân sách",
+      trend: "Xu hướng doanh thu",
       sources: "Tình trạng nguồn dữ liệu",
       healthy: "Ổn định",
       action: "Cần kết nối lại",
       disclaimer: "Số liệu minh hoạ giao diện sản phẩm, không phải kết quả khách hàng.",
+      tabs: { overview: "Tổng quan", sources: "Nguồn dữ liệu", delivery: "Bàn giao" },
+      sourceTitle: "Tình trạng kết nối",
+      sourceNote: "Đồng bộ báo cáo theo yêu cầu hoặc theo lịch.",
+      deliveryTitle: "Sẵn sàng cho báo cáo khách hàng",
+      deliveryNote: "Dùng cùng bộ dữ liệu trong công cụ team đang sử dụng.",
     },
     trust: [
       { icon: Eye, label: "Quyền truy cập báo cáo, không chỉnh chiến dịch" },
@@ -133,7 +139,7 @@ const COPY = {
       eyebrow: "Built for performance agencies in Vietnam",
       title: ["More clients.", "Fewer hours spent reporting."],
       description:
-        "Bring Meta Ads, Google Ads, TikTok Ads, and Shopee into a separate workspace for every client. Monitor spend, provider-reported revenue, ROAS, and data health—then deliver clean data to Google Sheets or Looker Studio.",
+        "Bring Meta Ads, Google Ads, TikTok Ads, and Shopee into one reporting flow for every client. Track performance and data health, then deliver reports to Sheets or Looker Studio.",
       primary: "Try Agency Pro for 7 days",
       secondary: "See the sample dashboard",
       note: "No card required · Guided setup · Workspace-scoped data",
@@ -145,11 +151,16 @@ const COPY = {
       spend: "Spend",
       revenue: "Provider revenue",
       roas: "ROAS",
-      pacing: "Budget pacing",
+      trend: "Revenue trend",
       sources: "Source health",
       healthy: "Healthy",
       action: "Reconnect",
       disclaimer: "Illustrative product data—not a customer result.",
+      tabs: { overview: "Overview", sources: "Sources", delivery: "Delivery" },
+      sourceTitle: "Connection health",
+      sourceNote: "Refresh reporting data on demand or on a schedule.",
+      deliveryTitle: "Ready for client reporting",
+      deliveryNote: "Use the same prepared data in the tools your team already works in.",
     },
     trust: [
       { icon: Eye, label: "Reporting access without campaign edits" },
@@ -253,6 +264,7 @@ function PilotLink({ children, location, className }: { children: ReactNode; loc
 
 function AgencyControlRoomPreview({ lang }: { lang: Lang }) {
   const t = COPY[lang].preview;
+  const [view, setView] = useState<"overview" | "sources" | "delivery">("overview");
   const sources = [
     { name: "Meta Ads", logo: INTEGRATION_LOGOS.meta, status: t.healthy, tone: "text-emerald-400" },
     { name: "Google Ads", logo: INTEGRATION_LOGOS.googleAds, status: t.healthy, tone: "text-emerald-400" },
@@ -261,51 +273,99 @@ function AgencyControlRoomPreview({ lang }: { lang: Lang }) {
   ];
 
   return (
-    <div id="sample-dashboard" className="relative mx-auto w-full max-w-[720px] scroll-mt-24">
-      <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-emerald-400/[0.07] blur-3xl" />
-      <div className="overflow-hidden rounded-2xl border border-white/[0.13] bg-[#0d1010] shadow-[0_30px_100px_rgba(0,0,0,0.55)]">
-        <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3 sm:px-5">
+    <div id="sample-dashboard" className="relative mx-auto w-full max-w-[1180px] scroll-mt-24">
+      <div aria-hidden className="absolute -inset-8 -z-10 rounded-full bg-white/[0.025] blur-3xl" />
+      <div className="overflow-hidden rounded-2xl border border-white/[0.12] bg-[#111111] shadow-[0_32px_100px_rgba(0,0,0,0.48)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300/15 bg-emerald-400/10 text-emerald-300"><BarChart3 className="h-4 w-4" /></span>
-            <div><p className="font-mono text-[9px] font-semibold tracking-[0.18em] text-emerald-300">{t.kicker}</p><p className="mt-0.5 text-xs font-medium text-ink sm:text-sm">{t.client}</p></div>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.05] text-white"><BarChart3 className="h-4 w-4" /></span>
+            <div><p className="font-mono text-[9px] font-semibold tracking-[0.18em] text-ink-mute">{t.kicker}</p><p className="mt-0.5 text-xs font-medium text-ink sm:text-sm">{t.client}</p></div>
           </div>
-          <span className="rounded-md border border-white/[0.08] bg-white/[0.035] px-2.5 py-1 text-[10px] text-ink-mute">{t.range}</span>
+          <div className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-black/30 p-1" role="group" aria-label={lang === "vi" ? "Chế độ xem báo cáo mẫu" : "Sample report views"}>
+            {(["overview", "sources", "delivery"] as const).map((item) => (
+              <button key={item} type="button" aria-pressed={view === item} onClick={() => { setView(item); trackEvent("landing_sample_view_selected", { view: item, language: lang }); }} className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${view === item ? "bg-white text-black" : "text-ink-mute hover:text-ink"}`}>
+                {t.tabs[item]}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="grid gap-px bg-white/[0.07] sm:grid-cols-3">
-          {[
-            [t.spend, "126,4M ₫", "+8,2%"],
-            [t.revenue, "482,6M ₫", "+12,6%"],
-            [t.roas, "3,82x", "+0,16"],
-          ].map(([label, value, change]) => (
-            <div key={label} className="bg-[#0d1010] px-5 py-5">
-              <p className="text-[10px] uppercase tracking-[0.13em] text-ink-mute">{label}</p>
-              <div className="mt-3 flex items-end justify-between gap-3"><strong className="text-2xl font-semibold tracking-tight text-ink">{value}</strong><span className="pb-0.5 font-mono text-[10px] text-emerald-400">{change}</span></div>
+        <div key={view} className="preview-panel" aria-live="polite">
+          {view === "overview" ? <>
+            <div className="grid grid-cols-3 gap-px bg-white/[0.08]">
+              {[[t.spend, "126,4M ₫", "+8,2%"], [t.revenue, "482,6M ₫", "+12,6%"], [t.roas, "3,82x", "+0,16"]].map(([label, value, change]) => (
+                <div key={label} className="bg-[#111111] px-3 py-4 sm:px-6 sm:py-5">
+                  <p className="text-[9px] uppercase tracking-[0.1em] text-ink-mute sm:text-[10px] sm:tracking-[0.13em]">{label}</p>
+                  <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1"><strong className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-ink sm:text-2xl">{value}</strong><span className="font-mono text-[9px] text-emerald-400 sm:text-[10px]">{change}</span></div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-
-        <div className="grid gap-4 p-4 sm:grid-cols-[1.05fr_0.95fr] sm:p-5">
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4">
-            <div className="flex items-center justify-between"><p className="text-xs font-medium text-ink">{t.pacing}</p><span className="font-mono text-[11px] text-emerald-300">75%</span></div>
-            <div className="relative mt-6 h-28 overflow-hidden rounded-lg border border-white/[0.06] bg-black/20 px-3 pt-3">
-              <div className="absolute inset-x-3 bottom-3 top-3 flex items-end gap-2">
-                {[32, 46, 41, 62, 58, 73, 68, 82, 76, 88, 80, 94].map((height, index) => <span key={index} className="flex-1 rounded-t-sm bg-gradient-to-t from-emerald-500/35 to-emerald-300/80" style={{ height: `${height}%` }} />)}
+            <div className="grid gap-4 p-4 sm:grid-cols-[1.6fr_0.9fr] sm:p-6">
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 sm:p-5">
+                <div className="flex items-center justify-between"><p className="text-xs font-medium text-ink">{t.trend}</p><span className="font-mono text-[10px] text-ink-mute">{t.range}</span></div>
+                <div className="relative mt-4 h-32 overflow-hidden rounded-lg border border-white/[0.06] bg-black/20 px-3 pt-3 sm:h-52">
+                  <div className="absolute inset-3 flex flex-col justify-between" aria-hidden="true"><span className="border-t border-dashed border-white/[0.08]" /><span className="border-t border-dashed border-white/[0.08]" /><span className="border-t border-dashed border-white/[0.08]" /><span className="border-t border-white/[0.08]" /></div>
+                  <svg className="absolute inset-x-3 bottom-3 top-3 h-[calc(100%-1.5rem)] w-[calc(100%-1.5rem)] overflow-visible" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label={lang === "vi" ? "Biểu đồ doanh thu minh hoạ" : "Illustrative provider-reported revenue trend"}>
+                    <defs><linearGradient id="landing-revenue-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#8ce5bc" stopOpacity=".25" /><stop offset="100%" stopColor="#8ce5bc" stopOpacity="0" /></linearGradient></defs>
+                    <path d="M0 145 C34 138 43 116 74 124 S113 137 145 112 S184 123 216 101 S254 117 288 90 S327 104 360 78 S399 90 432 65 S471 87 504 58 S543 70 576 45 S615 69 648 36 S690 47 720 19 V180 H0Z" fill="url(#landing-revenue-fill)" />
+                    <path className="landing-chart-line" d="M0 145 C34 138 43 116 74 124 S113 137 145 112 S184 123 216 101 S254 117 288 90 S327 104 360 78 S399 90 432 65 S471 87 504 58 S543 70 576 45 S615 69 648 36 S690 47 720 19" fill="none" stroke="#9de8c5" strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
+                    <circle cx="720" cy="19" r="4.5" fill="#b4f2d3" />
+                  </svg>
+                </div>
+                <div className="mt-2 flex justify-between px-1 font-mono text-[9px] text-ink-mute"><span>01</span><span>10</span><span>20</span><span>30</span></div>
               </div>
-              <div className="absolute inset-x-3 top-[35%] border-t border-dashed border-amber-300/35" />
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 sm:p-5">
+                <div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium text-ink">{t.sources}</p><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /></div>
+                <div className="divide-y divide-white/[0.06]">{sources.map((source) => <div key={source.name} className="flex items-center justify-between py-2.5"><div className="flex items-center gap-2.5"><IntegrationMark src={source.logo} alt="" size="sm" /><span className="text-[11px] font-medium text-ink">{source.name}</span></div><span className={`font-mono text-[9px] ${source.tone}`}>● {source.status}</span></div>)}</div>
+              </div>
             </div>
-            <div className="mt-3 flex items-center justify-between text-[10px] text-ink-mute"><span>95,1M ₫</span><span>126,8M ₫ budget</span></div>
-          </div>
-
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4">
-            <div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium text-ink">{t.sources}</p><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" /></div>
-            <div className="divide-y divide-white/[0.06]">
-              {sources.map((source) => <div key={source.name} className="flex items-center justify-between py-2.5"><div className="flex items-center gap-2.5"><IntegrationMark src={source.logo} alt="" size="sm" /><span className="text-[11px] font-medium text-ink">{source.name}</span></div><span className={`font-mono text-[9px] ${source.tone}`}>● {source.status}</span></div>)}
-            </div>
-          </div>
+          </> : view === "sources" ? <div className="grid gap-8 p-5 sm:grid-cols-[0.8fr_1.2fr] sm:p-10">
+            <div className="self-center"><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">01 / {t.tabs.sources}</p><h3 className="mt-3 text-xl font-medium tracking-tight text-ink sm:text-2xl">{t.sourceTitle}</h3><p className="mt-3 max-w-sm text-sm leading-relaxed text-ink-mute">{t.sourceNote}</p></div>
+            <div className="rounded-xl border border-white/[0.08] bg-black/20 px-4 sm:px-6">{sources.map((source) => <div key={source.name} className="flex items-center justify-between border-b border-white/[0.07] py-4 last:border-b-0"><div className="flex items-center gap-3"><IntegrationMark src={source.logo} alt="" size="sm" /><span className="text-sm font-medium text-ink">{source.name}</span></div><span className={`font-mono text-[10px] ${source.tone}`}>● {source.status}</span></div>)}</div>
+          </div> : <div className="grid gap-8 p-5 sm:grid-cols-[0.8fr_1.2fr] sm:p-10">
+            <div className="self-center"><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">03 / {t.tabs.delivery}</p><h3 className="mt-3 text-xl font-medium tracking-tight text-ink sm:text-2xl">{t.deliveryTitle}</h3><p className="mt-3 max-w-sm text-sm leading-relaxed text-ink-mute">{t.deliveryNote}</p></div>
+            <div className="grid gap-3 sm:grid-cols-2">{[{ name: "Google Sheets", logo: INTEGRATION_LOGOS.googleSheets, detail: lang === "vi" ? "Luồng bảng tính" : "Spreadsheet workflow" }, { name: "Looker Studio", logo: INTEGRATION_LOGOS.looker, detail: lang === "vi" ? "Luồng báo cáo" : "Reporting workflow" }].map((destination) => <div key={destination.name} className="flex min-h-36 flex-col justify-between rounded-xl border border-white/[0.08] bg-black/20 p-5"><IntegrationMark src={destination.logo} alt="" size="md" /><div><h4 className="text-sm font-medium text-ink">{destination.name}</h4><p className="mt-1 text-xs text-ink-mute">{destination.detail}</p></div></div>)}</div>
+          </div>}
         </div>
         <p className="border-t border-white/[0.07] px-5 py-2.5 text-[9px] leading-relaxed text-ink-mute">{t.disclaimer}</p>
       </div>
+    </div>
+  );
+}
+
+function ClientWorkspaceDemo({ lang }: { lang: Lang }) {
+  const [selected, setSelected] = useState(0);
+  const clients = [
+    { name: "Client A", category: lang === "vi" ? "Thương mại" : "Commerce", spend: "126.4M ₫", revenue: "482.6M ₫", roas: "3.82×", bars: [25, 42, 38, 52, 48, 70, 64, 82, 76, 95] },
+    { name: "Client B", category: lang === "vi" ? "Bán lẻ" : "Retail", spend: "84.2M ₫", revenue: "298.1M ₫", roas: "3.54×", bars: [44, 30, 52, 43, 61, 56, 74, 66, 87, 80] },
+    { name: "Client C", category: lang === "vi" ? "Phong cách sống" : "Lifestyle", spend: "62.8M ₫", revenue: "271.3M ₫", roas: "4.32×", bars: [20, 32, 29, 44, 51, 46, 68, 78, 72, 94] },
+  ];
+  const current = clients[selected];
+  return (
+    <div className="mh-workspace-demo">
+      <div className="mh-demo-toolbar"><span className="mh-demo-dot" />{lang === "vi" ? "Workspace của agency" : "Agency workspace"}<span className="mh-demo-label">{lang === "vi" ? "MINH HOẠ" : "ILLUSTRATIVE"}</span></div>
+      <div className="mh-client-tabs" role="group" aria-label={lang === "vi" ? "Chọn khách hàng mẫu" : "Choose a sample client"}>
+        {clients.map((client, index) => <button type="button" key={client.name} aria-pressed={selected === index} onClick={() => setSelected(index)}><span className="mh-client-avatar">{String.fromCharCode(65 + index)}</span><span>{client.name}<small>{client.category}</small></span><span className="mh-client-selected"><Check size={13} /></span></button>)}
+      </div>
+      <div className="mh-client-panel" key={selected} aria-live="polite">
+        <div className="mh-client-panel-heading"><span>{current.name} <span className="mh-muted">/ {lang === "vi" ? "Tổng quan" : "Overview"}</span></span><span className="mh-demo-label">{lang === "vi" ? "30 NGÀY" : "30 DAYS"}</span></div>
+        <div className="mh-client-metrics">{[[lang === "vi" ? "Chi tiêu" : "Spend", current.spend], [lang === "vi" ? "Doanh thu" : "Revenue", current.revenue], ["ROAS", current.roas]].map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
+        <div className="mh-demo-bars" aria-hidden="true">{current.bars.map((height, index) => <span key={index} style={{ height: `${height}%`, animationDelay: `${index * 25}ms` }} />)}</div>
+      </div>
+      <p className="mh-demo-footnote">{lang === "vi" ? "Chọn khách hàng để khám phá dữ liệu mẫu." : "Select a client to explore the sample data."}</p>
+    </div>
+  );
+}
+
+function DeliveryDemo({ lang }: { lang: Lang }) {
+  return (
+    <div className="mh-delivery-demo" aria-hidden="true">
+      <div className="mh-sheet-window">
+        <div className="mh-sheet-title"><IntegrationMark src={INTEGRATION_LOGOS.googleSheets} alt="" size="sm" /><span>{lang === "vi" ? "Báo cáo hiệu suất" : "Performance report"}</span><span className="mh-sheet-status"><Check size={12} /></span></div>
+        <div className="mh-sheet-columns"><span /><span>A</span><span>B</span><span>C</span></div>
+        {[['1', 'Platform', 'Spend', 'ROAS'], ['2', 'Meta Ads', '58.2M', '4.12×'], ['3', 'Google Ads', '41.6M', '3.64×'], ['4', 'TikTok Ads', '26.6M', '3.45×'], ['5', '', '', '']].map((row) => <div className="mh-sheet-row" key={row[0]}>{row.map((value, i) => <span key={i}>{value || '\u00a0'}</span>)}</div>)}
+      </div>
+      <div className="mh-delivery-pill"><IntegrationMark src={INTEGRATION_LOGOS.looker} alt="" size="sm" />Looker Studio<ArrowRight size={15} /></div>
     </div>
   );
 }
@@ -322,41 +382,83 @@ export default function MarketingHomePage() {
   }, []);
 
   const t = COPY[lang];
+  const vi = lang === "vi";
+  const flow = vi
+    ? [["Kết nối", "Ủy quyền các nền tảng bạn đang dùng."], ["Đồng bộ", "Đưa số liệu về một cấu trúc chung."], ["Kiểm tra", "Xem độ mới và tình trạng dữ liệu."], ["Báo cáo", "Làm việc trong Sheets, Looker hoặc API."]]
+    : [["Connect", "Authorize the platforms you already use."], ["Sync", "Bring channel metrics into one structure."], ["Review", "Check freshness and source health."], ["Report", "Work in Sheets, Looker, or your API."]];
 
   return (
-    <div lang={lang} className="overflow-x-clip pb-16">
-      <section className="relative isolate px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
-        <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-[42rem] bg-[radial-gradient(ellipse_at_top,rgba(52,211,153,0.09),transparent_60%)]" />
-        <div className="mx-auto grid max-w-6xl gap-14 lg:grid-cols-[0.78fr_1.22fr] lg:items-center">
-          <MarketingScrollReveal>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-400/[0.07] px-3 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{t.hero.eyebrow}</div>
-            <h1 className="mt-7 text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.055em] text-ink sm:text-6xl lg:text-[4.45rem]"><span className="block">{t.hero.title[0]}</span><span className="mt-2 block text-neutral-400">{t.hero.title[1]}</span></h1>
-            <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-ink-mute sm:text-lg">{t.hero.description}</p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <PilotLink location="hero" className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50">{t.hero.primary}<ArrowRight className="ml-2 h-4 w-4" /></PilotLink>
-              <Link href="#sample-dashboard" onClick={() => trackEvent("landing_sample_dashboard_clicked", { language: lang })} className="inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-3 text-sm font-medium text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04]">{t.hero.secondary}</Link>
+    <div lang={lang} className="frontier-home">
+      <section className="mh-hero">
+        <div className="mh-hero-orbit" aria-hidden="true" />
+        <div className="mh-container">
+          <MarketingScrollReveal cinematic>
+            <div className="mh-eyebrow"><span className="mh-live-dot" />{vi ? "KHÔNG GIAN DỮ LIỆU CHO AGENCY" : "THE AGENCY DATA WORKSPACE"}<span className="mh-eyebrow-index">MONSTERA / 01</span></div>
+            <div className="mh-hero-heading">
+              <h1>{vi ? "Dữ liệu của bạn." : "Your ad data."}<br /><span>{vi ? "Toàn cảnh rõ ràng." : "In full view."}</span></h1>
+              <div className="mh-hero-aside">
+                <p>{vi ? "Gom hiệu suất quảng cáo, doanh thu và dữ liệu khách hàng vào một luồng báo cáo rõ ràng. Để agency dành thời gian cho điều quan trọng hơn." : "Ad performance. Commerce. Every client. One clear reporting workflow—so your agency can focus on what comes next."}</p>
+                <div className="mh-actions"><PilotLink location="hero" className="mh-button mh-button-primary">{vi ? "Dùng thử 7 ngày" : "Start your 7-day pilot"}<ArrowRight size={16} /></PilotLink><Link href="#sample-dashboard" className="mh-text-link" onClick={() => trackEvent("landing_sample_dashboard_clicked", { language: lang })}>{vi ? "Khám phá sản phẩm" : "Explore the product"}<span aria-hidden="true">↘</span></Link></div>
+                <small>{vi ? "Không cần thẻ. Có hướng dẫn thiết lập." : "No card required. Guided setup included."}</small>
+              </div>
             </div>
-            <p className="mt-4 font-mono text-[10px] leading-relaxed text-ink-mute">{t.hero.note}</p>
           </MarketingScrollReveal>
-          <MarketingScrollReveal delay={100}><AgencyControlRoomPreview lang={lang} /></MarketingScrollReveal>
+          <MarketingScrollReveal cinematic delay={100} className="mh-product-stage">
+            <div className="mh-stage-caption"><span>{vi ? "MỌI TÍN HIỆU. MỘT GÓC NHÌN." : "EVERY SIGNAL. ONE PERSPECTIVE."}</span><span><span className="mh-live-dot" />{vi ? "Khám phá dashboard mẫu" : "Explore the sample dashboard"}</span></div>
+            <AgencyControlRoomPreview lang={lang} />
+          </MarketingScrollReveal>
         </div>
       </section>
 
-      <section aria-label="Trust signals" className="border-y border-line bg-panel/35 px-4 py-5 sm:px-6 lg:px-8"><MarketingScrollReveal className="mx-auto grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4">{t.trust.map(({ icon: Icon, label }) => <div key={label} className="flex items-center gap-2.5 px-2 text-xs leading-snug text-ink-mute"><Icon className="h-4 w-4 shrink-0 text-ink" strokeWidth={1.5} /><span>{label}</span></div>)}</MarketingScrollReveal></section>
+      <section id="integrations" className="mh-integrations mh-container">
+        <p className="mh-eyebrow">{vi ? "KẾT NỐI VỚI NHỮNG CÔNG CỤ BẠN ĐANG DÙNG" : "BUILT AROUND THE PLATFORMS YOU ALREADY USE"}</p>
+        <div className="mh-provider-row">{PROVIDERS.map((provider) => <Link key={provider.name} href={provider.href}><IntegrationMark src={provider.logo} alt="" size="sm" /><span>{provider.name}</span></Link>)}<span className="mh-provider-divider" /><span className="mh-provider-destination">Google Sheets</span><span className="mh-provider-destination">Looker Studio</span></div>
+      </section>
 
-      <section id="integrations" className="scroll-mt-20 px-4 py-16 sm:px-6 sm:py-20 lg:px-8"><MarketingScrollReveal className="mx-auto max-w-6xl"><p className="mb-6 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.providerLabel}</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{PROVIDERS.map((provider) => <Link key={provider.name} href={provider.href} className="flex h-16 items-center justify-center gap-3 rounded-lg border border-line bg-panel px-4 transition-colors hover:border-white/25 hover:bg-white/[0.03]"><IntegrationMark src={provider.logo} alt="" size="sm" /><span className="text-sm font-medium text-ink">{provider.name}</span></Link>)}</div><div className="mt-3 grid grid-cols-3 gap-3 text-center text-[11px] text-ink-mute"><span className="rounded-md border border-line bg-panel/40 px-3 py-2">Google Sheets</span><span className="rounded-md border border-line bg-panel/40 px-3 py-2">Looker Studio</span><span className="rounded-md border border-line bg-panel/40 px-3 py-2">CSV &amp; API</span></div></MarketingScrollReveal></section>
+      <section className="mh-stories mh-container">
+        <MarketingScrollReveal cinematic className="mh-section-heading"><div><p className="mh-eyebrow">{vi ? "MỘT CÁCH LÀM VIỆC TỐT HƠN" : "A BETTER WAY TO WORK"}</p><h2>{vi ? "Bớt ghép số liệu." : "Less assembling."}<br /><span>{vi ? "Thêm góc nhìn." : "More understanding."}</span></h2></div><p>{vi ? "Từ buổi kiểm tra đầu ngày đến phiên review khách hàng. Đưa số liệu, tình trạng nguồn và báo cáo về cùng một nhịp làm việc." : "From the morning check-in to the client review. Bring performance, data health, and reporting into the same rhythm."}</p></MarketingScrollReveal>
+        <div className="mh-story-grid">
+          <MarketingScrollReveal cinematic className="mh-story-workspace">
+            <article className="mh-story-card mh-dark-card">
+              <div className="mh-story-copy"><span className="mh-eyebrow">01 / {vi ? "KHÔNG GIAN KHÁCH HÀNG" : "CLIENT WORKSPACES"}</span><h3>{vi ? "Mỗi khách hàng." : "Every client."}<br /><span>{vi ? "Một không gian riêng." : "A space of their own."}</span></h3><p>{vi ? "Giữ tài khoản, thành viên và lịch sử báo cáo theo từng khách hàng. Chuyển góc nhìn nhanh, giữ phạm vi dữ liệu rõ ràng." : "Keep accounts, people, and reporting history organized by client. Switch perspectives without losing the boundaries."}</p></div>
+              <ClientWorkspaceDemo lang={lang} />
+            </article>
+          </MarketingScrollReveal>
+          <MarketingScrollReveal cinematic delay={100} className="mh-story-delivery">
+            <article className="mh-story-card mh-light-card">
+              <div className="mh-story-copy"><span className="mh-eyebrow">02 / {vi ? "SẴN SÀNG BÁO CÁO" : "REPORTING, READY"}</span><h3>{vi ? "Đến thẳng nơi" : "Straight to where"}<br /><span>{vi ? "team làm việc." : "your team works."}</span></h3><p>{vi ? "Dữ liệu đã chuẩn bị cho Google Sheets, Looker Studio và quy trình báo cáo hiện tại của bạn." : "Prepared data for Google Sheets, Looker Studio, and the reporting workflow you already know."}</p></div>
+              <DeliveryDemo lang={lang} />
+              <Link href="/looker-studio" className="mh-story-link">{vi ? "Khám phá công cụ báo cáo" : "Explore reporting destinations"}<ArrowRight size={16} /></Link>
+            </article>
+          </MarketingScrollReveal>
+        </div>
+        <MarketingScrollReveal cinematic className="mh-health-story">
+          <div><span className="mh-eyebrow">03 / {vi ? "TÌNH TRẠNG DỮ LIỆU" : "DATA HEALTH"}</span><h3>{vi ? "Biết điều gì" : "Know what"}<br /><span>{vi ? "cần chú ý." : "needs attention."}</span></h3><p>{vi ? "Phát hiện nguồn cần kết nối lại trước khi số liệu cũ xuất hiện trong báo cáo. Tình trạng kết nối rõ ràng, ngay cạnh dữ liệu." : "Catch a connection that needs attention before stale numbers reach a report. Clear source health, right beside your data."}</p><Link href="/integrations" className="mh-text-link">{vi ? "Xem các tích hợp" : "See the integrations"}<ArrowRight size={16} /></Link></div>
+          <div className="mh-health-console"><div className="mh-demo-toolbar"><span className="mh-demo-dot" />{vi ? "Tình trạng nguồn · Minh hoạ" : "Source health · Illustrative"}<span className="mh-demo-label">4 {vi ? "NGUỒN" : "SOURCES"}</span></div>{PROVIDERS.map((provider, index) => <div className="mh-health-row" key={provider.name}><IntegrationMark src={provider.logo} alt="" size="sm" /><span>{provider.name}<small>{index === 3 ? (vi ? "Cần xác thực lại" : "Authorization required") : (vi ? "Dữ liệu sẵn sàng kiểm tra" : "Data ready to review")}</small></span><span className={index === 3 ? "mh-status mh-status-warning" : "mh-status"}><i />{index === 3 ? t.preview.action : t.preview.healthy}</span></div>)}</div>
+        </MarketingScrollReveal>
+      </section>
 
-      <section className="px-4 py-16 sm:px-6 sm:py-24 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="max-w-2xl"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">{t.outcomes.eyebrow}</p><h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight text-ink sm:text-5xl">{t.outcomes.title}</h2><p className="mt-5 text-base leading-relaxed text-ink-mute">{t.outcomes.description}</p></MarketingScrollReveal><div className="mt-12 grid gap-4 md:grid-cols-3">{t.outcomes.items.map((item, index) => { const Icon = item.icon; return <MarketingScrollReveal key={item.title} delay={index * 70} className="h-full"><article className="flex h-full flex-col rounded-xl border border-line bg-panel p-6 transition-colors hover:border-white/20"><div className="mb-8 flex items-center justify-between"><span className="font-mono text-xs text-ink-mute">0{index + 1}</span><span className="flex h-9 w-9 items-center justify-center rounded-md border border-emerald-300/15 bg-emerald-400/[0.07]"><Icon className="h-4 w-4 text-emerald-300" /></span></div><h3 className="text-lg font-semibold text-ink">{item.title}</h3><p className="mt-3 text-sm leading-relaxed text-ink-mute">{item.description}</p><ul className="mt-6 space-y-2 border-t border-line pt-5 text-xs leading-relaxed text-ink-mute">{item.points.map((point) => <li key={point} className="flex gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />{point}</li>)}</ul></article></MarketingScrollReveal>; })}</div></div></section>
+      <MarketingProductTour lang={lang} />
 
-      <section id="architecture" className="scroll-mt-20 border-y border-line bg-panel/30 px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="mb-10 grid gap-4 md:grid-cols-[1fr_auto] md:items-end"><div><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">{t.workflow.eyebrow}</p><h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-ink sm:text-5xl">{t.workflow.title}</h2></div><p className="max-w-md text-sm leading-relaxed text-ink-mute">{t.workflow.description}</p></MarketingScrollReveal><MarketingScrollReveal><SignaturePipeline /></MarketingScrollReveal></div></section>
+      <section id="architecture" className="mh-flow-section">
+        <div className="mh-container">
+          <MarketingScrollReveal cinematic className="mh-section-heading"><div><p className="mh-eyebrow">{vi ? "TỪ NGUỒN DỮ LIỆU ĐẾN QUYẾT ĐỊNH" : "FROM SOURCE TO PERSPECTIVE"}</p><h2>{vi ? "Một luồng liền mạch." : "One continuous flow."}</h2></div><Link href="/platform" className="mh-text-link">{vi ? "Monstera hoạt động thế nào" : "How Monstera works"}<ArrowRight size={16} /></Link></MarketingScrollReveal>
+          <div className="mh-flow-grid">{flow.map(([title, description], index) => <MarketingScrollReveal cinematic key={title} delay={index * 70}><div className="mh-flow-step"><div className="mh-flow-number">0{index + 1}<span /></div><h3>{title}</h3><p>{description}</p></div></MarketingScrollReveal>)}</div>
+        </div>
+      </section>
 
-      <section className="px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto grid max-w-6xl overflow-hidden rounded-2xl border border-white/[0.1] bg-panel lg:grid-cols-[0.82fr_1.18fr]"><MarketingScrollReveal className="flex h-full flex-col justify-between bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.12),transparent_58%)] p-7 sm:p-10"><div><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">{t.pilot.eyebrow}</p><h2 className="mt-4 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.pilot.title}</h2><p className="mt-5 text-sm leading-relaxed text-ink-mute">{t.pilot.description}</p></div><div className="mt-10"><p className="text-base font-semibold text-ink">{t.pilot.price}</p><p className="mt-2 text-xs leading-relaxed text-ink-mute">{t.pilot.note}</p></div></MarketingScrollReveal><div className="border-t border-line p-7 sm:p-10 lg:border-l lg:border-t-0"><div className="space-y-7">{t.pilot.steps.map(([day, description], index) => <MarketingScrollReveal key={day} delay={index * 70} className="relative"><div className="grid grid-cols-[auto_1fr] gap-4"><span className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/[0.08] font-mono text-[10px] text-emerald-300">0{index + 1}</span><div><h3 className="text-sm font-semibold text-ink">{day}</h3><p className="mt-1 text-sm leading-relaxed text-ink-mute">{description}</p></div></div></MarketingScrollReveal>)}</div><PilotLink location="pilot" className="mt-9 inline-flex w-full items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200">{t.pilot.button}<ArrowRight className="ml-2 h-4 w-4" /></PilotLink></div></div></section>
+      <section id="security" className="mh-trust-section mh-container">
+        <MarketingScrollReveal cinematic className="mh-section-heading"><div><p className="mh-eyebrow">{vi ? "ĐƯỢC THIẾT KẾ CÓ CHỦ ĐÍCH" : "CONSIDERED BY DESIGN"}</p><h2>{vi ? "Dữ liệu khách hàng." : "Your clients’ data."}<br /><span>{vi ? "Ranh giới rõ ràng." : "Clear boundaries."}</span></h2></div><ShieldCheck className="mh-trust-symbol" strokeWidth={.7} aria-hidden="true" /></MarketingScrollReveal>
+        <div className="mh-trust-grid">{t.security.items.map(([title, description], index) => <MarketingScrollReveal cinematic key={title} delay={index * 55}><span className="mh-eyebrow">0{index + 1}</span><h3>{title}</h3><p>{description}</p></MarketingScrollReveal>)}</div>
+      </section>
 
-      <section id="security" className="scroll-mt-20 border-y border-line bg-panel/30 px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="max-w-2xl"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">{t.security.eyebrow}</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink sm:text-5xl">{t.security.title}</h2></MarketingScrollReveal><div className="mt-10 grid gap-4 sm:grid-cols-2">{t.security.items.map(([title, description], index) => <MarketingScrollReveal key={title} delay={index * 60}><article className="rounded-lg border border-line bg-canvas p-6"><span className="font-mono text-[11px] text-emerald-400">0{index + 1}</span><h3 className="mt-5 text-base font-semibold text-ink">{title}</h3><p className="mt-2 text-sm leading-relaxed text-ink-mute">{description}</p></article></MarketingScrollReveal>)}</div></div></section>
+      <section className="mh-container mh-pilot-section">
+        <MarketingScrollReveal cinematic className="mh-pilot"><div className="mh-pilot-intro"><span className="mh-pilot-watermark" aria-hidden="true">07</span><p className="mh-eyebrow">{t.pilot.eyebrow}</p><h2>{t.pilot.title}</h2><p>{t.pilot.description}</p><PilotLink location="pilot" className="mh-button mh-button-primary">{t.pilot.button}<ArrowRight size={16} /></PilotLink><small>{t.pilot.price}</small></div><div className="mh-pilot-steps">{t.pilot.steps.map(([day, description], index) => <div key={day}><span>0{index + 1}</span><div><h3>{day}</h3><p>{description}</p></div></div>)}<p className="mh-pilot-note">{t.pilot.note}</p></div></MarketingScrollReveal>
+      </section>
 
-      <section className="px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto max-w-4xl"><MarketingScrollReveal className="text-center"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">{t.faq.eyebrow}</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink sm:text-5xl">{t.faq.title}</h2></MarketingScrollReveal><div className="mt-10 divide-y divide-line border-y border-line">{t.faq.items.map(([question, answer], index) => <MarketingScrollReveal key={question} delay={index * 50}><details className="group py-5"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-ink"><span>{question}</span><span className="flex h-6 w-6 items-center justify-center rounded-full border border-line text-ink-mute transition-transform group-open:rotate-45">+</span></summary><p className="mt-3 max-w-3xl pr-10 text-sm leading-relaxed text-ink-mute">{answer}</p></details></MarketingScrollReveal>)}</div></div></section>
+      <section className="mh-faq mh-container"><MarketingScrollReveal cinematic><p className="mh-eyebrow">{t.faq.eyebrow}</p><h2>{vi ? "Câu hỏi thường gặp." : "Good questions."}</h2><p>{vi ? "Những điều cần biết trước khi bắt đầu." : "A few things worth knowing before you start."}</p></MarketingScrollReveal><div>{t.faq.items.map(([question, answer]) => <details key={question}><summary><span>{question}</span><span className="mh-faq-plus" aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>
 
-      <section className="px-4 pb-16 pt-4 sm:px-6 sm:pb-24 lg:px-8"><MarketingScrollReveal className="relative mx-auto max-w-5xl overflow-hidden rounded-2xl border border-emerald-300/15 bg-[radial-gradient(circle_at_top,rgba(52,211,153,0.13),transparent_66%)] px-6 py-14 text-center sm:px-12 sm:py-20"><div aria-hidden className="absolute inset-0 -z-10 bg-panel" /><Sparkles className="mx-auto h-5 w-5 text-emerald-300" /><h2 className="mx-auto mt-5 max-w-3xl text-balance text-3xl font-semibold tracking-tight text-ink sm:text-5xl">{t.cta.title}</h2><p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-ink-mute">{t.cta.description}</p><div className="mt-8 flex flex-wrap justify-center gap-3"><PilotLink location="final" className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200">{t.cta.primary}<ArrowRight className="ml-2 h-4 w-4" /></PilotLink><Link href="/pricing" className="inline-flex items-center justify-center rounded-md border border-line bg-canvas px-5 py-3 text-sm font-medium text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04]">{t.cta.secondary}</Link></div></MarketingScrollReveal></section>
+      <section className="mh-final mh-container"><MarketingScrollReveal cinematic><p className="mh-eyebrow">{vi ? "GÓC NHÌN TIẾP THEO CỦA BẠN BẮT ĐẦU TẠI ĐÂY" : "YOUR NEXT PERSPECTIVE STARTS HERE"}</p><h2>{vi ? "Sẵn sàng nhìn rõ hơn?" : "Ready for a clearer view?"}</h2><div className="mh-actions"><PilotLink location="final" className="mh-button mh-button-primary">{t.cta.primary}<ArrowRight size={16} /></PilotLink><Link href="/pricing" className="mh-text-link">{t.cta.secondary}<ArrowRight size={16} /></Link></div></MarketingScrollReveal></section>
     </div>
   );
 }

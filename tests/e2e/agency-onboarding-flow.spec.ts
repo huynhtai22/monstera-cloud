@@ -8,9 +8,10 @@ test.describe("Agency-First User Flow & Usability", () => {
     // 2. Verify Hero Headline (dark-first redesign, MarketingHomePage copy)
     await expect(page.locator("h1")).toContainText(/More clients|Thêm khách hàng|Your ad data/);
 
-    // 3. Click Primary CTA: "Start free" / "Try Agency Pro"
-    const ctaButton = page.getByRole("link", { name: /Agency Pro|Start free|Dùng thử/i }).first();
+    // 3. Use the visible header pilot CTA as the primary registration path.
+    const ctaButton = page.getByRole("link", { name: "7-day pilot", exact: true });
     await expect(ctaButton).toBeVisible();
+    await expect(ctaButton).toHaveAttribute("href", "/register?offer=agency-pro-pilot");
     await ctaButton.click();
 
     // 4. Verify user arrives on /register
