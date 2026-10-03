@@ -37,12 +37,28 @@ try {
   const next = await queryWarehouse({ workspaceId: workspaces[0], limit: 1000, cursor: firstPage!.pagination.nextCursor });
   const firstIds = new Set(firstPage!.rows.map(row => row.id));
   assert.ok(next.rows.every(row => !firstIds.has(row.id) && row.workspaceId === workspaces[0]));
+  const groupedTimings: Record<string, number> = {};
+  for (const level of ["campaign", "account"] as const) {
+    const start = performance.now();
+    const grouped = await queryWarehouse({ workspaceId: workspaces[0], level, limit: 1000, includeTotalCount: true });
+    groupedTimings[level] = Math.round(performance.now() - start);
+    assert.ok(grouped.rows.length <= 1000);
+    assert.ok(grouped.rows.every(row => row.workspaceId === workspaces[0]));
+  }
+  const concurrentStart = performance.now();
+  const concurrent = await Promise.all(Array.from({ length: 5 }, (_, index) => queryWarehouse({ workspaceId: workspaces[index % 2], limit: 1000, includeTotalCount: true })));
+  const concurrentFiveMs = Math.round(performance.now() - concurrentStart);
+  concurrent.forEach((result, index) => {
+    assert.equal(result.rows.length, 1000);
+    assert.equal(result.totalCount, 50000);
+    assert.ok(result.rows.every(row => row.workspaceId === workspaces[index % 2]));
+  });
   const explain = await db.$queryRaw<Array<Record<string, unknown>>>`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
     SELECT id, date FROM "CampaignMetric"
     WHERE "workspaceId" = ${workspaces[0]} AND date >= TIMESTAMP '2026-09-01' AND date < TIMESTAMP '2026-10-01'
     ORDER BY date DESC, id DESC LIMIT 1000`;
-  console.log(JSON.stringify({ synthetic: true, rows: 100000, tenants: 2, snapshotQueryMs: timings.map(n => Math.round(n)), tenantRows: 50000, pageRows: 1000, cursorOverlap: 0, explain }, null, 2));
+  console.log(JSON.stringify({ synthetic: true, rows: 100000, tenants: 2, snapshotQueryMs: timings.map(n => Math.round(n)), groupedTimings, concurrentFiveMs, tenantRows: 50000, pageRows: 1000, cursorOverlap: 0, explain }, null, 2));
 } finally {
   await db.campaignMetric.deleteMany({ where: { workspaceId: { in: workspaces } } });
   await db.connection.deleteMany({ where: { workspaceId: { in: workspaces } } });

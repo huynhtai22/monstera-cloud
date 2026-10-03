@@ -105,6 +105,42 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
       await prisma.$disconnect();
   });
 
+  it("Concurrent equal-priority admissions give idle tenants a slot before a heavy tenant's next job", async () => {
+    const enqueue = (workspaceId: string, id: string) => createImportJob({
+      id, workspaceId, userId: testUser, since: "2026-01-01", until: "2026-01-07",
+      items: [{ connectionId: testConn }], priority: 1,
+    });
+    const heavy = await enqueue(wsHeavy, "fair-heavy-active");
+    const held = await claimImportJob(heavy.id);
+    assert.equal(held.claimed, true);
+    await enqueue(wsHeavy, "fair-heavy-waiting");
+    await enqueue(wsSmall1, "fair-small-1");
+    await enqueue(wsSmall2, "fair-small-2");
+    await prisma.warehouseImportJob.update({ where: { id: "fair-heavy-waiting" }, data: { scheduledAt: new Date(Date.now() - 10000) } });
+    const admissions = await Promise.all([claimNextImportJob(), claimNextImportJob()]);
+    assert.ok(admissions.every(result => result.claimed));
+    assert.deepEqual(new Set(admissions.map(result => result.job!.workspaceId)), new Set([wsSmall1, wsSmall2]));
+    assert.equal((await prisma.warehouseImportJob.findUnique({ where: { id: "fair-heavy-waiting" } }))!.status, "queued");
+    const last = await claimNextImportJob();
+    assert.equal(last.job?.id, "fair-heavy-waiting", "a sole busy tenant must still make progress");
+  });
+
+  it("Pilot jobs stay excluded and expired leases do not count as occupied slots", async () => {
+    const enqueue = (workspaceId: string, id: string, idempotencyKey?: string) => createImportJob({
+      id, workspaceId, userId: testUser, since: "2026-01-01", until: "2026-01-07",
+      items: [{ connectionId: testConn }], priority: 1, idempotencyKey,
+    });
+    await enqueue(wsHeavy, "fair-pilot", "xbpilot:synthetic");
+    await enqueue(wsSmall1, "fair-expired");
+    await prisma.warehouseImportJob.update({ where: { id: "fair-expired" }, data: { status: "running", leaseId: "expired-worker", leaseExpiresAt: new Date(Date.now() - 1000) } });
+    const claim = await claimNextImportJob(60000, { excludePilotJobs: true });
+    assert.equal(claim.job?.id, "fair-expired");
+    assert.notEqual(claim.leaseId, "expired-worker");
+    await assert.rejects(updateImportJobProgress("fair-expired", "expired-worker", { completedItems: 1 }), LeaseLostError);
+    assert.equal((await claimNextImportJob(60000, { excludePilotJobs: true })).claimed, false);
+    assert.equal((await prisma.warehouseImportJob.findUnique({ where: { id: "fair-pilot" } }))!.status, "queued");
+  });
+
   it("SCHEDULER FINDING 1 (Job Granularity): One claimed job contains all 50 items and is processed in a single lease", async () => {
 
     // Heavy tenant creates 1 job with 50 account items
