@@ -31,6 +31,7 @@ test("first overview shows populated accounts before applying its display cap", 
 });
 
 test("first result rejects missing rows, unapproved accounts and rows outside the approved window", () => {
+  assert.equal(confirmedFirstResultTasks([{ ...task, confirmedScope: { ...task.confirmedScope!, selectedAccountIds: ["populated", "missing"] } }], previews).length, 0);
   const base = previews.task;
   for (const data of [
     { ...base.data, sampleRows: [] },

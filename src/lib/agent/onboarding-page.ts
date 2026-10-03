@@ -19,9 +19,10 @@ export async function onboardingPageData(agencySlug?: string, requestedWorkspace
   ]);
   const pilotMemberships = memberships.filter(({ workspace }) => isAgentWorkspaceEnabled(workspace.id));
   if (!memberships.length) notFound();
-  const unavailableWorkspace = !pilotMemberships.length
-    ? (memberships.find(({ workspace }) => workspace.id === requestedWorkspaceId) ?? memberships[0]).workspace
-    : null;
+  const requestedMembership = memberships.find(({ workspace }) => workspace.id === requestedWorkspaceId);
+  const unavailableWorkspace = requestedMembership && !isAgentWorkspaceEnabled(requestedMembership.workspace.id)
+    ? requestedMembership.workspace
+    : !pilotMemberships.length ? memberships[0].workspace : null;
   const workspaces = await Promise.all(pilotMemberships.map(async ({ role, workspace }) => {
     const [clients, access, run] = await Promise.all([
       prisma.client.findMany({ where: { workspaceId: workspace.id }, orderBy: { name: "asc" }, select: { id: true, name: true } }),

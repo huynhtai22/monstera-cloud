@@ -10,6 +10,8 @@ export function confirmedFirstResultTasks(tasks: AgentSnapshot["tasks"], preview
     const scope = task.confirmedScope;
     if (!scope || !preview) return false;
     const allowed = new Set(scope.selectedAccountIds);
+    const accountKeys = new Set(preview.data.accounts.map(account => account.id));
+    if ([...allowed].some(id => !accountKeys.has(id))) return false;
     const accounts = new Set(preview.data.accounts.map(account => account.accountId));
     const rows = preview.data.sampleRows;
     if (!rows?.length || preview.data.accounts.some(account => !allowed.has(account.id))) return false;

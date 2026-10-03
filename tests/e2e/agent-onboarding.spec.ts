@@ -121,6 +121,20 @@ test.describe("persisted agent onboarding (M2)", () => {
     expect(await db.agentRun.count({ where: { workspaceId } })).toBe(0);
   });
 
+  test("mixed-cohort membership preserves the explicitly requested workspace", async ({ page }) => {
+    const otherId = `agent-ui-other-${randomUUID()}`;
+    await db.workspace.create({ data: { id: otherId, slug: otherId, ownerId: userId, name: "Requested client workspace", members: { create: { userId, role: "owner" } } } });
+    try {
+      await page.goto(`/onboarding?workspaceId=${otherId}`);
+      await expect(page.getByRole("heading", { name: "Connect your first source" })).toBeVisible();
+      await expect(page.getByText(/manage sources in Requested client workspace/)).toBeVisible();
+      await page.getByRole("link", { name: "Open sources" }).click();
+      await expect(page).toHaveURL(/\/sources$/);
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("monstera-workspace-storage") ?? "{}").state?.activeWorkspaceId)).toBe(otherId);
+      expect(await db.agentRun.count({ where: { workspaceId: { in: [workspaceId, otherId] } } })).toBe(0);
+    } finally { await db.workspace.delete({ where: { id: otherId } }); }
+  });
+
   test("320px layout and reduced motion preserve keyboard-accessible direct selection", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.emulateMedia({ reducedMotion: "reduce" });
