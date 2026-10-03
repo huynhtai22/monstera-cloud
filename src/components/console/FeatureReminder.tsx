@@ -15,16 +15,16 @@ export type { FeatureHighlight } from "@/lib/console-feature-campaigns";
 const CLOSE_DURATION_MS = 280;
 const SCENE_EXIT_MS = 200;
 
-function Grid() {
-  return <span className={styles.grid}>{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ "--i": i } as CSSProperties} />)}</span>;
+function BrandEmblem() {
+  return <span className={styles.brandEmblem}><LogoMark className={styles.brandMark} /></span>;
 }
 
 function Illustration({ slide }: { slide: number }) {
   return <div className={styles.illustration} aria-hidden="true" data-reminder-art={slide}>
-    {slide === 0 && <><svg className={styles.connections} viewBox="0 0 390 300" preserveAspectRatio="none"><path d="M96 60 Q96 142 195 142" /><path d="M290 80 Q290 142 195 142" /><path d="M80 225 Q80 142 195 142" /><path d="M297 245 Q297 142 195 142" /><path d="M200 270 L195 142" /></svg><div className={styles.floatingTools}>{[INTEGRATION_LOGOS.meta, INTEGRATION_LOGOS.googleAds, INTEGRATION_LOGOS.shopee, INTEGRATION_LOGOS.tiktok, INTEGRATION_LOGOS.googleSheets].map((src, i) => <span key={src} style={{ "--i": i } as CSSProperties}><IntegrationMark src={src} size="lg" /></span>)}</div><div className={styles.toolHub}><Grid /><span>Your tools, together</span><ArrowRight size={15} /></div></>}
+    {slide === 0 && <><svg className={styles.connections} viewBox="0 0 390 300" preserveAspectRatio="none"><path d="M96 60 Q96 142 195 142" /><path d="M290 80 Q290 142 195 142" /><path d="M80 225 Q80 142 195 142" /><path d="M297 245 Q297 142 195 142" /><path d="M200 270 L195 142" /></svg><div className={styles.floatingTools}>{[INTEGRATION_LOGOS.meta, INTEGRATION_LOGOS.googleAds, INTEGRATION_LOGOS.shopee, INTEGRATION_LOGOS.tiktok, INTEGRATION_LOGOS.googleSheets].map((src, i) => <span key={src} style={{ "--i": i } as CSSProperties}><IntegrationMark src={src} size="lg" /></span>)}</div><div className={styles.toolHub}><BrandEmblem /><span>Monstera Cloud</span><ArrowRight size={15} /></div></>}
     {slide === 1 && <div className={styles.clientGroup}><div><Users size={17} /><span>Client reporting</span></div>{[{ label: "Advertising accounts", Icon: DatabaseZap }, { label: "Commerce sources", Icon: ShoppingBag }, { label: "Reporting scope", Icon: Users }].map(({label, Icon}, i) => <span key={label} style={{ "--i": i } as CSSProperties}><Icon size={13} />{label}</span>)}</div>}
-    {slide === 2 && <div className={styles.fleet}><div className={styles.fleetCore}><Grid /><span>Monstera coordinates</span></div>{[{ label: "Source setup", Icon: DatabaseZap }, { label: "Ongoing checks", Icon: ShieldCheck }, { label: "Reporting", Icon: FileText }].map(({label, Icon}, i) => <div key={label} style={{ "--i": i } as CSSProperties}><Icon size={16} /><span>{label}</span><i /></div>)}</div>}
-    {slide === 3 && <div className={styles.report}><div><IntegrationMark src={INTEGRATION_LOGOS.googleSheets} size="md" /><span>Your report</span><FileText size={17} /></div><div className={styles.reportRows}>{[0,1,2,3].map(i => <span key={i} style={{ "--i": i } as CSSProperties}><i /><i /><i /></span>)}</div><small><Database size={13} />Source → warehouse → destination</small></div>}
+    {slide === 2 && <div className={styles.fleet}><div className={styles.fleetCore}><BrandEmblem /><span>Monstera coordinates</span></div>{[{ label: "Source setup", Icon: DatabaseZap }, { label: "Ongoing checks", Icon: ShieldCheck }, { label: "Reporting", Icon: FileText }].map(({label, Icon}, i) => <div key={label} style={{ "--i": i } as CSSProperties}><Icon size={16} /><span>{label}</span><i /></div>)}</div>}
+    {slide === 3 && <div className={styles.reportScene}><div className={styles.report}><div><FileText size={20} /><span>Your report</span><BrandEmblem /></div><div className={styles.reportRows}>{[0,1,2,3].map(i => <span key={i} style={{ "--i": i } as CSSProperties}><i /><i /><i /></span>)}</div><small><Database size={13} />Review → export</small></div><div className={styles.deliveryTarget}><ArrowRight size={14} /><IntegrationMark src={INTEGRATION_LOGOS.googleSheets} size="sm" /><IntegrationMark src={INTEGRATION_LOGOS.looker} size="sm" /><span>Sheets or Looker</span></div></div>}
   </div>;
 }
 
