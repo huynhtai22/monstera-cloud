@@ -1011,3 +1011,26 @@ html[data-console-theme="light"] :where([class~="text-sky-300/90"]),
 html[data-console-theme="light"] :where([class~="text-sky-400"]) { color: var(--console-info-ink); }
 html[data-console-theme="light"] :where([class~="border-sky-800/40"]),
 html[data-console-theme="light"] :where([class~="border-sky-900/50"]) { border-color: var(--console-info-line); }
+
+/* Theme switches capture the entire console, including portaled dialogs, as one
+   surface. No layout movement or artificial data/loading delay is introduced. */
+html[data-console-theme-motion="crossfade"]::view-transition-group(root) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+}
+html[data-console-theme-motion="crossfade"]::view-transition-old(root),
+html[data-console-theme-motion="crossfade"]::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+}
+html[data-console-theme-motion="colors"],
+html[data-console-theme-motion="colors"] body,
+html[data-console-theme-motion="colors"] :where([data-workspace-shell], [data-workspace-shell] *, [role="dialog"], [role="dialog"] *, [data-sonner-toast], [data-sonner-toast] *) {
+  transition: background-color 280ms ease, color 280ms ease, border-color 280ms ease, box-shadow 280ms ease, fill 280ms ease, stroke 280ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-console-theme-motion]::view-transition-group(root),
+  html[data-console-theme-motion]::view-transition-old(root),
+  html[data-console-theme-motion]::view-transition-new(root) { animation: none !important; }
+  html[data-console-theme-motion="colors"] * { transition: none !important; }
+}

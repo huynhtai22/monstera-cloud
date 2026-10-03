@@ -147,3 +147,26 @@ test("light account status does not retain a dark emerald plate", async ({ page 
   expect(await connected.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color })))
     .toEqual({ background: "rgb(237, 247, 239)", color: "rgb(40, 107, 64)" });
 });
+
+
+test("theme switching preserves account scope and restores the last preference", async ({ page }) => {
+  await page.goto("/sources?tab=accounts");
+  await expect(page.getByRole("table")).toBeVisible();
+  const originalUrl = page.url();
+  for (const theme of ["light", "dark", "light"] as const) {
+    await page.getByRole("button", { name: `Switch to ${theme} mode`, exact: true }).filter({ visible: true }).first().click();
+    await expect(page.locator("html")).toHaveAttribute("data-console-theme", theme);
+    await expect(page.locator("[data-workspace-shell]")).toHaveAttribute("data-console-theme", theme);
+    await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-console-theme-motion"))).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(theme === "dark");
+    await expect(page.getByRole("table")).toBeVisible();
+    expect(page.url()).toBe(originalUrl);
+  }
+  await page.reload();
+  await expect(page.locator("[data-workspace-shell]")).toHaveAttribute("data-console-theme", "light");
+  await expect(page.getByRole("table")).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Switch to dark mode", exact: true }).filter({ visible: true }).first().click();
+  await expect(page.locator("html")).toHaveAttribute("data-console-theme", "dark");
+  expect(await page.evaluate(() => document.documentElement.hasAttribute("data-console-theme-motion"))).toBe(false);
+});

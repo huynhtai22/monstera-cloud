@@ -19,3 +19,5 @@ Connector dismissal retains scroll lock and restores focus after removal. Its cl
 The reminder uses the same easing and shorter scene transitions with restrained scale, without blur on arriving icons. Existing optional display/frequency rules remain unchanged. Work animations still reflect existing active operation states, and reminder art remains illustrative.
 
 Verification: transition-key and client-context tests; ESLint and TypeScript; browser inspection of source subsections, indicator alignment, loading completion, reminder scene changes and dismissal. No live operation is certified by these UI checks.
+
+Theme switching: explicit toggles crossfade the complete page (including portals) for 280 ms in both directions through the browser View Transition API. Unsupported browsers transition semantic colors; reduced motion switches immediately. Theme state, html tokens and dark variants commit together before paint. Saved preference restoration does not animate or delay hydration. Rapid switches interrupt the previous visual transition; the route, account scope and data remain intact.

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { flushSync } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import { ConsoleRouteTransition } from './console/ConsoleMotion';
 import { ConsoleSupportControl } from './LiveChatWidget';
@@ -86,32 +87,57 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         } catch {}
     }, []);
 
-    // Sync .dark on <html> and persist; skip until initial read above has run so we don't flash light.
-    useEffect(() => {
+    // Apply shell, portal tokens and Tailwind theme in the same commit, before paint.
+    // Restoring a saved preference is immediate; only an explicit toggle animates.
+    useLayoutEffect(() => {
         if (!themeReady.current) return;
         const root = document.documentElement;
         root.dataset.consoleTheme = isDarkMode ? "dark" : "light";
-        root.classList.add("disable-transitions");
-        requestAnimationFrame(() => {
-            if (isDarkMode) {
-                root.classList.add("dark");
-            } else {
-                root.classList.remove("dark");
-            }
-            try {
-                localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "dark" : "light");
-            } catch {
-                /* ignore quota / private mode */
-            }
-            requestAnimationFrame(() => {
-                root.classList.remove("disable-transitions");
-            });
-        });
+        root.classList.toggle("dark", isDarkMode);
+        try { localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "dark" : "light"); }
+        catch { /* private mode / storage unavailable */ }
     }, [isDarkMode]);
 
-    useEffect(() => () => { delete document.documentElement.dataset.consoleTheme; }, []);
+    const themeTransition = useRef<ViewTransition | null>(null);
+    const themeFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+        themeTransition.current?.skipTransition();
+        if (themeFallbackTimer.current) clearTimeout(themeFallbackTimer.current);
+        const root = document.documentElement;
+        delete root.dataset.consoleTheme;
+        delete root.dataset.consoleThemeMotion;
+    }, []);
 
-    const toggleDarkMode = () => setIsDarkMode((v) => !v);
+    const toggleDarkMode = () => {
+        const root = document.documentElement;
+        themeTransition.current?.skipTransition();
+        if (themeFallbackTimer.current) clearTimeout(themeFallbackTimer.current);
+        const apply = () => flushSync(() => setIsDarkMode((value) => !value));
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            delete root.dataset.consoleThemeMotion;
+            apply();
+            return;
+        }
+        if (typeof document.startViewTransition === "function") {
+            root.dataset.consoleThemeMotion = "crossfade";
+            const transition = document.startViewTransition(apply);
+            themeTransition.current = transition;
+            // A newer toggle owns cleanup when switching quickly.
+            void transition.finished.catch(() => {}).finally(() => {
+                if (themeTransition.current === transition) {
+                    themeTransition.current = null;
+                    delete root.dataset.consoleThemeMotion;
+                }
+            });
+        } else {
+            root.dataset.consoleThemeMotion = "colors";
+            apply();
+            themeFallbackTimer.current = setTimeout(() => {
+                delete root.dataset.consoleThemeMotion;
+                themeFallbackTimer.current = null;
+            }, 320);
+        }
+    };
 
     useEffect(() => {
         if (status !== "authenticated" || !pathname) return;
