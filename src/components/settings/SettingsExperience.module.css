@@ -54,7 +54,7 @@
 .existingControls :global(.max-w-3xl), .existingControls :global(.max-w-4xl) { max-width:none; }
 .appearance h3 { font-size:15px; font-weight:550; margin-bottom:7px; }
 .themeChoices { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:24px; max-width:680px; }
-.themeChoices > button { text-align:left; padding:12px; border:1px solid var(--color-line); border-radius:12px; background:var(--color-panel); }
+.themeChoices > button { text-align:left; padding:12px; border:1px solid var(--color-line); border-radius:8px; background:var(--color-panel); }
 .themeChoices > button[aria-pressed="true"] { outline:2px solid var(--color-ink-mute); outline-offset:3px; }
 .themeChoices strong,.themeChoices > button > span:not(.themePreview) { display:block; padding:0 4px; font-size:12px; margin-top:10px; }
 .themeChoices > button > span:not(.themePreview) { color:var(--color-ink-mute); font-size:11px; margin:5px 0 3px; }
