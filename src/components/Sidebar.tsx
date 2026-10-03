@@ -9,6 +9,7 @@ import { clientContextHrefWithPending } from "@/lib/pending-query";
 import { usePendingNavigation } from "./client-context/PendingNavigationProvider";
 import { useState, useRef, useEffect } from "react";
 import {
+    X,
     LayoutGrid,
     DatabaseZap,
     Database,
@@ -70,12 +71,42 @@ export function Sidebar({
     setIsOpen,
     isDarkMode,
     toggleDarkMode,
-    collapsed = false,
+    collapsed: preferredCollapsed = false,
     setCollapsed,
     previewPath,
     previewDirectory,
     previewDirectories,
 }: SidebarProps) {
+    const sidebarElement = useRef<HTMLElement>(null);
+    const [mobile, setMobile] = useState(false);
+    const collapsed = preferredCollapsed && !mobile;
+    useEffect(() => {
+        const media = window.matchMedia("(max-width: 1023px)");
+        const update = () => { setMobile(media.matches); if (!media.matches) setIsOpen?.(false); };
+        update(); media.addEventListener("change", update);
+        return () => media.removeEventListener("change", update);
+    }, [setIsOpen]);
+    useEffect(() => {
+        if (!mobile || !isOpen) return;
+        const previous = document.activeElement;
+        const overflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        const controls = () => [...(sidebarElement.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),select,input,[tabindex="0"]') ?? [])].filter(element => element.offsetParent !== null && !element.closest("[inert]"));
+        (controls()[0] ?? sidebarElement.current)?.focus();
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key === "Escape") { event.preventDefault(); setIsOpen?.(false); }
+            if (event.key !== "Tab") return;
+            const items = controls(), first = items[0], last = items.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        };
+        document.addEventListener("keydown", handleKey);
+        return () => {
+            document.body.style.overflow = overflow;
+            document.removeEventListener("keydown", handleKey);
+            if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+        };
+    }, [mobile, isOpen, setIsOpen]);
     const { data: session } = useSession();
     const currentPathname = usePathname();
     const pathname = previewPath ?? currentPathname;
@@ -213,14 +244,20 @@ export function Sidebar({
 
     return (
         <aside
+            ref={sidebarElement}
+            id="application-sidebar"
+            tabIndex={-1}
+            inert={mobile && !isOpen}
+            aria-hidden={mobile && !isOpen ? true : undefined}
             aria-label="Application sidebar"
             data-collapsed={collapsed}
             className={cn(
-                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
+                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[var(--console-duration-normal)] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
                 collapsed ? "w-[68px]" : "w-64",
                 isOpen ? "translate-x-0" : "-translate-x-full"
             )}
         >
+            <button type="button" aria-label="Close menu" onClick={() => setIsOpen?.(false)} className="absolute right-1 top-1 z-30 grid h-7 w-7 place-items-center rounded-md bg-panel text-ink-mute lg:hidden"><X className="h-4 w-4" aria-hidden /></button>
             {/* ── 1. Workspace Control ────────────────────────────────────────── */}
             <div ref={workspaceRef} className="relative z-20 border-b border-line px-3.5 py-3.5">
                 <button
@@ -419,9 +456,9 @@ export function Sidebar({
                                     </Link>
                                     {hasSubsection ? <>
                                         <button type="button" className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-md text-ink-mute transition-colors hover:bg-white/[0.06] hover:text-ink" aria-expanded={subsectionOpen} aria-controls={subsectionId} aria-label={`${subsectionOpen ? "Collapse" : "Expand"} ${item.name} subsection`} title={`${subsectionOpen ? "Collapse" : "Expand"} subsection`} onClick={() => setExpandedSubsections(current => ({ ...current, [item.href]: !subsectionOpen }))}>
-                                            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[240ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none", !subsectionOpen && "-rotate-90")} aria-hidden="true" />
+                                            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[var(--console-duration-normal)] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none", !subsectionOpen && "-rotate-90")} aria-hidden="true" />
                                         </button>
-                                        <div className="grid transition-[grid-template-rows,opacity] duration-[240ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none" style={{ gridTemplateRows: subsectionOpen ? "1fr" : "0fr", opacity: subsectionOpen ? 1 : 0 }} inert={!subsectionOpen} aria-hidden={!subsectionOpen}>
+                                        <div className="grid transition-[grid-template-rows,opacity] duration-[var(--console-duration-normal)] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none" style={{ gridTemplateRows: subsectionOpen ? "1fr" : "0fr", opacity: subsectionOpen ? 1 : 0 }} inert={!subsectionOpen} aria-hidden={!subsectionOpen}>
                                             <div className="min-h-0 overflow-hidden">
                                         <nav id={subsectionId} className="ml-7 my-2 space-y-1 border-l border-line pl-3" aria-label={`${item.name} directory`}>
                                             {directory?.map((entry, index) => {

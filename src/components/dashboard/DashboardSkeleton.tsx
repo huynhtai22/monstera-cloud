@@ -1,7 +1,7 @@
 import styles from "./ConsoleOverview.module.css";
 
 function Line({ width = "70%", height = 12 }: { width?: string; height?: number }) {
-  return <div className="console-skeleton-shimmer rounded bg-line" style={{ width, height }} />;
+  return <span className="console-skeleton-shimmer block rounded bg-line" style={{ width, height }} />;
 }
 
 /** Reuses the real console's responsive grid, cards, spacing and heading geometry. */

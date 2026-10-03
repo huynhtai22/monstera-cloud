@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { SlidingControlIndicator } from "@/components/console/ConsoleMotion";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
@@ -277,7 +278,8 @@ export function ReportsClient() {
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                     <SavedViews href={`${pathname}${observedSearchString ? `?${observedSearchString}` : ""}`} />
-                    <div className="flex items-center rounded-lg border border-line bg-panel p-1">
+                    <div role="group" aria-label="Report views" className="flex items-center rounded-lg border border-line bg-panel p-1">
+                        <SlidingControlIndicator />
                         <button
                             type="button"
                             aria-pressed={viewMode === "performance"}

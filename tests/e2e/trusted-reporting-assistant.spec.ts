@@ -471,7 +471,7 @@ test.describe("Trusted Reporting Assistant v1 (Full UI & Export Journeys)", () =
     await page.emulateMedia({ media: "print" });
 
     // Controls must be hidden in print mode
-    await expect(page.locator("button:has(svg.lucide-x)")).toBeHidden();
+    await expect(page.locator('button[aria-label="Close dialog"]')).toBeHidden();
     await expect(page.getByRole("button", { name: "Copy Markdown" })).toBeHidden();
     await expect(page.getByRole("button", { name: "Print / PDF" })).toBeHidden();
     await expect(page.getByRole("button", { name: "Last 7 Days" })).toBeHidden();
