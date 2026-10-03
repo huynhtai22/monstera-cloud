@@ -50,3 +50,9 @@ The runtime error-cluster query included historical first-seen dates. Counts mus
 6. Measure due/completed/delayed checks, useful/noisy findings with denominators, recovery attempts/verified outcomes, time saved, and opt-outs. Expand only after trust and measured value gates pass.
 
 No production flags, secrets, grants, jobs, or customer data were modified by this audit. Campaign/budget writes and external report delivery remain outside C7. The other agent's unfinished pilot changes and PRs #207/#208 were not included in this release.
+
+## Prepared credential-error closure (not deployed)
+
+The accompanying change removes raw provider `message` and serialized response payloads from TikTok token-exchange and refresh failures. Only a safe numeric error code and fixed guidance reach the thrown error; nonnumeric codes are replaced with `unknown`. This protects downstream loggers and persisted failure messages at these two OAuth boundaries without changing successful token handling. Advertiser discovery and report-error handling are outside this narrow fix.
+
+Validation: 32 TikTok adapter/OAuth/retry tests pass, including four synthetic failure cases covering token exchange and refresh, echoed messages, response payload credentials, and credential-shaped error codes. No live provider call or credential rotation was performed. Full CI must pass before this fix is included in a subsequent deployment. Existing historical logs are not erased or made safe by this change; the authorized operator must address any affected grants.
