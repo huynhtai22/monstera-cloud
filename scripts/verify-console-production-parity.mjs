@@ -36,7 +36,7 @@ try {
     await page.getByRole('button', { name: 'Switch to light mode', exact: true }).click();
     await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
     const light = await page.locator('[data-workspace-shell]').evaluate(el => ({ canvas: getComputedStyle(el).backgroundColor, ink: getComputedStyle(el).color, scheme: getComputedStyle(el).colorScheme }));
-    assert.deepEqual(light, { canvas: 'rgb(246, 247, 249)', ink: 'rgb(24, 35, 28)', scheme: 'light' });
+    assert.deepEqual(light, { canvas: 'rgb(247, 248, 250)', ink: 'rgb(32, 33, 36)', scheme: 'light' });
     const portalColors = await page.evaluate(() => {
       const portal = document.createElement('div');
       portal.style.cssText = 'background:var(--color-panel);color:var(--color-ink);outline-color:var(--color-primary-ring)';
@@ -46,12 +46,12 @@ try {
       portal.remove();
       return result;
     });
-    assert.deepEqual(portalColors, { panel: 'rgb(255, 255, 255)', ink: 'rgb(24, 35, 28)', ring: 'rgb(40, 107, 64)', accent: '#286b40' });
+    assert.deepEqual(portalColors, { panel: 'rgb(255, 255, 255)', ink: 'rgb(32, 33, 36)', ring: 'rgb(40, 107, 64)', accent: '#286b40' });
     await page.getByRole('button', { name: 'Disconnect Meta Ads', exact: true }).click();
     const dialog = page.getByRole('alertdialog');
     await dialog.waitFor();
     assert.equal(await dialog.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
-    assert.equal(await dialog.getByRole('heading').evaluate(el => getComputedStyle(el).color), 'rgb(24, 35, 28)');
+    assert.equal(await dialog.getByRole('heading').evaluate(el => getComputedStyle(el).color), 'rgb(32, 33, 36)');
     await dialog.locator('button[data-console-button="ghost"]').click();
     await dialog.waitFor({ state: 'hidden' });
 

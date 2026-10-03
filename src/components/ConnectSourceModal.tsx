@@ -318,7 +318,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         >
             <div
                 className={cn(
-                    "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
+                    styles.veil, "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
                     "transition-opacity duration-[var(--console-duration-fast)] ease-out motion-reduce:transition-none",
                     isVisible ? "opacity-100" : "opacity-0"
                 )}

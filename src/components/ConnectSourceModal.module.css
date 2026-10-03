@@ -12,11 +12,11 @@
 }
 .surface * { scrollbar-color: var(--dialog-border) var(--dialog-bg); scrollbar-width: thin; }
 :global(html[data-console-theme="light"]) .surface {
-  --dialog-bg: #fafbf9;
-  --dialog-panel: #f0f3ef;
-  --dialog-ink: #18231b;
-  --dialog-muted: #56645a;
-  --dialog-border: #d4ddd3;
+  --dialog-bg: var(--color-panel);
+  --dialog-panel: var(--color-surface-muted);
+  --dialog-ink: var(--color-ink);
+  --dialog-muted: var(--color-ink-mute);
+  --dialog-border: var(--color-line);
   --dialog-accent: #286b40;
   color-scheme: light;
   background: var(--dialog-bg);
@@ -221,3 +221,14 @@
   .surface *, .surface *::before, .surface *::after { animation: none !important; transition: none !important; }
   .bridge span, .connecting .bridge span { opacity: 1; transform: translateX(48px); }
 }
+
+:global(html[data-console-theme="light"]) .surface { box-shadow: var(--shadow-elevated); }
+:global(html[data-console-theme="light"]) .pickerTile { background: var(--dialog-bg); box-shadow: none; }
+:global(html[data-console-theme="light"]) .pickerTile:not(:disabled):hover { background: var(--dialog-panel); border-color: #b8bec6; box-shadow: none; }
+:global(html[data-console-theme="light"]) .pickerTile:focus-visible { outline-color: var(--dialog-accent); }
+:global(html[data-console-theme="light"]) .pickerArrow,
+:global(html[data-console-theme="light"]) .pickerStatus { color: var(--dialog-muted); }
+:global(html[data-console-theme="light"]) .pickerConnected { color: var(--dialog-accent); }
+:global(html[data-console-theme="light"]) .continue { background: var(--color-primary); color: var(--color-primary-foreground); }
+
+:global(html[data-console-theme="light"]) .veil { background: rgb(32 33 36 / 32%); }

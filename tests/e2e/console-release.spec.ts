@@ -104,3 +104,33 @@ test("reviewed onboarding result survives reload without granting monitoring con
   await expect(setup.getByRole("button", { name: "Approve and start daily checks" })).toBeDisabled();
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation.playState === "running" && animation.effect instanceof KeyframeEffect && animation.effect.target instanceof Element && !!animation.effect.target.closest("main")).length)).toBe(0);
 });
+
+
+test("light connector cards and consent portal use readable light surfaces", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("monstera-theme", "light"));
+  await page.goto("/sources?tab=available");
+  const cards = page.locator(".glass-card");
+  await expect(cards.first()).toBeVisible();
+  const colors = await cards.evaluateAll(elements => elements.map(element => getComputedStyle(element).backgroundColor));
+  expect(colors.every(color => color === "rgb(255, 255, 255)")).toBe(true);
+  await page.getByRole("button", { name: "Add data source", exact: true }).click();
+  await page.getByRole("option", { name: /^Meta Ads Facebook/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Connect Meta Ads to Monstera Cloud", exact: true });
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color })))
+    .toEqual({ background: "rgb(255, 255, 255)", color: "rgb(32, 33, 36)" });
+  await expect(dialog.getByRole("button", { name: "Continue to Meta Ads", exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toBeHidden();
+});
+
+
+test("light failure notification uses the same light surface as the console", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("monstera-theme", "light"));
+  await page.goto("/sources");
+  await page.getByRole("button", { name: "Sync", exact: true }).first().click();
+  const notification = page.locator("[data-sonner-toast]").first();
+  await expect(notification).toBeVisible();
+  expect(await notification.evaluate(element => getComputedStyle(element).backgroundColor)).toBe("rgb(255, 255, 255)");
+  expect(await notification.locator("[data-title]").evaluate(element => getComputedStyle(element).color)).toBe("rgb(32, 33, 36)");
+});

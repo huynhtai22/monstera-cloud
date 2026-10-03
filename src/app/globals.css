@@ -27,40 +27,40 @@
 /* Document scope also supplies theme tokens to body-level dialog portals. */
 html[data-console-theme="light"] {
   color-scheme: light;
-  --color-canvas: #f6f7f9;
+  --color-canvas: #f7f8fa;
   --color-panel: #ffffff;
   --console-surface-raised: #ffffff;
-  --console-surface-muted: #f0f2f4;
-  --console-line-soft: #dce1e6;
-  --color-line: #dce1e6;
-  --color-ink: #18231c;
-  --color-ink-mute: #526057;
-  --color-primary: #18231c;
+  --console-surface-muted: #f1f3f5;
+  --console-line-soft: #e0e3e7;
+  --color-line: #e0e3e7;
+  --color-ink: #202124;
+  --color-ink-mute: #5f6368;
+  --color-primary: #286b40;
   --color-primary-foreground: #ffffff;
-  --color-primary-muted: #f0f2f4;
+  --color-primary-muted: #f1f3f5;
   --color-primary-ring: #286b40;
   --color-accent: #286b40;
-  --color-primary-hover: #2c3d31;
-  --color-surface-muted: #f0f2f4;
-  --ui-bg-rgb: 246 247 249;
-  --ui-fg-rgb: 24 35 28;
-  --ui-border-rgb: 220 225 230;
-  --ui-muted-bg-rgb: 240 242 244;
-  --ui-muted-fg-rgb: 82 96 87;
-  --ui-primary-rgb: 24 35 28;
+  --color-primary-hover: #205732;
+  --color-surface-muted: #f1f3f5;
+  --ui-bg-rgb: 247 248 250;
+  --ui-fg-rgb: 32 33 36;
+  --ui-border-rgb: 224 227 231;
+  --ui-muted-bg-rgb: 241 243 245;
+  --ui-muted-fg-rgb: 95 99 104;
+  --ui-primary-rgb: 40 107 64;
   --ui-primary-foreground-rgb: 255 255 255;
   --console-motion-accent: #286b40;
-  --shadow-card: 0 1px 3px #18231c0a;
-  --shadow-elevated: 0 12px 32px #18231c1a;
+  --shadow-card: 0 1px 3px #2021240a;
+  --shadow-elevated: 0 12px 32px #2021241a;
 }
 
 /* Match native controls and every nested console scroller to the selected theme. */
 html[data-console-theme="dark"] { color-scheme: dark; --console-scroll-thumb: #505851; }
 html[data-console-theme="light"] {
     color-scheme: light;
-    --console-scroll-thumb: #a2afa4;
-    --background: #f6f7f9;
-    --foreground: #18231c;
+    --console-scroll-thumb: #a8adb4;
+    --background: #f7f8fa;
+    --foreground: #202124;
 }
 html[data-console-theme], html[data-console-theme] * {
     scrollbar-width: thin;
@@ -895,3 +895,23 @@ html[data-console-theme] [data-console-feedback] {
 
 .console-route-boundary { position: relative; }
 .console-route-indicator { position: absolute; top: 12px; right: 20px; z-index: 10; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink-mute); font-size: 11px; }
+
+/* Console utilities and body portals share the same semantic surfaces. */
+html[data-console-theme="light"] :is(.mc-panel, .mc-dialog, .glass-panel, .glass-card) {
+  background: var(--color-panel);
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+html[data-console-theme="light"] :is(.glass-card, .glass-panel, .governed-hover):hover {
+  background: var(--color-surface-muted);
+  border-color: #b8bec6;
+}
+html[data-console-theme="light"] .mc-dialog { box-shadow: var(--shadow-elevated); }
+html[data-console-theme="light"] [data-sonner-toast] {
+  background: var(--color-panel) !important;
+  border-color: var(--color-line) !important;
+  color: var(--color-ink) !important;
+  box-shadow: var(--shadow-elevated) !important;
+}
+html[data-console-theme="light"] [data-sonner-toast] [data-title] { color: var(--color-ink) !important; }
+html[data-console-theme="light"] [data-sonner-toast] [data-description] { color: var(--color-ink-mute) !important; }

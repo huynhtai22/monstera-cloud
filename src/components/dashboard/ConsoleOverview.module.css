@@ -1476,3 +1476,11 @@
 .issueGroup summary { cursor: pointer; font-size: 12px; font-weight: 500; line-height: 1.7; }
 .issueGroup summary span { font-weight: 400; color: var(--color-ink-mute); }
 .issueGroup summary:focus-visible { outline: 2px solid var(--color-primary-ring); outline-offset: 4px; }
+
+/* The dashboard's secondary details must not retain dark-theme plates or pale ink. */
+:global(html[data-console-theme="light"]) :is(.sourceIds button, .footerMark, .deliveryNote, .workingTitle, .metricTop, .metricLabel, .healthMeta button) { color: var(--color-ink-mute); }
+:global(html[data-console-theme="light"]) .sourceIds button { background: var(--color-surface-muted); border-color: var(--color-line); }
+:global(html[data-console-theme="light"]) :is(.attentionIcon, .failure) { color: var(--console-warning-ink); }
+:global(html[data-console-theme="light"]) .attentionIcon { background: #fff1ce; border-color: var(--console-warning-line); }
+:global(html[data-console-theme="light"]) :is(.issue h3, .healthHeadline strong) { color: var(--color-ink); }
+:global(html[data-console-theme="light"]) .metric::after { background: linear-gradient(110deg, transparent 20%, #286b4006 50%, transparent 80%); }
