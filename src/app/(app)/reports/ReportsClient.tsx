@@ -238,7 +238,7 @@ export function ReportsClient() {
                     viewMode,
                 })
             );
-            toast.success(`Saved as your default ${viewMode === "performance" ? "Executive Performance" : viewMode === "readiness" ? "Report readiness" : "Sync Activity"} view on this browser.`);
+            toast.success(`Saved as your default ${viewMode === "performance" ? "Performance" : viewMode === "readiness" ? "Report readiness" : "Sync Activity"} view on this browser.`);
         } catch {
             toast.error("Could not save view.");
         }
@@ -267,11 +267,11 @@ export function ReportsClient() {
                 <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-xl font-semibold tracking-tight text-ink">
-                            {viewMode === "performance" ? "Executive Performance" : viewMode === "readiness" ? "Report readiness" : "Sync activity"}
+                            {viewMode === "performance" ? "Performance" : viewMode === "readiness" ? "Report readiness" : "Sync activity"}
                         </h1>
                         <p className="mt-1 max-w-2xl text-sm text-ink-mute">
                             {viewMode === "performance"
-                                ? `Holistic marketing performance, ROAS, and campaign analytics for ${activeWorkspace?.name ?? "the active workspace"}.`
+                                ? `Spend, attributed results, and campaign performance for ${activeWorkspace?.name ?? "the active workspace"}.`
                                 : viewMode === "readiness" ? "Check account coverage and delivery evidence for a client and reporting window."
                                 : `Destination pipeline run history and row counts for ${activeWorkspace?.name ?? "the active workspace"}.`}
                         </p>
