@@ -18,6 +18,7 @@ import type { DataPreview } from "./AgentTaskSetup";
 import { firstResultKey } from "./first-result";
 import { FirstResult } from "./FirstResult";
 import { WorkRolePicker } from "./WorkRolePicker";
+import { useSession } from "next-auth/react";
 import { OnboardingIntro } from "./OnboardingIntro";
 import { SpecialistTaskList } from "./SpecialistTaskList";
 import { Logo } from "@/components/Logo";
@@ -25,12 +26,17 @@ import { BusinessIcon, SourceLogo } from "./OnboardingIcons";
 import styles from "./Onboarding.module.css";
 
 export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
+  const { status } = useSession();
+  const [sessionReady, setSessionReady] = useState(false);
+  // WorkspaceSessionSync clears prior-account selection on its first authenticated
+  // effect. Wait for that commit before a fallback link saves an explicit choice.
+  useEffect(() => { setSessionReady(status === "authenticated"); }, [status]);
   if (boot.unavailableWorkspace) {
     const sourcesPath = boot.agencySlug ? `/agencies/${boot.agencySlug}/sources` : "/sources";
     return <main className={`dark ${styles.root}`}><WorkspaceSessionSync /><div className={styles.stage}><section className={styles.welcome}>
       <Logo /><h1>Connect your first source</h1>
       <p className={styles.muted}>Guided setup is available to invited workspaces. You can manage sources in {boot.unavailableWorkspace.name} and choose what to import there.</p>
-      <Link className={styles.primary} href={sourcesPath} onClick={() => useWorkspaceStore.getState().setActiveWorkspaceId(boot.unavailableWorkspace!.id)}>Open sources →</Link>
+      <Link className={styles.primary} href={sourcesPath} aria-disabled={!sessionReady} onClick={event => { if (!sessionReady) { event.preventDefault(); return; } useWorkspaceStore.getState().setActiveWorkspaceId(boot.unavailableWorkspace!.id); }}>{sessionReady ? "Open sources →" : "Checking your session…"}</Link>
     </section></div></main>;
   }
   return <GuidedOnboardingExperience boot={boot} />;

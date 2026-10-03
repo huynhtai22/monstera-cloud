@@ -46,6 +46,14 @@ export function sampleApiPayload(url: URL, state: PreviewState): unknown {
   const p = url.pathname;
   if (p === "/api/auth/session") return sampleSession;
   if (p === "/api/agent/onboarding-entry") return { workspaceId: SAMPLE_WORKSPACE_ID, sample: true };
+  if (p === "/api/agent/delegation") return { workspaceId: SAMPLE_WORKSPACE_ID, canDelegate: true, clients: clientRows.map(client => ({ id: client.id, name: client.name })), runId: empty ? null : "sample-delegated-run" };
+  if (p === "/api/agent/runs/sample-delegated-run") return {
+    run: { id: "sample-delegated-run", workspaceId: SAMPLE_WORKSPACE_ID, clientId: "north", version: 2, status: state === "Syncing" || attention ? "in_progress" : "completed", goal: { id: "reporting", context: "Prepare client reporting" } },
+    tasks: [{ id: "sample-import", provider: "meta_ads", state: state === "Syncing" ? "importing" : attention ? "needs_attention" : "ready", scopeRevision: 1, version: 2, reasonCode: attention ? "reconnect_required" : null, requestedScope: null,
+      confirmedScope: { provider: "meta_ads", connectionId: "preview-meta", selectedAccountIds: ["sample-account"], since: "2026-09-25", until: "2026-10-01" }, importJobId: "sample-job",
+      result: state === "Syncing" || attention ? null : { verified: true, rowsCount: 140, completedItems: 1, totalItems: 1 } }],
+    messages: [], events: [], nextSequence: 2, lastSequence: 2, hasMoreEvents: false,
+  };
   if (p === "/api/agent-console/summary") return {
     workspaceId: SAMPLE_WORKSPACE_ID,
     cadence: "daily",

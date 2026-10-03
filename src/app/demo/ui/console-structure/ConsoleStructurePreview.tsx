@@ -125,7 +125,7 @@ function ProductionScreen({ productionPath, state, onState, notice, onNotice }: 
     const filterKeys: Record<string, string[]> = {
       "/sources": ["tab", "search"], "/reports": ["view", "source", "status", "dateFrom", "dateTo", "since", "until", "scenario"],
       "/explorer": ["startDate", "endDate", "platform", "mode", "dimensions", "metrics"],
-      "/clients": ["mode", "status", "search"], "/settings": ["tab"], "/operations": [], "/exports": [], "/console": [],
+      "/clients": ["mode", "status", "search"], "/settings": ["tab"], "/operations": [], "/exports": [], "/console": ["task"],
     };
     if (area && area.path !== section?.path && url.pathname === area.path) {
       const allowed = new Set(["clientId", ...(filterKeys[area.path] ?? [])]);

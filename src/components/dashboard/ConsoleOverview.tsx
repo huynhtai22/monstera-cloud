@@ -49,6 +49,7 @@ import {
   type StatePresentation,
 } from "./console-presentation";
 import styles from "./ConsoleOverview.module.css";
+import { DashboardDelegation } from "@/components/agent/DashboardDelegation";
 
 type Props = {
   overview: DashboardOverviewDTO;
@@ -388,6 +389,8 @@ export function ConsoleOverview({
           </Link>
         </div>
       </header>
+
+      <DashboardDelegation workspaceId={workspace.id} />
 
       {actionError && (
         <div role="status" className={styles.warning}>

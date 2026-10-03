@@ -21,6 +21,7 @@ import { mergePendingUrlState } from "@/lib/pending-query";
 import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import { SavedViews } from "@/components/ui/SavedViews";
+import { ReportingTaskRecipes } from "@/components/agent/DashboardDelegation";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -263,6 +264,7 @@ export function ReportsClient() {
 
     return (
         <PageShell section="reports">
+            <ReportingTaskRecipes workspaceId={activeWorkspaceId} clientId={clientFilter || null} />
             <div className="relative z-10 mb-6">
                 <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
