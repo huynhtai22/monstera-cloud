@@ -1,6 +1,6 @@
 import { expect, test as base } from "@playwright/test";
 import { encode } from "next-auth/jwt";
-import { sampleApiPayload, sampleSession, SAMPLE_WORKSPACE_ID } from "../../src/app/demo/ui/console-structure/preview-data";
+import { productionOverview, sampleApiPayload, sampleSession, SAMPLE_WORKSPACE_ID } from "../../src/app/demo/ui/console-structure/preview-data";
 import type { PreviewState } from "../../src/app/demo/ui/console/fixtures";
 
 // Exercise the production routes; demo routes remain unavailable in production.
@@ -19,11 +19,16 @@ const test = base.extend<{ fixtureState: (state: PreviewState) => void }>({
         await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "read-only release fixture; no operation was sent" }) });
         return;
       }
-      const payload = sampleApiPayload(new URL(request.url()), state);
+      const url = new URL(request.url());
+      const payload = url.pathname === "/api/dashboard/summary" ? productionOverview(state) : sampleApiPayload(url, state);
       await route.fulfill({ status: payload === null ? 503 : 200, contentType: "application/json", body: JSON.stringify(payload ?? { error: "No release fixture" }) });
     });
     await use(value => { state = value; });
   }, { auto: true }],
+});
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status !== info.expectedStatus) console.log("Release fixture failure", page.url(), await page.locator("body").innerText());
 });
 
 const root = "";
@@ -34,13 +39,13 @@ for (const theme of ["light", "dark"]) {
     test.setTimeout(120000);
     await page.addInitScript(value => localStorage.setItem("monstera-theme", value), theme);
     const errors: string[] = [];
-    page.on("pageerror", error => errors.push(error.message));
+    page.on("pageerror", error => errors.push(`${page.url()}: ${error.message}`));
     for (const section of sections) {
       await page.goto(`${root}/${section}`);
       await expect(page.locator("[data-console-theme]").first()).toHaveAttribute("data-console-theme", theme);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(page.getByRole("button", { name: "Page guide", exact: true })).toBeVisible();
-      await expect(page.locator("main h1").first()).toBeVisible();
+      await expect(page.locator("main h1").first(), section).toBeVisible();
     }
     expect(errors).toEqual([]);
   });
