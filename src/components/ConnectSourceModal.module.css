@@ -35,8 +35,8 @@
 
 .pickerItem {
   min-width: 0;
-  animation: pickerEnter 580ms cubic-bezier(.16, 1, .3, 1) both;
-  animation-delay: calc(var(--picker-index) * 48ms);
+  animation: pickerEnter 380ms cubic-bezier(.16, 1, .3, 1) both;
+  animation-delay: calc(var(--picker-index) * 24ms);
 }
 
 .pickerTile {
@@ -58,7 +58,7 @@
 }
 
 .pickerTile:not(:disabled):hover {
-  transform: translateY(-3px);
+  transform: translateY(-2px);
   border-color: rgba(212,212,212,.38);
   background-color: rgba(212,212,212,.045);
   box-shadow: 0 16px 30px -20px #000, inset 0 1px 0 rgba(255,255,255,.07);
@@ -79,7 +79,7 @@
   transition: transform 500ms cubic-bezier(.16, 1, .3, 1), box-shadow 500ms ease;
 }
 
-.pickerTile:hover .pickerLogo { transform: translateY(-2px) rotate(-3deg); }
+.pickerTile:hover .pickerLogo { transform: translateY(-1px); }
 .pickerArrow { flex: none; color: #969696; transform: translateX(-3px); transition: color 280ms ease, transform 400ms cubic-bezier(.16, 1, .3, 1); }
 .pickerTile:hover .pickerArrow { color: #ededed; transform: translateX(2px); }
 .pickerStatus { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 14px; color: #adadad; font-size: 10px; line-height: 1; }
@@ -94,8 +94,9 @@
 .visual {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0;
-  padding: 32px 0;
+  padding: 24px 0;
 }
 .node {
   display: grid;
@@ -110,10 +111,15 @@
 }
 .node :global(span) { border: 0; }
 .node :global(img) { width: 32px; height: 32px; }
-.monsteraNode { background: #0c0c0c; }
+.monsteraNode { background: var(--dialog-panel); }
+.intro { text-align: center; }
+.intro h3 { line-height: 1.2; max-width: 450px; margin-inline: auto; text-wrap: balance; }
+.intro p { text-wrap: pretty; }
+.waitingPanel h3 { line-height: 1.25; }
 .bridge {
   position: relative;
-  width: 80px;
+  width: 104px;
+  flex: none;
   height: 2px;
   background: repeating-linear-gradient(90deg, var(--dialog-border) 0 4px, transparent 4px 9px);
 }
@@ -125,46 +131,45 @@
   height: 8px;
   border-radius: 50%;
   background: var(--dialog-accent);
-  transform: translateX(36px);
-  animation: connectionTravel 1.8s cubic-bezier(.4,0,.2,1) 1 both;
+  transform: translateX(48px);
+  animation: connectionTravel 1.6s cubic-bezier(.4,0,.2,1) 1 both;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--dialog-accent) 20%, transparent);
 }
 .connecting .bridge span { animation-iteration-count: infinite; }
 @keyframes connectionTravel {
   0% { opacity: 0; transform: translateX(0); }
   18% { opacity: 1; }
   82% { opacity: 1; }
-  100% { opacity: 0; transform: translateX(72px); }
+  100% { opacity: 0; transform: translateX(96px); }
 }
 /* Rest at the middle after the introductory motion; this is not a success signal. */
 .consent:not(.connecting) .bridge span { animation-fill-mode: none; }
-.accessDetails { margin-top: 24px; padding: 20px 0 4px; border-top: 1px solid var(--dialog-border); }
+.accessDetails { margin: 24px auto 0; padding: 20px 0 4px; border-top: 1px solid var(--dialog-border); max-width: 420px; }
 .accessHeading { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; }
 .accessHeading svg { color: var(--dialog-accent); }
 .permissionList { display: grid; gap: 10px; margin-top: 14px; }
 .permissionList li { display: flex; align-items: flex-start; gap: 10px; color: var(--dialog-muted); font-size: 13px; line-height: 1.5; }
 .permissionList svg { flex: none; margin-top: 2px; color: var(--dialog-accent); }
 .accessNote { margin-top: 16px; color: var(--dialog-muted); font-size: 12px; line-height: 1.6; }
-.actions { display: flex; gap: 12px; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .actions button { min-height: 46px; border-radius: 12px; padding: 12px 16px; font-size: 13px; font-weight: 600; transition: background-color 180ms ease; }
 .actions button:focus-visible { outline: 2px solid var(--dialog-accent); outline-offset: 3px; }
 .cancel { border: 1px solid var(--dialog-border); background: var(--dialog-panel); flex: 1; }
-.continue { display: flex; justify-content: center; align-items: center; gap: 8px; background: var(--dialog-ink); color: var(--dialog-bg); flex: 2; }
+.continue { display: flex; justify-content: center; align-items: center; gap: 8px; background: var(--dialog-ink); color: var(--dialog-bg); flex: 1; }
 .continue:disabled { opacity: .5; cursor: not-allowed; }
 .cancel:hover { background: var(--dialog-border); }
 .continue:hover:not(:disabled) { opacity: .9; }
 
 .idlePanel, .waitingPanel {
+  display: grid;
   overflow: hidden;
-  transition: max-height 350ms var(--dialog-ease), opacity 220ms ease, transform 350ms var(--dialog-ease);
+  transition: grid-template-rows 320ms var(--dialog-ease), opacity 180ms ease, transform 320ms var(--dialog-ease);
 }
-
-.idlePanel { max-height: 700px; opacity: 1; transform: translateY(0); }
-.idlePanelHidden { max-height: 0; opacity: 0; transform: translateY(-8px); pointer-events: none; }
-.waitingPanel { max-height: 0; opacity: 0; transform: translateY(8px); pointer-events: none; }
-.waitingPanelActive { max-height: 220px; opacity: 1; transform: translateY(0); pointer-events: auto; }
-
-.connecting .visual { padding-top: 48px; padding-bottom: 32px; }
-.connecting .waitingPanelActive { max-height: 300px; }
+.phaseBody, .waitingPanel > div { min-height: 0; overflow: hidden; }
+.idlePanel { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
+.idlePanelHidden { grid-template-rows: 0fr; opacity: 0; transform: translateY(-4px); pointer-events: none; }
+.waitingPanel { grid-template-rows: 0fr; opacity: 0; transform: translateY(4px); pointer-events: none; }
+.waitingPanelActive { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); pointer-events: auto; transition-delay: 0ms, 90ms, 0ms; }
 
 .statusBadge {
   display: inline-flex;
@@ -192,13 +197,14 @@
 }
 
 .footer {
+  display: grid;
+  grid-template-rows: 1fr;
   flex-shrink: 0;
-  max-height: 180px;
   opacity: 1;
   overflow: hidden;
-  transition: max-height 350ms var(--dialog-ease), opacity 220ms ease, padding 350ms var(--dialog-ease);
+  transition: grid-template-rows 320ms var(--dialog-ease), opacity 180ms ease, padding 320ms var(--dialog-ease);
 }
-.footerHidden { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; pointer-events: none; }
+.footerHidden { grid-template-rows: 0fr; opacity: 0; padding-top: 0; padding-bottom: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .surface * { animation: none !important; transition: none !important; }
@@ -210,8 +216,8 @@
 :global(html[data-console-theme="light"]) .pickerTile { background: var(--dialog-panel); border-color: var(--dialog-border); }
 .surface :global(input) { background: var(--dialog-panel); color: var(--dialog-ink); border-color: var(--dialog-border); }
 .statusDot { background: var(--dialog-accent); box-shadow: none; }
-.statusBadge { margin-left: 0; background: var(--dialog-panel); border-color: var(--dialog-border); color: var(--dialog-ink); }
+.statusBadge { margin-inline: auto; background: var(--dialog-panel); border-color: var(--dialog-border); color: var(--dialog-ink); }
 @media (prefers-reduced-motion: reduce) {
   .surface *, .surface *::before, .surface *::after { animation: none !important; transition: none !important; }
-  .bridge span, .connecting .bridge span { opacity: 1; transform: translateX(36px); }
+  .bridge span, .connecting .bridge span { opacity: 1; transform: translateX(48px); }
 }

@@ -420,11 +420,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         <div className={styles.visual} aria-hidden="true">
                             <div className={styles.node}><IntegrationMark src={logoSrc} alt="" size="lg" /></div>
                             <div className={styles.bridge}><span /></div>
-                            <div className={cn(styles.node, styles.monsteraNode)}><LogoMark className="h-full w-full" /></div>
+                            <div className={cn(styles.node, styles.monsteraNode)}><LogoMark className="h-11 w-11" /></div>
                         </div>
 
                         <div className={cn(styles.waitingPanel, displayPhase && styles.waitingPanelActive)} aria-hidden={!displayPhase} inert={!displayPhase} role={displayPhase ? "status" : undefined} aria-live={displayPhase ? "polite" : undefined}>
-                            <div className="pb-4 text-left">
+                            <div className="pb-4 text-center">
                                 <p className={styles.statusBadge}><span className={styles.statusDot} aria-hidden="true" />{displayPhase === "preparing" ? "Preparing secure connection" : "Opening secure sign-in"}</p>
                                 <h3 id={displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white">
                                     {displayPhase === "preparing" ? "Preparing your connection" : `Opening ${name}`}
@@ -440,9 +440,10 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         </div>
 
                         <div className={cn(styles.idlePanel, displayPhase && styles.idlePanelHidden)} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
-                                <div className="text-left">
+                            <div className={styles.phaseBody}>
+                                <div className={styles.intro}>
                                     <h3 id={!displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white sm:text-[30px]">Connect {name} to Monstera Cloud</h3>
-                                    <p className="mt-3 max-w-[420px] text-[14px] leading-[1.6] text-[#afb8b0]">
+                                    <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-[1.6] text-[#afb8b0]">
                                         {connectDescription}
                                     </p>
                                 </div>
@@ -465,11 +466,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 )}
 
                                 {!integration && draftPick && <button type="button" onClick={() => setDraftPick(null)} className="mt-4 text-[11px] text-[#86c99b] hover:text-white">Choose a different source</button>}
-
+                            </div>
                         </div>
                     </div>
 
                     <div className={cn(styles.footer, displayPhase && styles.footerHidden, "px-6 pb-7 sm:px-8")} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
+                            <div className={styles.phaseBody}>
                             <div className={styles.actions}>
                                 <button type="button" onClick={handleClose} className={styles.cancel}>Cancel</button>
                                 <button type="button" onClick={handleAuthenticate} aria-busy={isProcessing} disabled={isProcessing || oauthPrimaryDisabled} className={styles.continue}>
@@ -477,6 +479,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 </button>
                             </div>
                             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-[#858d87]"><Lock className="h-3 w-3 shrink-0" aria-hidden="true" /> Sign in on {name}. Disconnect anytime in Monstera Cloud.</p>
+                        </div>
                     </div>
                 </div>
             )}
