@@ -920,7 +920,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             <div data-console-page-header="true" className="console-section-heading mb-7 flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                 <div>
                     <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-ink-mute">Workspace / Data connections</p>
-                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[#86c99b]">.</span></h1>
+                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[var(--console-motion-accent)]">.</span></h1>
                     <p className="mt-2 text-sm text-ink-mute">
                         {isLoading
                             ? "Loading your workspace…"
@@ -1093,7 +1093,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     </div>
                     <div className="min-w-0 border-r border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
                         <p className="text-[11px] font-medium text-ink-mute">Syncing well</p>
-                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-[#86c99b] tabular-nums">{filterStats.connected}</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-[var(--console-motion-accent)] tabular-nums">{filterStats.connected}</p>
                         <p className="mt-2 text-[11px] text-ink-mute">Recent successful syncs</p>
                     </div>
                     <div className="min-w-0 p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">

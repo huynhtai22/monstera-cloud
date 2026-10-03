@@ -33,6 +33,37 @@ try {
     assert.equal(green.color, 'rgb(134, 201, 155)');
     assert.equal(green.token, '#86c99b');
     await page.screenshot({ path: `/tmp/console-production-overview-${width}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Switch to light mode', exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
+    const light = await page.locator('[data-workspace-shell]').evaluate(el => ({ canvas: getComputedStyle(el).backgroundColor, ink: getComputedStyle(el).color, scheme: getComputedStyle(el).colorScheme }));
+    assert.deepEqual(light, { canvas: 'rgb(248, 250, 248)', ink: 'rgb(24, 35, 28)', scheme: 'light' });
+    const portalColors = await page.evaluate(() => {
+      const portal = document.createElement('div');
+      portal.style.cssText = 'background:var(--color-panel);color:var(--color-ink);outline-color:var(--color-primary-ring)';
+      document.body.append(portal);
+      const css = getComputedStyle(portal);
+      const result = { panel: css.backgroundColor, ink: css.color, ring: css.outlineColor, accent: css.getPropertyValue('--color-accent').trim() };
+      portal.remove();
+      return result;
+    });
+    assert.deepEqual(portalColors, { panel: 'rgb(255, 255, 255)', ink: 'rgb(24, 35, 28)', ring: 'rgb(40, 107, 64)', accent: '#286b40' });
+    await page.getByRole('button', { name: 'Disconnect Meta Ads', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await dialog.waitFor();
+    assert.equal(await dialog.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
+    assert.equal(await dialog.getByRole('heading').evaluate(el => getComputedStyle(el).color), 'rgb(24, 35, 28)');
+    await dialog.locator('button[data-console-button="ghost"]').click();
+    await dialog.waitFor({ state: 'hidden' });
+
+
+    assert.equal(await page.getByRole('navigation', { name: 'Main navigation', exact: true }).evaluate(el => getComputedStyle(el).scrollbarColor), 'rgb(162, 175, 164) rgba(0, 0, 0, 0)');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
+    assert.equal(await page.evaluate(() => localStorage.getItem('monstera-theme')), 'light');
+    await page.screenshot({ path: `/tmp/console-light-${width}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Switch to dark mode', exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'dark');
+    assert.equal(await page.getByRole('navigation', { name: 'Main navigation', exact: true }).evaluate(el => getComputedStyle(el).scrollbarColor), 'rgb(80, 88, 81) rgba(0, 0, 0, 0)');
     if (width < 1024) await page.getByRole('button', { name: 'Open menu', exact: true }).click();
     await page.getByRole('button', { name: 'Collapse Sources subsection', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Expand Reports subsection', exact: true }).click();
@@ -52,6 +83,8 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no horizontal overflow');
     await page.goto(`${base}/settings?tab=api`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: /^API keys$/i }).waitFor();
+    await page.getByRole('button', { name: 'Switch to light mode', exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
     await page.locator('[data-console-settings-nav]').getByRole('button', { name: 'Team', exact: true }).click();
     await page.waitForURL('**/settings?tab=team');
     await page.getByRole('heading', { name: 'Team', exact: true }).waitFor();
@@ -59,6 +92,7 @@ try {
     await page.getByRole('heading', { name: /^API keys$/i }).waitFor();
     await page.goto(`${base}/reports?view=readiness&since=2026-09-25&until=2026-10-01`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'Report readiness', exact: true }).waitFor();
+    await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
     assert.equal(await page.getByRole('heading', { name: 'Executive Performance', exact: true }).count(), 0);
     assert.equal(await page.getByLabel('Readiness start date').inputValue(), '2026-09-25');
     await page.getByLabel('Readiness start date').fill('2026-09-26');
@@ -68,6 +102,6 @@ try {
     await page.waitForTimeout(300);
     await page.screenshot({ path: `/tmp/console-production-parity-${width}.png`, fullPage: true });
     await context.close();
-    console.log(`PASS production /sources at ${width}px: independent persisted subsections, real tab navigation, brand token, no Detailed view, guide, Settings/history sync, focused readiness/date controls, no page errors`);
+    console.log(`PASS production /sources at ${width}px: independent persisted subsections, real tab navigation, brand token, no Detailed view, guide, Settings/history sync, focused readiness/date controls, persistent light/dark themes and matching native scrollbars, no page errors`);
   }
 } finally { await browser.close(); }

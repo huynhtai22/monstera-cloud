@@ -90,6 +90,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     useEffect(() => {
         if (!themeReady.current) return;
         const root = document.documentElement;
+        root.dataset.consoleTheme = isDarkMode ? "dark" : "light";
         root.classList.add("disable-transitions");
         requestAnimationFrame(() => {
             if (isDarkMode) {
@@ -107,6 +108,8 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
             });
         });
     }, [isDarkMode]);
+
+    useEffect(() => () => { delete document.documentElement.dataset.consoleTheme; }, []);
 
     const toggleDarkMode = () => setIsDarkMode((v) => !v);
 

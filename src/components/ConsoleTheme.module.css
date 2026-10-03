@@ -1,4 +1,24 @@
 /* Visual treatment for the real app shell. Page behavior stays in its existing components. */
+.root[data-console-theme="light"] { color-scheme: light; }
+.root[data-console-theme="light"] > aside { background: #f0f4f0; }
+.root[data-console-theme="light"] :global([aria-selected="true"]),
+.root[data-console-theme="light"] :global([aria-current="page"]) { color: #286b40; }
+.root[data-console-theme="light"] :where(button, a):focus-visible {
+  outline: 2px solid #286b40;
+  outline-offset: 2px;
+}
+.root[data-console-theme="light"] :global(.text-emerald-300),
+.root[data-console-theme="light"] :global(.text-emerald-400),
+.root[data-console-theme="light"] :global(.text-green-400) { color: #286b40; }
+.root[data-console-theme="light"] :global(.text-sky-300),
+.root[data-console-theme="light"] :global(.text-sky-400) { color: #036487; }
+.root[data-console-theme="light"] :global(.text-rose-300),
+.root[data-console-theme="light"] :global(.text-rose-400),
+.root[data-console-theme="light"] :global(.text-red-400) { color: #a6233f; }
+.root[data-console-theme="light"] :global(.text-amber-200),
+.root[data-console-theme="light"] :global(.text-amber-300),
+.root[data-console-theme="light"] :global(.text-amber-400) { color: #875600; }
+.root[data-console-theme="dark"] { color-scheme: dark; }
 .root[data-console-theme="dark"] {
   --color-canvas: #0a0a0a;
   --color-panel: #141414;
