@@ -63,7 +63,7 @@ export async function generateGovernedNarrative(opts: {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }): Promise<NarrativeResult | null> {
-  const route = routeModel("narrative");
+  const route = routeModel("analyst_narrative");
   const apiKey = process.env.XAI_API_KEY?.trim();
   if (route.provider !== "xai" || !apiKey) return null;
 

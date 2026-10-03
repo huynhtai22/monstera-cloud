@@ -27,10 +27,11 @@ describe("governed narrative", () => {
 
   it("eval judge stays off the generator vendor", () => {
     const judge = routeModel("eval_judge");
-    const narrative = routeModel("narrative");
+    const narrative = routeModel("analyst_narrative");
     assert.equal(judge.provider, "deterministic");
     assert.equal(narrative.provider, "xai");
     assert.equal(narrative.model, "grok-4.6");
+    assert.equal(routeModel("narrative").provider, "openai");
   });
 
   it("always prefixes freshness, currency, attribution, completeness", () => {

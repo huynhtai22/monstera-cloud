@@ -2,6 +2,7 @@ export type ModelTask =
   | "classify_intent"
   | "tool_call"
   | "narrative"
+  | "analyst_narrative"
   | "schema_patch"
   | "eval_judge";
 
@@ -22,6 +23,8 @@ export function routeModel(task: ModelTask): {
         maxTokens: 800,
       };
     case "narrative":
+      return { provider: "openai", model: "gpt-4o-mini", maxTokens: 600 };
+    case "analyst_narrative":
       return {
         provider: "xai",
         model: process.env.AI_NARRATIVE_MODEL?.trim() || "grok-4.6",
