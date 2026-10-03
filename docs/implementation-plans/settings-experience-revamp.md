@@ -11,7 +11,7 @@ Find a control by intent, understand whom it affects, and return to reporting qu
 These are functional references, not a claim to have inspected authenticated competitor screens.
 
 ## Implemented structure
-- Overview: six entry cards for existing production controls, plus shortcuts to Sources, Report readiness and Exports.
+- Overview: grouped setting rows for existing production controls and personal preferences, plus shortcuts to Sources, Report readiness and Exports.
 - Workspace: workspace identity/setup, client scope, people and roles.
 - Reporting: quality rules/alerts and API access keys.
 - Administration: existing plan, limits and billing.
@@ -20,7 +20,7 @@ These are functional references, not a claim to have inspected authenticated com
 - Existing `?tab=` links remain valid; overview is the default landing page. Selection survives reload and browser history.
 
 ## Visual and motion rules
-One custom SVG family, a 24px optical grid, consistent 1.5px strokes and rounded geometry. Neutral selection in both themes. White content surfaces in light mode and restrained raised surfaces in dark mode. Labels and descriptions precede actions. A compact horizontal category strip replaces the inner rail on mobile.
+One custom SVG family, a 24px optical grid, consistent 1.5px strokes and rounded geometry. Neutral selection in both themes. White content surfaces in light mode and restrained raised surfaces in dark mode. Labels and descriptions precede actions. Administrative copy replaces promotional headlines; compact rows replace floating overview tiles, with restrained hover feedback and no lift motion. A compact horizontal category strip replaces the inner rail on mobile.
 
 Use the existing console theme transition for all Appearance changes. Use short opacity/position transitions, never fake progress. Honor system reduced motion. Keep focus visible and navigation keyboard operable. The feature replay control remains demo-only and is moved below the useful settings content.
 

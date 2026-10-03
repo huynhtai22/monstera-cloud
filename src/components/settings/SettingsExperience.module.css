@@ -3,7 +3,7 @@
 .eyebrow { font-family:var(--font-mono); font-size:10px; letter-spacing:.13em; color:var(--color-ink-mute); text-transform:uppercase; margin:0 0 12px; }
 .pageHeader h1 { font-size:32px; font-weight:600; letter-spacing:-.045em; line-height:1.2; margin:0 0 8px; }
 .pageHeader p:not(.eyebrow), .sectionHeader p:not(.eyebrow), .detailHeading p, .appearance > p { font-size:14px; line-height:1.6; color:var(--color-ink-mute); }
-.workspacePill { display:flex; gap:12px; align-items:center; border:1px solid var(--color-line); background:var(--color-panel); border-radius:12px; padding:12px 16px; }
+.workspacePill { display:flex; gap:12px; align-items:center; border:1px solid var(--color-line); background:var(--color-panel); border-radius:6px; padding:10px 14px; }
 .workspacePill > svg { width:22px; color:var(--color-ink-mute); }
 .workspacePill strong,.workspacePill span { display:block; font-size:12px; }
 .workspacePill span { color:var(--color-ink-mute); margin-top:3px; font-size:11px; }
@@ -22,17 +22,17 @@
 .scopeNote { font-size:11px; line-height:1.7; color:var(--color-ink-mute); padding:8px 11px; }
 .content { padding:32px 0 24px 32px; min-width:0; }
 .sectionHeader { margin-bottom:28px; }
-.sectionHeader h2,.results h2 { font-size:26px; font-weight:550; letter-spacing:-.035em; margin-bottom:10px; }
+.sectionHeader h2,.results h2 { font-size:22px; font-weight:550; letter-spacing:-.035em; margin-bottom:10px; }
 .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
-.card { position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; padding:22px 20px; min-height:192px; background:var(--color-panel); border:1px solid var(--color-line); border-radius:13px; transition:transform var(--console-duration-normal,240ms),border-color var(--console-duration-normal,240ms),box-shadow var(--console-duration-normal,240ms); }
-.card:hover { transform:translateY(-2px); border-color:color-mix(in srgb,var(--color-ink-mute) 50%,var(--color-line)); box-shadow:0 5px 14px color-mix(in srgb,var(--color-ink) 4%,transparent); }
-.iconTile { display:inline-flex; justify-content:center; align-items:center; width:40px; height:40px; background:color-mix(in srgb,var(--color-ink) 4%,var(--color-panel)); border:1px solid var(--color-line); border-radius:11px; color:var(--color-ink); flex-shrink:0; }
+.card { position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; padding:22px 20px; min-height:192px; background:var(--color-panel); border:1px solid var(--color-line); border-radius:8px; transition:transform var(--console-duration-normal,240ms),border-color var(--console-duration-normal,240ms),box-shadow var(--console-duration-normal,240ms); }
+.card:hover { border-color:color-mix(in srgb,var(--color-ink-mute) 50%,var(--color-line)); box-shadow:0 5px 14px color-mix(in srgb,var(--color-ink) 4%,transparent); }
+.iconTile { display:inline-flex; justify-content:center; align-items:center; width:40px; height:40px; background:color-mix(in srgb,var(--color-ink) 4%,var(--color-panel)); border:1px solid var(--color-line); border-radius:6px; color:var(--color-ink); flex-shrink:0; }
 .card .iconTile { margin-bottom:18px; }
 .card strong { font-size:13px; font-weight:600; margin-bottom:7px; }
 .card > span:not(.iconTile) { font-size:12px; line-height:1.65; color:var(--color-ink-mute); padding-right:4px; }
 .cardArrow { position:absolute; top:26px; right:18px; width:16px; opacity:.45; transition:transform 240ms,opacity 240ms; }
 .card:hover .cardArrow { transform:translateX(3px); opacity:1; }
-.workflow { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:24px; margin-top:24px; border:1px solid var(--color-line); background:color-mix(in srgb,var(--color-ink) 2%,var(--color-panel)); border-radius:13px; }
+.workflow { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:24px 0 0; margin-top:28px; border-top:1px solid var(--color-line); background:transparent; }
 .workflow h3 { font-size:16px; font-weight:550; letter-spacing:-.02em; margin-bottom:9px; }
 .workflow p:not(.eyebrow) { font-size:12px; color:var(--color-ink-mute); line-height:1.65; }
 .workflow a { display:flex; align-items:center; gap:10px; font-size:12px; border-bottom:1px solid var(--color-line); padding:11px 0; }
@@ -81,3 +81,21 @@
 @media (max-width:800px) { .page { padding:24px 18px 40px; } .pageHeader { margin-bottom:24px; } .workspacePill { display:none; } .layout { display:block; } .navigation { border-right:0; padding:20px 0; border-bottom:1px solid var(--color-line); } .search { margin-bottom:14px; } .navigation nav { display:flex; overflow-x:auto; gap:8px; } .navGroup { display:contents; } .navGroup > p,.scopeNote { display:none; } .navGroup button { width:auto; white-space:nowrap; flex-shrink:0; } .content { padding:24px 0 0; } .card { padding:18px; min-height:180px; } .workflow { grid-template-columns:1fr; } }
 @media (max-width:420px) { .cards { grid-template-columns:1fr; } .card { min-height:150px; } .themeChoices { gap:12px; } .themePreview { height:105px; } .themePreview > span { padding:10px; } }
 @media (prefers-reduced-motion:reduce) { .detail { animation:none; } .card,.cardArrow,.navGroup button { transition:none; } .card:hover,.card:hover .cardArrow { transform:none; } }
+
+/* Settings is an administrative surface: grouped controls, not promotional tiles. */
+.overviewGroups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px 20px; align-items:start; }
+.overviewGroup > header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:6px; margin-bottom:10px; }
+.overviewGroup h3 { font-size:13px; font-weight:600; }
+.overviewGroup header > span { font-size:10px; color:var(--color-ink-mute); }
+.settingRows { overflow:hidden; border:1px solid var(--color-line); border-radius:8px; background:var(--color-panel); }
+.settingRow { display:flex; align-items:center; gap:14px; width:100%; padding:18px 16px; text-align:left; border-bottom:1px solid var(--color-line); transition:background 160ms ease; }
+.settingRow:last-child { border-bottom:0; }
+.settingRow:hover { background:color-mix(in srgb,var(--color-ink) 3%,var(--color-panel)); }
+.settingRow > svg { width:20px; height:20px; flex-shrink:0; color:var(--color-ink-mute); }
+.settingRow > span { display:block; flex:1; min-width:0; }
+.settingRow strong { display:block; font-size:13px; font-weight:550; margin-bottom:5px; }
+.settingRow > span > span { display:block; font-size:12px; line-height:1.55; color:var(--color-ink-mute); }
+.settingRow .rowArrow { width:15px; opacity:.6; transition:transform 160ms ease; }
+.settingRow:hover .rowArrow { transform:translateX(2px); }
+@media (max-width:1100px) { .overviewGroups { grid-template-columns:1fr; } }
+@media (prefers-reduced-motion:reduce) { .settingRow,.rowArrow { transition:none !important; } .settingRow:hover .rowArrow { transform:none; } }

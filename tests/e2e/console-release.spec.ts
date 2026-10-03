@@ -174,7 +174,7 @@ test("theme switching preserves account scope and restores the last preference",
 
 test("Settings search opens the right controls and preserves category across reload and history", async ({ page }) => {
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "Make room for the work.", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workspace settings", exact: true })).toBeVisible();
   const search = page.getByRole("searchbox", { name: "Search settings", exact: true });
   await search.fill("Sheets");
   await expect(page.getByRole("region", { name: "Settings search results" })).toContainText("API & access keys");
