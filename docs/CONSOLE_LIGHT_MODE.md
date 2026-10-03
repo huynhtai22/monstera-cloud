@@ -37,3 +37,5 @@ Preserve existing navigation, consent, delivery evidence, reminder frequency, an
 ## Release acceptance
 
 Inspect Sources connected/accounts/library/attention, Reports, Exports, Settings, dashboard failure and loading states, connector consent, search/notification menus, and feature reminder in both themes. Check desktop and mobile, keyboard focus, native controls, hover text, and reload persistence. Browser regression checks should cover actual rendered light surfaces rather than only the theme attribute.
+
+Selected sidebar sections and subsections use neutral gray (`#e4e7eb`) with dark labels (`#202124`), a gray inset indicator and gray keyboard focus. Brand green remains on primary actions and meaningful status.

@@ -437,11 +437,15 @@
   color: #101010;
 }
 
-/* Light mode uses neutral working surfaces and green only for orientation. */
+/* Light navigation uses neutral selection; green remains for actions and status. */
 .root[data-console-theme="light"] > aside :global(a[aria-current="page"]) {
-  background: #e3f0e7; color: #245e38; border-color: #c1d9c9; box-shadow: inset 3px 0 #286b40;
+  background: #e4e7eb; color: #202124; border-color: #d2d6dc; box-shadow: inset 3px 0 #5f6368;
 }
-.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) svg { color: #245e38; }
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) svg { color: #202124; }
+
+.root[data-console-theme="light"] > aside :where(button, a):focus-visible {
+  outline-color: #5f6368;
+}
 
 .root[data-console-theme="light"] main :global([aria-pressed="true"]),
 .root[data-console-theme="light"] main :global([data-state="active"]) { background-color: #e3f0e7; color: #245e38; border-color: #c1d9c9; }
