@@ -1,6 +1,32 @@
-import { expect, test } from "@playwright/test";
+import { expect, test as base } from "@playwright/test";
+import { encode } from "next-auth/jwt";
+import { sampleApiPayload, sampleSession, SAMPLE_WORKSPACE_ID } from "../../src/app/demo/ui/console-structure/preview-data";
+import type { PreviewState } from "../../src/app/demo/ui/console/fixtures";
 
-const root = "/demo/ui/console-structure";
+// Exercise the production routes; demo routes remain unavailable in production.
+const test = base.extend<{ fixtureState: (state: PreviewState) => void }>({
+  fixtureState: [async ({ page, context, baseURL }, use) => {
+    let state: PreviewState = "Overview";
+    const token = await encode({ secret: process.env.NEXTAUTH_SECRET ?? "e2e-nextauth-secret-at-least-32-characters", token: { sub: sampleSession.user.id, email: sampleSession.user.email, name: sampleSession.user.name } });
+    await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL! }]);
+    await page.addInitScript(({ workspaceId, userId }) => {
+      localStorage.setItem("monstera-workspace-storage", JSON.stringify({ state: { activeWorkspaceId: workspaceId }, version: 0 }));
+      sessionStorage.setItem("monstera-last-auth-user-id", userId);
+    }, { workspaceId: SAMPLE_WORKSPACE_ID, userId: sampleSession.user.id });
+    await page.route("**/api/**", async route => {
+      const request = route.request();
+      if (request.method() !== "GET") {
+        await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "read-only release fixture; no operation was sent" }) });
+        return;
+      }
+      const payload = sampleApiPayload(new URL(request.url()), state);
+      await route.fulfill({ status: payload === null ? 503 : 200, contentType: "application/json", body: JSON.stringify(payload ?? { error: "No release fixture" }) });
+    });
+    await use(value => { state = value; });
+  }, { auto: true }],
+});
+
+const root = "";
 const sections = ["console", "operations", "sources", "sources?tab=accounts", "sources?tab=available", "sources?tab=attention", "reports?view=performance", "reports?view=readiness", "reports?view=sync", "explorer", "exports", "clients", "settings?tab=workspace", "settings?tab=clients", "settings?tab=team", "settings?tab=alerts", "settings?tab=billing", "settings?tab=api", "settings?tab=sessions"];
 
 for (const theme of ["light", "dark"]) {
@@ -11,7 +37,6 @@ for (const theme of ["light", "dark"]) {
     page.on("pageerror", error => errors.push(error.message));
     for (const section of sections) {
       await page.goto(`${root}/${section}`);
-      await expect(page.getByText("Production console preview", { exact: true })).toBeVisible();
       await expect(page.locator("[data-console-theme]").first()).toHaveAttribute("data-console-theme", theme);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(page.getByRole("button", { name: "Page guide", exact: true })).toBeVisible();
@@ -54,7 +79,7 @@ test("Sources tabs support arrows, Home and End and preserve selection on reload
   await expect(tabs.getByRole("tab", { name: "Client accounts", exact: true })).toHaveAttribute("aria-selected", "true");
 });
 
-test("reviewed onboarding result survives reload without granting monitoring consent", async ({ page }) => {
+test("reviewed onboarding result survives reload without granting monitoring consent", async ({ page, fixtureState }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`${root}/console?onboardingRunId=sample-reviewed-run`);
   const result = page.getByRole("region", { name: "Review advertising spend", exact: true });
@@ -64,7 +89,8 @@ test("reviewed onboarding result survives reload without granting monitoring con
   await expect(result.getByRole("alert")).toContainText("read-only");
   await page.reload();
   await expect(result).toContainText("USD 21,500");
-  await page.getByRole("combobox", { name: "Preview state" }).selectOption("Monitoring draft");
+  fixtureState("Monitoring draft");
+  await page.reload();
   const setup = page.getByRole("region", { name: "Keep my connected data healthy" });
   await expect(setup).toContainText("Setup goal: Review advertising spend");
   await expect(setup.getByRole("checkbox", { name: /^I approve daily checks/ })).not.toBeChecked();
