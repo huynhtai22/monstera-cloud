@@ -1,4 +1,48 @@
 /* Visual treatment for the real app shell. Page behavior stays in its existing components. */
+.root[data-console-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f8faf8;
+  --color-panel: #ffffff;
+  --console-surface-raised: #eef2ee;
+  --console-surface-muted: #eef2ee;
+  --console-line-soft: #d9e1da;
+  --color-line: #d9e1da;
+  --color-ink: #18231c;
+  --color-ink-mute: #526057;
+  --color-primary: #18231c;
+  --color-primary-foreground: #ffffff;
+  --color-primary-hover: #2c3d31;
+  --color-surface-muted: #eef2ee;
+  --ui-bg-rgb: 248 250 248;
+  --ui-fg-rgb: 24 35 28;
+  --ui-border-rgb: 217 225 218;
+  --ui-muted-bg-rgb: 238 242 238;
+  --ui-muted-fg-rgb: 82 96 87;
+  --ui-primary-rgb: 24 35 28;
+  --ui-primary-foreground-rgb: 255 255 255;
+  --console-motion-accent: #286b40;
+  --shadow-card: 0 1px 3px #18231c0a;
+  --shadow-elevated: 0 12px 32px #18231c1a;
+}
+.root[data-console-theme="light"] > aside { background: #f0f4f0; }
+.root[data-console-theme="light"] :global([aria-selected="true"]),
+.root[data-console-theme="light"] :global([aria-current="page"]) { color: #286b40; }
+.root[data-console-theme="light"] :where(button, a):focus-visible {
+  outline: 2px solid #286b40;
+  outline-offset: 2px;
+}
+.root[data-console-theme="light"] :global(.text-emerald-300),
+.root[data-console-theme="light"] :global(.text-emerald-400),
+.root[data-console-theme="light"] :global(.text-green-400) { color: #286b40; }
+.root[data-console-theme="light"] :global(.text-sky-300),
+.root[data-console-theme="light"] :global(.text-sky-400) { color: #036487; }
+.root[data-console-theme="light"] :global(.text-rose-300),
+.root[data-console-theme="light"] :global(.text-rose-400),
+.root[data-console-theme="light"] :global(.text-red-400) { color: #a6233f; }
+.root[data-console-theme="light"] :global(.text-amber-200),
+.root[data-console-theme="light"] :global(.text-amber-300),
+.root[data-console-theme="light"] :global(.text-amber-400) { color: #875600; }
+.root[data-console-theme="dark"] { color-scheme: dark; }
 .root[data-console-theme="dark"] {
   --color-canvas: #0a0a0a;
   --color-panel: #141414;

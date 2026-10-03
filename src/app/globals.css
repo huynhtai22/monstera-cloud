@@ -24,6 +24,25 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Match native controls and every nested console scroller to the selected theme. */
+html[data-console-theme="dark"] { color-scheme: dark; --console-scroll-thumb: #505851; }
+html[data-console-theme="light"] { color-scheme: light; --console-scroll-thumb: #a2afa4; }
+html[data-console-theme], html[data-console-theme] * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--console-scroll-thumb) transparent;
+}
+html[data-console-theme]::-webkit-scrollbar,
+html[data-console-theme] *::-webkit-scrollbar { width: 8px; height: 8px; }
+html[data-console-theme]::-webkit-scrollbar-track,
+html[data-console-theme] *::-webkit-scrollbar-track { background: transparent; }
+html[data-console-theme]::-webkit-scrollbar-thumb,
+html[data-console-theme] *::-webkit-scrollbar-thumb {
+    background: var(--console-scroll-thumb);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 8px;
+}
+
 :root {
     --background: #050505;
     --foreground: #ededed;
