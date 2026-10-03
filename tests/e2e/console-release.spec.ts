@@ -15,6 +15,7 @@ for (const theme of ["light", "dark"]) {
       await expect(page.locator("[data-console-theme]").first()).toHaveAttribute("data-console-theme", theme);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(page.getByRole("button", { name: "Page guide", exact: true })).toBeVisible();
+      await expect(page.locator("main h1").first()).toBeVisible();
     }
     expect(errors).toEqual([]);
   });
@@ -48,6 +49,7 @@ test("Sources tabs support arrows, Home and End and preserve selection on reload
   await tabs.getByRole("tab", { name: /^Needs attention/ }).press("Home");
   await expect(tabs.getByRole("tab", { name: /^Your sources/ })).toHaveAttribute("aria-selected", "true");
   await tabs.getByRole("tab", { name: /^Your sources/ }).press("ArrowRight");
+  await expect(page).toHaveURL(/tab=accounts/);
   await page.reload();
   await expect(tabs.getByRole("tab", { name: "Client accounts", exact: true })).toHaveAttribute("aria-selected", "true");
 });
@@ -67,5 +69,5 @@ test("reviewed onboarding result survives reload without granting monitoring con
   await expect(setup).toContainText("Setup goal: Review advertising spend");
   await expect(setup.getByRole("checkbox", { name: /^I approve daily checks/ })).not.toBeChecked();
   await expect(setup.getByRole("button", { name: "Approve and start daily checks" })).toBeDisabled();
-  expect(await page.evaluate(() => document.getAnimations().filter(animation => animation.playState === "running" && animation.effect instanceof KeyframeEffect && animation.effect.target instanceof Element && !!animation.effect.target.closest("main")).length)).toBe(0);
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation.playState === "running" && animation.effect instanceof KeyframeEffect && animation.effect.target instanceof Element && !!animation.effect.target.closest("main")).length)).toBe(0);
 });

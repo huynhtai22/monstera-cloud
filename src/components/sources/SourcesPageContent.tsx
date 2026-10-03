@@ -84,6 +84,11 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") ?? "");
     const [activeFilter, setActiveFilter] = useState(() => searchParams.get("tab") ?? "connected");
+    const pendingFilterRef = useRef<string | null>(null);
+    const chooseFilter = (tab: string) => {
+        pendingFilterRef.current = tab;
+        setActiveFilter(tab);
+    };
     const [initialClientId, setInitialClientId] = useState<string | null>(null);
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
@@ -485,6 +490,10 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
     useEffect(() => {
         const tab = searchParams.get("tab");
         const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
+        const urlTab = ["connected", "accounts", "available", "attention"].includes(tab ?? "") ? tab! : cId ? "accounts" : "connected";
+        // An older route commit must not undo a newer keyboard/click selection.
+        if (pendingFilterRef.current && pendingFilterRef.current !== urlTab) return;
+        pendingFilterRef.current = null;
         setInitialClientId(cId);
         setSearchQuery(searchParams.get("search") ?? "");
         const validTabs = ["connected", "accounts", "available", "attention"];
@@ -501,6 +510,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             const next = params.toString();
             const current = window.location.search.replace(/^\?/, "");
             if (next !== current) router.replace(next ? `${previewBasePath}?${next}` : previewBasePath, { scroll: false });
+            else pendingFilterRef.current = null;
         }, 120);
         return () => window.clearTimeout(timer);
     }, [activeFilter, router, searchQuery, previewBasePath]);
@@ -1129,7 +1139,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
                         tabIndex={activeFilter === 'connected' ? 0 : -1}
-                        onClick={() => setActiveFilter('connected')}
+                        onClick={() => chooseFilter('connected')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'connected'
@@ -1146,7 +1156,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                         role="tab"
                         aria-selected={activeFilter === 'accounts'}
                         tabIndex={activeFilter === 'accounts' ? 0 : -1}
-                        onClick={() => setActiveFilter('accounts')}
+                        onClick={() => chooseFilter('accounts')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'accounts'
@@ -1161,7 +1171,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                         role="tab"
                         aria-selected={activeFilter === 'available'}
                         tabIndex={activeFilter === 'available' ? 0 : -1}
-                        onClick={() => setActiveFilter('available')}
+                        onClick={() => chooseFilter('available')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'available'
@@ -1175,7 +1185,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                         role="tab"
                         aria-selected={activeFilter === 'attention'}
                         tabIndex={activeFilter === 'attention' ? 0 : -1}
-                        onClick={() => setActiveFilter('attention')}
+                        onClick={() => chooseFilter('attention')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'attention'
