@@ -32,7 +32,7 @@ test.afterEach(async ({ page }, info) => {
 });
 
 const root = "";
-const sections = ["console", "operations", "sources", "sources?tab=accounts", "sources?tab=available", "sources?tab=attention", "reports?view=performance", "reports?view=readiness", "reports?view=sync", "explorer", "exports", "clients", "settings?tab=workspace", "settings?tab=clients", "settings?tab=team", "settings?tab=alerts", "settings?tab=billing", "settings?tab=api", "settings?tab=sessions"];
+const sections = ["console", "operations", "sources", "sources?tab=accounts", "sources?tab=available", "sources?tab=attention", "reports?view=performance", "reports?view=readiness", "reports?view=sync", "explorer", "exports", "clients", "settings?tab=overview", "settings?tab=appearance", "settings?tab=workspace", "settings?tab=clients", "settings?tab=team", "settings?tab=alerts", "settings?tab=billing", "settings?tab=api", "settings?tab=sessions"];
 
 for (const theme of ["light", "dark"]) {
   test(`console sections retain ${theme} theme and fit the viewport`, async ({ page }) => {
@@ -169,4 +169,40 @@ test("theme switching preserves account scope and restores the last preference",
   await page.getByRole("button", { name: "Switch to dark mode", exact: true }).filter({ visible: true }).first().click();
   await expect(page.locator("html")).toHaveAttribute("data-console-theme", "dark");
   expect(await page.evaluate(() => document.documentElement.hasAttribute("data-console-theme-motion"))).toBe(false);
+});
+
+
+test("Settings search opens the right controls and preserves category across reload and history", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Make room for the work.", exact: true })).toBeVisible();
+  const search = page.getByRole("searchbox", { name: "Search settings", exact: true });
+  await search.fill("Sheets");
+  await expect(page.getByRole("region", { name: "Settings search results" })).toContainText("API & access keys");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/tab=api/);
+  await expect(page.getByRole("region", { name: "API & access keys", exact: true })).toContainText("Active keys");
+  await page.reload();
+  await expect(page.getByRole("navigation", { name: "Settings categories" }).getByRole("button", { name: "API & access keys", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await search.fill("no-such-setting");
+  await expect(page.getByRole("heading", { name: "No matching settings" })).toBeVisible();
+  await search.press("Escape");
+  await expect(page.getByRole("region", { name: "API & access keys", exact: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "Settings categories" }).getByRole("button", { name: "People & roles", exact: true }).click();
+  await expect(page).toHaveURL(/tab=team/);
+  await page.goBack();
+  await expect(page).toHaveURL(/tab=api/);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("Settings Appearance uses the shell theme transition and persists the selected theme", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/settings?tab=appearance");
+  await page.getByRole("button", { name: "Light theme", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-console-theme", "light");
+  await expect(page.getByRole("button", { name: "Light theme", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-console-theme", "light");
+  await page.getByRole("button", { name: "Dark theme", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-console-theme", "dark");
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation.playState === "running" && animation.effect instanceof KeyframeEffect && animation.effect.target instanceof Element && !!animation.effect.target.closest("[data-console-section=settings]")).length)).toBe(0);
 });

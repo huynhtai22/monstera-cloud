@@ -291,8 +291,8 @@
   border-color: var(--console-line-soft);
 }
 .root main :global([data-console-settings-nav="true"] button[aria-pressed="true"]) {
-  border-color: color-mix(in srgb, var(--console-motion-accent) 32%, var(--color-line));
-  background-color: color-mix(in srgb, var(--console-motion-accent) 8%, var(--color-panel));
+  border-color: var(--color-line);
+  background-color: color-mix(in srgb, var(--color-ink) 8%, var(--color-canvas));
 }
 .root main :global([data-console-section="reports"] button[aria-pressed="true"]) {
   border-color: color-mix(in srgb, var(--console-motion-accent) 32%, var(--color-line));
@@ -472,3 +472,17 @@
 .root[data-console-theme="light"] main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { background-color: var(--color-panel); }
 .root[data-console-theme="light"] :global(.console-sliding-indicator) { background: var(--color-accent); }
 .root[data-console-theme="light"] main :global(.console-source-tabs > [role="tab"][aria-selected="true"]) { color: var(--color-accent); }
+
+/* Settings selections describe location and personal choice, using neutral contrast. */
+.root main :global([data-console-settings-nav="true"] button[aria-pressed="true"]),
+.root main :global([data-settings-theme-choice="true"][aria-pressed="true"]) {
+  background-color: color-mix(in srgb, var(--color-ink) 8%, var(--color-panel));
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+.root[data-console-theme="light"] main :global([data-console-settings-nav="true"] button[aria-pressed="true"]),
+.root[data-console-theme="light"] main :global([data-settings-theme-choice="true"][aria-pressed="true"]) {
+  background-color: #eceef1;
+  border-color: #d2d6dc;
+  color: #202124;
+}

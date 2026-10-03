@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { ConsoleAppearanceContext } from "@/components/settings/ConsoleAppearanceContext";
 import { usePathname } from 'next/navigation';
 import { flushSync } from 'react-dom';
 import { useSession } from 'next-auth/react';
@@ -69,7 +70,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         configureStartup?.(status !== 'loading', Boolean(pathname?.endsWith('/console')), status === 'authenticated');
     }, [configureStartup, status, pathname]);
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
-    const themeReady = useRef(false);
+    const [themeReady, setThemeReady] = useState(false);
 
     // Restore theme + sidebar state on mount
     useLayoutEffect(() => {
@@ -80,7 +81,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         } catch {
             setIsDarkMode(true);
         } finally {
-            themeReady.current = true;
+            setThemeReady(true);
         }
         try {
             setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
@@ -90,13 +91,13 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     // Apply shell, portal tokens and Tailwind theme in the same commit, before paint.
     // Restoring a saved preference is immediate; only an explicit toggle animates.
     useLayoutEffect(() => {
-        if (!themeReady.current) return;
+        if (!themeReady) return;
         const root = document.documentElement;
         root.dataset.consoleTheme = isDarkMode ? "dark" : "light";
         root.classList.toggle("dark", isDarkMode);
         try { localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "dark" : "light"); }
         catch { /* private mode / storage unavailable */ }
-    }, [isDarkMode]);
+    }, [isDarkMode, themeReady]);
 
     const themeTransition = useRef<ViewTransition | null>(null);
     const themeFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +148,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
     if (pathname?.startsWith("/invite/")) return <>{children}</>;
 
     return (
+        <ConsoleAppearanceContext.Provider value={{ isDarkMode, toggleDarkMode, hrefFor: visualPreview && previewHref ? previewHref : (href) => href }}>
         <KeyboardShortcutsProvider hrefTransform={visualPreview ? previewHref : undefined}>
         <PendingNavigationProvider>
         {!visualPreview && <WorkspaceSessionSync />}
@@ -246,5 +248,6 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         </div>
         </PendingNavigationProvider>
         </KeyboardShortcutsProvider>
+        </ConsoleAppearanceContext.Provider>
     );
 }

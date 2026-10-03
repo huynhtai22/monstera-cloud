@@ -2,10 +2,10 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell, MonitorSmartphone } from "lucide-react";
+import { SettingsExperience } from "@/components/settings/SettingsExperience";
+import { settingsSections, type SettingsSectionId } from "@/components/settings/settings-sections";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR from "swr";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 import { WorkspaceTab } from "@/components/settings/WorkspaceTab";
@@ -23,14 +23,14 @@ const fetcher = async (url: string) => {
     return data;
 };
 
-export default function SettingsPage() {
+export default function SettingsPage({ previewAccessory }: { previewAccessory?: React.ReactNode } = {}) {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
-    const tabs = ['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'] as const;
-    type SettingsTab = typeof tabs[number];
+    const tabs = settingsSections.map(section => section.id);
+    type SettingsTab = SettingsSectionId;
     const requestedTab = searchParams.get('tab');
-    const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? requestedTab as SettingsTab : 'workspace';
+    const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? requestedTab as SettingsTab : 'overview';
     const setActiveTab = (tab: SettingsTab) => {
         const query = new URLSearchParams(searchParams.toString());
         query.set('tab', tab);
@@ -232,50 +232,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div data-console-page="true" data-console-section="settings" className="console-page w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
-            <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
-                    <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />
-                </div>
-                <div>
-                    <h1 className="text-xl font-semibold text-ink tracking-tight">Settings</h1>
-                    <p className="text-xs text-ink-mute">Workspace, team &amp; billing</p>
-                </div>
-            </div>
-
-            <div data-console-settings-panel="true" className="rounded-lg border border-line bg-panel">
-                <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
-                    <div className="border-b border-line bg-canvas px-3 py-4 lg:border-b-0 lg:border-r">
-                        <nav data-console-settings-nav="true" className="space-y-0.5 lg:sticky lg:top-8">
-                            {[
-                                { id: 'workspace', label: 'Workspace', icon: Building2 },
-                                { id: 'clients', label: 'Clients', icon: Briefcase },
-                                { id: 'team', label: 'Team', icon: Users },
-                                { id: 'alerts', label: 'Alerts & Quality', icon: Bell },
-                                { id: 'billing', label: 'Billing', icon: CreditCard },
-                                { id: 'api', label: 'API Keys', icon: KeyRound },
-                                { id: 'sessions', label: 'Sessions', icon: MonitorSmartphone },
-                            ].map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    aria-pressed={activeTab === tab.id}
-                                    onClick={() => setActiveTab(tab.id as any)}
-                                    className={cn(
-                                        "flex items-center w-full px-3 py-2.5 rounded-md text-sm transition-colors",
-                                        activeTab === tab.id
-                                            ? "bg-white/[0.06] font-semibold text-ink"
-                                            : "font-medium text-ink-mute hover:bg-white/[0.04] hover:text-ink"
-                                    )}
-                                >
-                                    <tab.icon strokeWidth={1.5} className={cn("w-4 h-4 mr-2.5 shrink-0", activeTab === tab.id ? "text-ink" : "text-ink-mute")} />
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </nav>
-                    </div>
-
-                    {/* Content panel */}
-                    <div className="min-w-0 px-6 py-5">
+        <SettingsExperience active={activeTab} onSelect={setActiveTab} workspaceName={activeWorkspace?.name} role={activeWorkspace?.role} previewAccessory={previewAccessory}>
                     {activeTab === 'workspace' && (
                         <WorkspaceTab activeWorkspace={activeWorkspace} />
                     )}
@@ -325,9 +282,6 @@ export default function SettingsPage() {
                             handlePinKey={handlePinKey}
                         />
                     )}
-                    </div>{/* end content panel */}
-                </div>{/* end grid */}
-            </div>{/* end bento */}
-        </div>
+        </SettingsExperience>
     );
 }

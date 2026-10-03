@@ -1,4 +1,5 @@
-import { Copy, Database, KeyRound, MapPin, MapPinOff, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { SettingsIcon } from "./SettingsIcon";
+import { Copy, Database, MapPin, MapPinOff, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type ApiKeyRow = {
@@ -48,7 +49,7 @@ export function ApiKeysTab({
     <div className="max-w-4xl space-y-6">
       <div>
         <h3 className="flex items-center text-lg font-semibold text-ink">
-          <KeyRound className="mr-2 h-5 w-5 text-ink-mute" strokeWidth={1.5} />
+          <SettingsIcon name="api" className="mr-2 h-5 w-5 text-ink-mute" strokeWidth={1.5} />
           API keys
         </h3>
         <p className="mt-1 text-sm text-ink-mute">

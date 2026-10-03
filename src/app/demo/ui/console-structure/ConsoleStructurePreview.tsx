@@ -196,7 +196,7 @@ function ProductionScreen({ productionPath, state, onState, notice, onNotice }: 
   else if (productionPath === "/explorer") content = <PageShell section="warehouse"><Explorer/></PageShell>;
   else if (productionPath === "/exports") content = <Exports/>;
   else if (productionPath === "/clients") content = <Clients/>;
-  else if (productionPath === "/settings") content = <><SettingsFeatureReplay hrefFor={routeHref}/><SettingsPage/></>;
+  else if (productionPath === "/settings") content = <SettingsPage previewAccessory={<SettingsFeatureReplay hrefFor={routeHref}/>}/>;
   else content = <PageShell><h1>Page unavailable in this preview</h1><Link href={routeHref("/directory")}>Browse console directory</Link></PageShell>;
 
   return <div className={s.root} onClickCapture={follow}><AppLayout visualPreview previewTitle={title} previewPath={section?.path ?? productionPath} previewHref={routeHref} previewDirectories={Object.fromEntries(consoleDirectory.map(area => [area.path, area.entries.map(entry => ({ label: entry.label, href: routeHref(entry.href) }))]))}>

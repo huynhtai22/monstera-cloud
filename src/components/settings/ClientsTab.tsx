@@ -1,5 +1,6 @@
+import { SettingsIcon } from "./SettingsIcon";
 import React from 'react';
-import { Briefcase, Search, Plus, Trash2, Activity } from "lucide-react";
+import { Search, Plus, Trash2, Activity } from "lucide-react";
 
 interface ClientsTabProps {
     clients: any[];
@@ -50,7 +51,7 @@ export function ClientsTab({
             {/* Header */}
             <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Briefcase className="w-5 h-5 mr-2 text-ink-mute" strokeWidth={1.5} />
+                    <SettingsIcon name="clients" className="w-5 h-5 mr-2 text-ink-mute" strokeWidth={1.5} />
                     Client Management
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -92,7 +93,7 @@ export function ClientsTab({
                         <div className="divide-y divide-white/5 px-4 pb-4">
                             {clients.length === 0 ? (
                                 <div className="p-8 text-center">
-                                    <Briefcase className="w-8 h-8 text-gray-300 dark:text-gray-700 mx-auto mb-2" />
+                                    <SettingsIcon name="clients" className="w-8 h-8 text-gray-300 dark:text-gray-700 mx-auto mb-2" />
                                     <p className="text-sm text-gray-500">No clients created yet.</p>
                                 </div>
                             ) : clients.map(client => (
