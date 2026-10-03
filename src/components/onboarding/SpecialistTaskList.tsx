@@ -23,7 +23,6 @@ interface SpecialistTaskListProps {
   activeTaskId: string | null;
   onOpen: (id: string | null) => void;
   explorerPath: string;
-  scopeLabel?: string;
 }
 
 export function SpecialistTaskList({
@@ -41,7 +40,6 @@ export function SpecialistTaskList({
   activeTaskId,
   onOpen,
   explorerPath,
-  scopeLabel,
 }: SpecialistTaskListProps) {
   return (
     <aside className={styles.board} aria-label="Your source agents">
@@ -118,7 +116,7 @@ export function SpecialistTaskList({
                 </ol>
 
                 {/* State: waiting_authorization -> Real Connect Button */}
-                <AgentTaskSetup paused={paused} scopeLabel={scopeLabel} key={`${task.id}:${task.scopeRevision}`} task={task} workspaceId={workspaceId} canAuthorize={canAuthorize[task.provider as keyof typeof canAuthorize] ?? false} disabled={disabled} onAction={onAction} onConfirm={onConfirm} onReviewed={onReviewed} explorerPath={explorerPath} />
+                <AgentTaskSetup key={`${task.id}:${task.scopeRevision}`} task={task} workspaceId={workspaceId} canAuthorize={canAuthorize[task.provider as keyof typeof canAuthorize] ?? false} disabled={disabled} onAction={onAction} onConfirm={onConfirm} onReviewed={onReviewed} explorerPath={explorerPath} />
 
                 <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
                   {["waiting_authorization", "waiting_selection", "needs_attention"].includes(task.state) && (

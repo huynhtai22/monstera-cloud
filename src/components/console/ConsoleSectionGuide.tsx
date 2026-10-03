@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { BookOpen, ChevronRight } from "lucide-react";
+import { FeatureReminder } from "./FeatureReminder";
 import { directoryFor } from "@/lib/console-navigation";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 
@@ -13,6 +14,7 @@ export function ConsoleSectionGuide() {
   const search = useSearchParams();
   const { hrefFor } = useClientContextNavigation();
   const [open, setOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const section = directoryFor(pathname ?? "");
   if (!section) return null;
   const entry = section.entries.find(item => {
@@ -36,8 +38,10 @@ export function ConsoleSectionGuide() {
       </div>
       {open && <div id="console-page-guide" className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-ink-mute">
         <p>{entry.purpose}</p>
+        <button type="button" onClick={() => setReminderOpen(true)} className="mt-2 mr-4 text-ink">Explore Monstera features →</button>
         <Link href={hrefFor(section.next)} className="mt-2 inline-flex items-center gap-1 text-ink">Next step<ChevronRight className="h-3 w-3" aria-hidden /></Link>
       </div>}
+      <FeatureReminder open={reminderOpen} onClose={() => setReminderOpen(false)} hrefFor={hrefFor} />
     </div>
   );
 }

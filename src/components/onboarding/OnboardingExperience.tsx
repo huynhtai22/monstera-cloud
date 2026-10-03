@@ -261,7 +261,6 @@ function GuidedOnboardingExperience({ boot }: { boot: OnboardingBoot }) {
               <div className={styles.composerFoot}><span>{busy ? <><span className={styles.savingIndicator} />Updating your setup…</> : <><BusinessIcon name="permission" size={13} />You authorize every connection</>}</span><span>Monstera coordinates</span></div>
             </section>
             <SpecialistTaskList
-              scopeLabel={workspace.clients.find(client => client.id === snapshot.run.clientId)?.name ?? `${workspace.name} · workspace scope`}
               providerCount={new Set([...workspace.enabledProviders, ...snapshot.tasks.map(task => task.provider)]).size}
               workspaceId={workspace.id}
               tasks={snapshot.tasks}
