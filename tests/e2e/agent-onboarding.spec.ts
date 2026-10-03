@@ -15,7 +15,7 @@ test.describe("persisted agent onboarding (M2)", () => {
     assertIsolatedE2eRuntimeEnvironment(process.env);
     db = new PrismaClient();
     const suffix = randomUUID();
-    userId = `agent-ui-${suffix}`; workspaceId = `agent-ui-workspace-${suffix}`; slug = `agent-ui-${suffix}`;
+    userId = `agent-ui-${suffix}`; workspaceId = test.info().title.includes("outside the invited cohort") ? `agent-ui-outside-${suffix}` : `agent-ui-workspace-${test.info().project.name}-${test.info().parallelIndex}`; slug = `agent-ui-${suffix}`;
     await db.user.create({ data: { id: userId, email: `${userId}@example.test`, name: "Onboarding tester" } });
     await db.workspace.create({ data: { id: workspaceId, ownerId: userId, slug, name: "Creative studio", plan: "professional" } });
     await db.workspaceMember.create({ data: { workspaceId, userId, role: "owner" } });
@@ -76,10 +76,11 @@ test.describe("persisted agent onboarding (M2)", () => {
     await expect(page.getByText("Your setup is paused.", { exact: false })).not.toBeVisible();
     await page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" }).locator("button[aria-expanded]").click();
     await page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" }).getByRole("button", { name: "Save this source for later" }).click();
-    await expect(page.getByText("Saved for later", { exact: true })).toBeVisible();
+    await expect(page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" }).getByText("Not connected · saved for later", { exact: true })).toBeVisible();
+    expect((await db.agentTask.findFirstOrThrow({ where: { workspaceId, provider: "tiktok_business" } })).state).toBe("deferred");
     await page.getByRole("textbox", { name: "Tell Monstera which sources to connect" }).fill("TikTok Ads");
     await page.getByRole("button", { name: "Send message" }).click();
-    const openAgent = page.getByRole("button", { name: "Open TikTok Ads agent", exact: true }).last();
+    const openAgent = page.getByRole("button", { name: /Open TikTok Ads agent/ }).last();
     await expect(openAgent).toBeEnabled();
     await openAgent.click();
     await expect(page.locator("[data-specialist-id]").filter({ hasText: "TikTok Ads agent" })).toHaveAttribute("data-open", "true");
@@ -89,7 +90,7 @@ test.describe("persisted agent onboarding (M2)", () => {
   });
 
   test("first overview requires explicit review and never blends source currencies", async ({ page }) => {
-    await db.user.update({ where: { id: userId }, data: { workProfileAnsweredAt: new Date(), workContext: "Review advertising spend" } });
+    await db.user.update({ where: { id: userId }, data: { workProfileAnsweredAt: new Date(), workContext: "Prepare client reporting" } });
     const connection = await db.connection.create({ data: { workspaceId, name: "Local Meta fixture", provider: "meta_ads", type: "source", credentials: "local-fixture-only", remoteAccountId: userId } });
     const run = await db.agentRun.create({ data: { workspaceId, initiatorUserId: userId, resumeKey: `onboarding:${userId}` } });
     const today = new Date(); today.setUTCDate(today.getUTCDate() - 1); const until = today.toISOString().slice(0, 10);
@@ -98,11 +99,26 @@ test.describe("persisted agent onboarding (M2)", () => {
     await page.goto(`/onboarding?workspaceId=${workspaceId}`);
     await expect(page.getByText(/USD 125 spend/)).toBeVisible();
     await expect(page.getByText(/EUR 80 spend/)).toBeVisible();
+    const rows = page.getByRole("region", { name: "Imported rows" });
+    await expect(rows.getByRole("cell", { name: "USD 125", exact: true })).toBeVisible();
+    await expect(rows.getByRole("cell", { name: "EUR 80", exact: true })).toBeVisible();
+    await expect(page.getByText(/Provider totals and destination delivery still need a separate check/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Check client report readiness" })).toHaveAttribute("href", `/reports?view=readiness&since=${until}&until=${until}`);
+    await page.screenshot({ path: test.info().outputPath("imported-row-review.png"), fullPage: true });
     await expect(page.getByRole("button", { name: "Open my workspace" })).toBeDisabled();
     await page.getByRole("button", { name: "I’ve reviewed this overview" }).click();
     await expect(page.getByRole("button", { name: "Open my workspace" })).toBeEnabled();
     await page.reload();
     await expect(page.getByRole("button", { name: "Open my workspace" })).toBeDisabled();
+  });
+
+  test("members outside the invited cohort get sources guidance without agent access", async ({ page }) => {
+    await page.goto(`/onboarding?workspaceId=${workspaceId}`);
+    await expect(page.getByRole("heading", { name: "Connect your first source" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open sources" })).toHaveAttribute("href", "/sources");
+    const response = await page.request.post("/api/agent/runs", { data: { workspaceId, kind: "onboarding" } });
+    expect(response.status()).toBe(404);
+    expect(await db.agentRun.count({ where: { workspaceId } })).toBe(0);
   });
 
   test("320px layout and reduced motion preserve keyboard-accessible direct selection", async ({ page }) => {

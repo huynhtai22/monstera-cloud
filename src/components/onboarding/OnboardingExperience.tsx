@@ -25,6 +25,18 @@ import { BusinessIcon, SourceLogo } from "./OnboardingIcons";
 import styles from "./Onboarding.module.css";
 
 export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
+  if (boot.unavailableWorkspace) {
+    const sourcesPath = boot.agencySlug ? `/agencies/${boot.agencySlug}/sources` : "/sources";
+    return <main className={`dark ${styles.root}`}><WorkspaceSessionSync /><div className={styles.stage}><section className={styles.welcome}>
+      <Logo /><h1>Connect your first source</h1>
+      <p className={styles.muted}>Guided setup is available to invited workspaces. You can manage sources in {boot.unavailableWorkspace.name} and choose what to import there.</p>
+      <Link className={styles.primary} href={sourcesPath} onClick={() => useWorkspaceStore.getState().setActiveWorkspaceId(boot.unavailableWorkspace!.id)}>Open sources →</Link>
+    </section></div></main>;
+  }
+  return <GuidedOnboardingExperience boot={boot} />;
+}
+
+function GuidedOnboardingExperience({ boot }: { boot: OnboardingBoot }) {
   const router = useRouter();
   const { mutate: updateCache } = useSWRConfig();
   const [category, setCategory] = useState<WorkCategory | null>(boot.profile.category);
@@ -257,7 +269,7 @@ export function OnboardingExperience({ boot }: { boot: OnboardingBoot }) {
               onConfirm={(task, input) => void mutate(async () => { await agentRequest(`/api/agent/tasks/${task.id}/confirm-scope`, input); await refresh(); })}
             />
           </div>
-          {snapshot.tasks.some(task => task.state === "ready") && <FirstResult tasks={snapshot.tasks} previews={previews} goal={goal} explorerPath={explorerPath} workspaceId={workspaceId!} acknowledged={acknowledgedResult === resultKey} onAcknowledge={() => setAcknowledgedResult(resultKey)} />}
+          {snapshot.tasks.some(task => task.state === "ready") && <FirstResult tasks={snapshot.tasks} previews={previews} goal={goal} explorerPath={explorerPath} workspaceId={workspaceId!} clientId={snapshot.run.clientId} reportsPath={boot.agencySlug ? `/agencies/${boot.agencySlug}/reports` : "/reports"} acknowledged={acknowledgedResult === resultKey} onAcknowledge={() => setAcknowledgedResult(resultKey)} />}
           {snapshot.tasks.some(task => task.state === "ready") && !completed && <div className={styles.finishReview}><div><h3>Your workspace is taking shape.</h3><p>Review your first overview and save unfinished sources for later. Your setup agents connect sources and import data. This setup does not authorize campaign changes or activate ongoing monitoring.</p></div><button className={styles.primary} disabled={busy || !writable || acknowledgedResult !== resultKey || snapshot.tasks.some(task => !["ready", "deferred"].includes(task.state)) || snapshot.tasks.filter(task => task.state === "ready").some(task => !reviewedTaskIds.includes(task.id))} onClick={() => void mutate(async () => { await agentRequest(`/api/agent/runs/${runId}/actions`, { expectedVersion: snapshot.run.version, action: "finish" }); await returnToConsole(); })}>Open my workspace →</button></div>}
         </>}
         </div>
