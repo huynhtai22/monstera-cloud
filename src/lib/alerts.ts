@@ -124,7 +124,7 @@ async function dispatchAgencyAlert(alertId?: string): Promise<DispatchResult> {
 async function deferAgencyAlert(id: string, leaseId: string, attempts: number, reason: string): Promise<DispatchResult> {
   const dead = attempts >= MAX_ATTEMPTS;
   const delay = Math.min(30_000 * 2 ** Math.max(0, attempts - 1), MAX_RETRY_MS);
-  await withSystemScope(() => prisma.agencyAlertDelivery.updateMany({
+  const updated = await withSystemScope(() => prisma.agencyAlertDelivery.updateMany({
     where: { id, status: "sending", leaseId },
     data: {
       status: dead ? "dead" : "pending",
@@ -134,6 +134,9 @@ async function deferAgencyAlert(id: string, leaseId: string, attempts: number, r
       lastError: reason,
     },
   }));
+  // A newer worker may have reclaimed the lease while this request was in flight.
+  // Count only durable transitions owned by this worker, just as on success.
+  if (updated.count === 0) return "idle";
   return dead ? "dead" : "retry_scheduled";
 }
 
