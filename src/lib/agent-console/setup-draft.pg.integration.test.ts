@@ -73,6 +73,12 @@ describe("Saved connected-data setup against PostgreSQL", { skip: !process.env.D
     await assert.rejects(updateDataHealthDraft(ownerId, draftId, { workspaceId, expectedVersion: draftVersion, scopeItems: [scope("act_not_granted")] }), { code: "account_scope_unverified" });
     assert.equal((await db.agentResponsibility.findUniqueOrThrow({ where: { id: draftId } })).version, draftVersion);
   });
+  it("saving a draft cannot assign its owner to someone outside the workspace", async () => {
+    const before = await db.agentResponsibility.count({ where: { workspaceId } });
+    await assert.rejects(createResponsibilityDraft(ownerId, { ...input(), ownerId: foreignId }), { code: "access_denied" });
+    assert.equal(await db.agentResponsibility.count({ where: { workspaceId } }), before);
+    assert.equal(await db.agentAuthorization.count({ where: { workspaceId } }), 0);
+  });
   it("members can save their own setup without authorizing execution", async () => {
     const created = await createResponsibilityDraft(memberId, input());
     const edited = await updateDataHealthDraft(memberId, created.responsibility.id, { workspaceId, expectedVersion: created.responsibility.version, scopeItems: [scope("act_202")] });

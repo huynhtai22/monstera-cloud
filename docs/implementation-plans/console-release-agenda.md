@@ -19,3 +19,7 @@ Acceptance: isolated PostgreSQL tests exercise duplicate/concurrent saves, reloa
 ## Owner-run acceptance still required
 
 One authorized live provider account and destination session; provider-versus-warehouse reconciliation and inspected rendered output; deployed scheduler/worker cadence and recovery rehearsal. Polar/PayOS production charging and payouts plus Paddle migration/customer communication remain paid-launch work. Local tests do not close those gates.
+
+## Reconciliation checkpoint — 2026-10-03
+
+Saved drafts and the optional onboarding handoff are now reconciled against the production-parity baseline in the follow-up release branch, retaining newer owner-membership/account validation. See `docs/CONSOLE_HARDENING_CHECKPOINT_2026-10-03.md` for successful database/browser checks and remaining gates. This supersedes older branch-only implementation references, not live acceptance or activation requirements.
