@@ -1,9 +1,19 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { withDatabaseTenantContext } from "./database-tenant-context";
+import { normalizeMetaAdName } from "@/lib/meta-sync-lock";
+import { getCanonicalDateRange } from "@/lib/warehouse-date-range";
+import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
 
 const DEFAULT_LIMIT = 1_000;
-const HARD_LIMIT = 100_000;
+export const HARD_LIMIT = 100_000;
 const STALE_AFTER_MS = 26 * 60 * 60 * 1_000;
+export const SUPPORTED_REPORT_LEVELS = ["ad", "adset", "campaign", "account"] as const;
+export type WarehouseReportLevel = (typeof SUPPORTED_REPORT_LEVELS)[number];
+
+export function isSupportedReportLevel(value: string): value is WarehouseReportLevel {
+  return (SUPPORTED_REPORT_LEVELS as readonly string[]).includes(value);
+}
 /**
  * Interactive-transaction budget for one consistent warehouse snapshot read.
  * Prisma defaults interactive transactions to five seconds, which a large
@@ -25,6 +35,8 @@ export interface WarehouseQueryInput {
   startDate?: Date;
   endDate?: Date;
   platforms?: string[];
+  /** `ad` filters stored rows; higher levels are grouped from the same filtered tenant scope. */
+  level?: WarehouseReportLevel;
   accountIds?: string[];
   campaignId?: string;
   connectionId?: string;
@@ -117,11 +129,23 @@ function adNameFromRawData(rawData: string | null): string | null {
   try {
     const parsed: unknown = JSON.parse(rawData);
     if (!parsed || typeof parsed !== "object") return null;
-    const adName = (parsed as Record<string, unknown>).ad_name;
-    return typeof adName === "string" && adName.trim() ? adName : null;
+    return normalizeMetaAdName((parsed as Record<string, unknown>).ad_name);
   } catch {
     return null;
   }
+}
+
+/**
+ * Promoted-first ad name resolution. The writer normalizes empty values to
+ * NULL, so an empty-string promoted value also falls back (it can never be a
+ * valid legacy output). Explicit nullish checks — never truthiness.
+ */
+export function resolveWarehouseAdName(
+  promotedAdName: string | null | undefined,
+  rawData: string | null | undefined,
+): string | null {
+  if (promotedAdName != null && promotedAdName !== "") return promotedAdName;
+  return adNameFromRawData(rawData ?? null);
 }
 
 /**
@@ -207,30 +231,186 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
     where.connectionId = input.connectionId;
   }
 
-  if (input.startDate || input.endDate) {
-    where.date = {
-      ...(input.startDate ? { gte: input.startDate } : {}),
-      ...(input.endDate ? { lte: input.endDate } : {}),
+  if (input.startDate && input.endDate) {
+    const canonical = getCanonicalDateRange(input.startDate, input.endDate);
+    where.date = canonical.dbWhereDate;
+  } else if (input.startDate) {
+    where.date = { gte: input.startDate };
+  } else if (input.endDate) {
+    where.date = { lte: input.endDate };
+  }
+
+  if (input.platforms?.length) where.platform = { in: input.platforms };
+  if (input.level === "ad") where.level = "ad";
+
+  if (input.accountIds?.length) {
+    const accountPredicate = buildAccountFilterPredicate({
+      accountIds: input.accountIds,
+      platforms: input.platforms,
+    });
+    appendWherePredicate(where, accountPredicate);
+  }
+  if (input.campaignId) where.campaignId = input.campaignId;
+
+  const countWhere = { ...where };
+  if (Array.isArray(where.AND)) {
+    countWhere.AND = [...where.AND];
+  }
+
+  if (input.level && input.level !== "ad") {
+    const dimensionFields: Prisma.CampaignMetricScalarFieldEnum[] = input.level === "account"
+      ? []
+      : input.level === "campaign"
+        ? ["campaignId"]
+        : ["campaignId", "adsetId"];
+    const aggregateWhere: Prisma.CampaignMetricWhereInput = { ...countWhere };
+    const aggregateConditions = Array.isArray(aggregateWhere.AND)
+      ? aggregateWhere.AND
+      : aggregateWhere.AND ? [aggregateWhere.AND] : [];
+    if (input.level === "campaign") {
+      aggregateWhere.AND = [...aggregateConditions, { campaignId: { not: "" } }];
+    } else if (input.level === "adset") {
+      aggregateWhere.AND = [...aggregateConditions, { adsetId: { not: null } }, { NOT: { adsetId: "" } }];
+    }
+    const by: Prisma.CampaignMetricScalarFieldEnum[] = [
+      "connectionId", "platform", "accountId", "date", "currency", ...dimensionFields,
+    ];
+    const [groups, asOfAggregate, dateRangeAggregate, platformRows, lastSyncAggregate, latestJob] = await Promise.all([
+      db.campaignMetric.groupBy({
+        by,
+        where: aggregateWhere,
+        _sum: { impressions: true, clicks: true, spend: true, conversions: true, revenue: true },
+        _max: { accountName: true, campaignName: true, adsetName: true, pulledAt: true },
+        orderBy: [{ date: "desc" }, { accountId: "asc" }, { platform: "asc" }, { currency: "asc" }],
+        take: take + 1,
+      }),
+      db.campaignMetric.aggregate({ where: aggregateWhere, _max: { pulledAt: true } }),
+      db.campaignMetric.aggregate({ where: aggregateWhere, _min: { date: true }, _max: { date: true } }),
+      db.campaignMetric.findMany({ where: aggregateWhere, distinct: ["platform"], select: { platform: true }, take: 50 }),
+      ownershipMode === "explicit" || ownershipMode === "unassigned"
+        ? Promise.resolve({ _max: { lastSyncAt: null as Date | null } })
+        : db.connection.aggregate({
+            where: {
+              workspaceId: input.workspaceId,
+              ...(ownershipMode === "legacy" ? { clientId: input.clientId, type: "source" } : {}),
+            },
+            _max: { lastSyncAt: true },
+          }),
+      ownershipMode === "explicit" || ownershipMode === "unassigned"
+        ? Promise.resolve(null)
+        : db.syncJob.findFirst({
+            where: {
+              pipeline: {
+                workspaceId: input.workspaceId,
+                ...(ownershipMode === "legacy"
+                  ? {
+                      OR: [
+                        { clientId: input.clientId },
+                        ...(clientAuthoritativeConnectionIds?.length
+                          ? [{ sourceConnectionId: { in: clientAuthoritativeConnectionIds } }]
+                          : []),
+                      ],
+                    }
+                  : {}),
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, status: true, finishedAt: true, errorMsg: true },
+          }),
+    ]);
+
+    const hasMore = groups.length > take;
+    const rows = groups.slice(0, take).map((group) => {
+      const impressions = group._sum.impressions ?? 0;
+      const clicks = group._sum.clicks ?? 0;
+      const spend = group._sum.spend ?? 0;
+      const revenue = group._sum.revenue ?? 0;
+      const dimensionId = input.level === "account" ? group.accountId
+        : input.level === "campaign" ? group.campaignId
+          : group.adsetId ?? "";
+      return {
+        id: `aggregate:${input.level}:${group.connectionId}:${group.accountId}:${group.date.toISOString()}:${dimensionId}:${group.currency ?? "unknown"}`,
+        workspaceId: input.workspaceId,
+        connectionId: group.connectionId,
+        platform: group.platform,
+        accountId: group.accountId,
+        accountName: group._max.accountName,
+        level: input.level,
+        entityId: dimensionId,
+        campaignId: input.level === "campaign" || input.level === "adset" ? group.campaignId : "",
+        campaignName: input.level === "campaign" || input.level === "adset" ? group._max.campaignName ?? "" : "",
+        adsetId: input.level === "adset" ? group.adsetId : null,
+        adsetName: input.level === "adset" ? group._max.adsetName : null,
+        adId: null,
+        adName: null,
+        date: group.date,
+        breakdownHash: "none",
+        impressions,
+        clicks,
+        // Reach is not additive across ads or ad sets. It is omitted at
+        // synthesized grains so the API cannot present a false unique reach.
+        reach: null,
+        spend,
+        cpc: clicks > 0 ? spend / clicks : 0,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        conversions: group._sum.conversions ?? 0,
+        revenue,
+        roas: spend > 0 ? revenue / spend : 0,
+        currency: group.currency,
+        rawData: null,
+        syncJobId: null,
+        lockScope: null,
+        pulledAt: group._max.pulledAt ?? group.date,
+        createdAt: group.date,
+        updatedAt: group.date,
+      };
+    });
+
+    const lastSyncAt = lastSyncAggregate._max.lastSyncAt;
+    const asOf = asOfAggregate._max.pulledAt;
+    const jobAttribution = ownershipMode === "explicit" || ownershipMode === "unassigned" ? "unavailable" : "available";
+    const freshnessClock = jobAttribution === "available" ? lastSyncAt : asOf;
+    let freshnessStatus: WarehouseFreshnessStatus = jobAttribution === "unavailable" && !asOf ? "unavailable" : "never";
+    if (latestJob?.status === "running" || latestJob?.status === "queued") freshnessStatus = "refreshing";
+    else if (latestJob?.status === "failed") freshnessStatus = "failed";
+    else if (freshnessClock) freshnessStatus = Date.now() - freshnessClock.getTime() > STALE_AFTER_MS ? "stale" : "fresh";
+
+    return {
+      rows,
+      pagination: { nextCursor: null, hasMore, returned: rows.length },
+      totalCount: undefined,
+      asOf,
+      dateRange: { earliest: dateRangeAggregate._min.date, latest: dateRangeAggregate._max.date },
+      platforms: platformRows.map((row) => row.platform),
+      freshness: {
+        status: freshnessStatus,
+        lastSyncAt,
+        jobAttribution,
+        latestJobId: latestJob?.id ?? null,
+        latestJobStatus: latestJob?.status ?? null,
+        retryable: latestJob?.status === "failed",
+      },
+      aggregatedLevel: input.level,
     };
   }
-  if (input.platforms?.length) where.platform = { in: input.platforms };
-  if (input.accountIds?.length) where.accountId = { in: input.accountIds };
-  if (input.campaignId) where.campaignId = input.campaignId;
 
   const decodedCursor = input.cursor ? decodeCursor(input.cursor) : null;
   if (decodedCursor) {
-    where.AND = [
-      {
-        OR: [
-          { date: { lt: decodedCursor.date } },
-          { date: decodedCursor.date, id: { lt: decodedCursor.id } },
-        ],
-      },
-    ];
+    const cursorPredicate = {
+      OR: [
+        { date: { lt: decodedCursor.date } },
+        { date: decodedCursor.date, id: { lt: decodedCursor.id } },
+      ],
+    };
+    if (Array.isArray(where.AND)) {
+      where.AND = [...where.AND, cursorPredicate];
+    } else if (where.AND) {
+      where.AND = [where.AND, cursorPredicate];
+    } else {
+      where.AND = [cursorPredicate];
+    }
   }
 
-  const countWhere = { ...where };
-  delete countWhere.AND;
 
   const [foundRows, totalCount, asOfAggregate, dateRangeAggregate, platformRows, lastSyncAggregate, latestJob] = await Promise.all([
     db.campaignMetric.findMany({
@@ -284,10 +464,10 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
   const rows = visibleRows.map((row) => {
     const { fencingToken, ...visibleRow } = row;
     void fencingToken;
-    // `ad_name` is a Meta source field retained in rawData. Deriving it here
-    // keeps existing production schema compatible while exposing the ad
-    // dimension alongside the normalized ad set fields.
-    return { ...visibleRow, adName: adNameFromRawData(visibleRow.rawData) };
+    // `ad_name` is a Meta source field promoted to the `adName` column by new
+    // ingestion. Prefer it; legacy rows (adName NULL) still derive it from
+    // rawData, and rows with neither render null.
+    return { ...visibleRow, adName: resolveWarehouseAdName(visibleRow.adName, visibleRow.rawData) };
   });
   const last = rows.at(-1);
   const lastSyncAt = lastSyncAggregate._max.lastSyncAt;
@@ -333,7 +513,7 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
  */
 export async function queryWarehouse(input: WarehouseQueryInput, db?: ScopedTransaction) {
   if (db) return queryWarehouseInSnapshot(input, db);
-  return prisma.$transaction(
+  return withDatabaseTenantContext(prisma, input.workspaceId,
     (tx) => queryWarehouseInSnapshot(input, tx as ScopedTransaction),
     {
       isolationLevel: "RepeatableRead",

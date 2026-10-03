@@ -25,10 +25,10 @@ export function UpgradeNudge() {
     const accountHit = limits.maxConnections !== Infinity && connectionCount >= limits.maxConnections;
     if (!pipelineHit && !accountHit) return null;
 
-    const title = accountHit ? "Account limit reached" : "Pipeline limit reached";
+    const title = accountHit ? "Source limit reached" : "Pipeline limit reached";
     const detail = accountHit
-        ? `This workspace has ${connectionCount}/${limits.maxConnections} source connections — the ${limits.displayName} cap. Destinations are not metered.`
-        : `This workspace has ${pipelineCount}/${limits.maxPipelines} pipelines — the ${limits.displayName} cap.`;
+        ? `This workspace has ${connectionCount}/${limits.maxConnections} source connections. Review your plan to add more.`
+        : `This workspace has ${pipelineCount}/${limits.maxPipelines} pipelines. Review your plan to add more.`;
 
     return (
         <div
@@ -37,23 +37,23 @@ export function UpgradeNudge() {
         >
             <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="flex min-w-0 items-start gap-3 sm:items-center">
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-amber-500/30 bg-canvas text-amber-400">
+                    <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-amber-400">
                         <AlertTriangle className="h-4 w-4" aria-hidden />
                     </div>
                     <div className="min-w-0">
-                        <p className="text-sm font-semibold text-ink">
+                        <p className="text-xs font-semibold text-ink">
                             {title}
                         </p>
-                        <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                        <p className="mt-0.5 text-xs text-ink-mute">
                             {detail}
                         </p>
                     </div>
                 </div>
                 <Link
                     href="/settings?tab=billing"
-                    className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
+                    className="inline-flex shrink-0 items-center justify-center rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted"
                 >
-                    View plans
+                    Review plan
                 </Link>
             </div>
         </div>

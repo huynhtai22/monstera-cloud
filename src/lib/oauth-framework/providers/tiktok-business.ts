@@ -111,8 +111,9 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     extractAccounts(credentials: unknown): ConnectedAccount[] {
         const creds = credentials as {
             advertiserIds?: string[];
+            extraFields?: { advertiserIds?: string[] };
         };
-        const advertiserIds = normalizeTikTokAdvertiserIds(creds?.advertiserIds);
+        const advertiserIds = normalizeTikTokAdvertiserIds(creds?.advertiserIds ?? creds?.extraFields?.advertiserIds);
         if (!advertiserIds.length) return [];
 
         return advertiserIds.map((id) => ({

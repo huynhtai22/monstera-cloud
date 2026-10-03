@@ -63,4 +63,18 @@ describe("source health resolver", () => {
       staleBefore,
     }), "fresh");
   });
+
+  it("does not call provider processing stuck without an attempt timestamp", () => {
+    const now = new Date("2026-10-02T12:00:00.000Z");
+    const base = {
+      connectionStatus: "connected",
+      lastError: "TikTok report task is still processing",
+      lastSyncAt: null,
+      now,
+      staleBefore,
+    };
+    assert.equal(resolveSourceHealthState(base), "syncing");
+    assert.equal(resolveSourceHealthState({ ...base, syncAttemptAt: new Date(now.getTime() - 60 * 60 * 1000 - 1) }), "stuck");
+    assert.equal(resolveSourceHealthState({ ...base, syncAttemptAt: now }), "syncing");
+  });
 });

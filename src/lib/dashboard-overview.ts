@@ -1,3 +1,4 @@
+import { countConsoleConnections } from "@/lib/console-connections";
 import prisma from "@/lib/prisma";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
@@ -165,6 +166,8 @@ export function resolveDashboardSourceState(input: {
   lastError: string | null;
   lastSyncAt: Date | null;
   isSyncing: boolean;
+  syncStartedAt?: Date | null;
+  syncAttemptAt?: Date | null;
   staleBefore: Date;
 }): DashboardSourceItem["state"] {
   return resolveSourceHealthState(input);
@@ -711,6 +714,8 @@ export async function getWorkspaceDashboardOverview(
       lastError: conn.lastError,
       lastSyncAt: conn.lastSyncAt,
       isSyncing: runningSourceConnectionId === conn.id,
+      syncStartedAt: latestSyncJob?.createdAt,
+      syncAttemptAt: conn.updatedAt,
       staleBefore: oneDayAgo,
     });
     let safeLastError: string | null = null;
@@ -724,6 +729,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: sanitized.explanation,
         actionType: sanitized.actionType,
         actionLabel: sanitized.actionLabel,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -736,11 +742,14 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "retry",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
       });
+    } else if (state === "stuck") {
+      safeLastError = "The sync has exceeded one hour. Review the source and retry.";
+      needsAttention.push({ id: `conn-stuck-${conn.id}`, title: `${providerLabel} sync is stuck`, explanation: safeLastError, actionType: "retry", actionLabel: "Review source", href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`, connectionId: conn.id, provider: conn.provider, timestamp: conn.updatedAt.toISOString() });
     } else if (state === "stale") {
       safeLastError = "The last successful sync is older than the one-day freshness threshold.";
       needsAttention.push({
@@ -749,7 +758,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "retry",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: conn.lastSyncAt?.toISOString() ?? (conn.updatedAt || conn.createdAt).toISOString(),
@@ -762,7 +771,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "review",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -805,7 +814,9 @@ export async function getWorkspaceDashboardOverview(
       explanation: sanitized.explanation,
       actionType: "retry",
       actionLabel: "Review",
-      href: "/reports",
+      href: latestSyncJob.pipeline?.sourceConnection?.id
+        ? `/sources/${encodeURIComponent(latestSyncJob.pipeline.sourceConnection.id)}#source-recovery`
+        : "/reports?view=sync&status=error",
       timestamp: (latestSyncJob.finishedAt || latestSyncJob.createdAt).toISOString(),
     });
   }
@@ -1017,6 +1028,10 @@ export async function getWorkspaceDashboardOverview(
     overallState = "attention";
     overallHeadline = "Attention needed";
     overallSupportingText = needsAttention[0].title + " — " + needsAttention[0].explanation;
+  } else if (sourcesList.some(source => ["disconnected", "unknown", "partial", "stuck"].includes(source.state))) {
+    overallState = "attention";
+    overallHeadline = "Sources need review";
+    overallSupportingText = "Review authorization and sync status for the affected connections.";
   } else if (warehouseStatus === "refreshing") {
     overallState = "syncing";
     overallHeadline = "Warehouse syncing";
@@ -1037,7 +1052,7 @@ export async function getWorkspaceDashboardOverview(
 
   const healthySources = sourcesList.filter((source) => source.state === "fresh").length;
   const sourceAttentionCount = sourcesList.filter(
-    (source) => source.state === "error" || source.state === "stale" || source.state === "disconnected",
+    (source) => ["error", "stale", "disconnected", "unknown", "partial", "stuck"].includes(source.state),
   ).length;
   const pendingSources = sourcesList.filter(
     (source) => source.state === "pending" || source.state === "syncing",
@@ -1076,7 +1091,7 @@ export async function getWorkspaceDashboardOverview(
     },
     summaryCards: {
       sources: {
-        total: sourceConnections.length,
+        total: countConsoleConnections(sourceConnections),
         healthy: healthySources,
         attention: sourceAttentionCount,
         accountsTotal: totalConnectedAccounts,

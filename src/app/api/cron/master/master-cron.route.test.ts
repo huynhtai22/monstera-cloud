@@ -55,6 +55,8 @@ describe("CRON /api/cron/master failure propagation", () => {
       "alerts",
       "reportSchedules",
       "billingExpiry",
+      "seatSharingRetention",
+      "securityPosture",
     ];
     assert.deepEqual(Object.keys(body.executed).sort(), [...expected].sort());
     for (const name of expected) {
@@ -74,7 +76,7 @@ describe("CRON /api/cron/master failure propagation", () => {
     assert.equal(body.executed.reportSchedules, 500);
     assert.equal(body.executed.billingExpiry, 200);
     assert.equal(body.executed.healthTick, 200);
-    assert.equal(calls.length, 8);
+    assert.equal(calls.length, 10);
   });
 
   it("returns 500 when any other required task fails and still attempts the rest", async () => {
@@ -84,7 +86,7 @@ describe("CRON /api/cron/master failure propagation", () => {
     const body = await res.json();
     assert.equal(body.executed.shopeeRefresh, 503);
     assert.equal(body.executed.reportSchedules, 200);
-    assert.equal(calls.length, 8);
+    assert.equal(calls.length, 10);
   });
 
   it("returns 500 when a child task throws and marks it failed without leaking details", async () => {

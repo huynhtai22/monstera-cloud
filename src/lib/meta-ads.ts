@@ -4,7 +4,8 @@
  * Insights: https://developers.facebook.com/docs/marketing-api/insights
  *
  * Auth flow:
- *   OAuth 2.0 → short-lived token → exchange for long-lived token (60 days)
+ *   Facebook Login for Business with the reviewed configuration ID
+ *   (META_ADS_LOGIN_CONFIG_ID) → short-lived token → long-lived token (60 days)
  *   For SaaS production: upgrade to System User Token (never expires) via Business Manager
  *
  * Rate limits:
@@ -21,12 +22,28 @@ const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 const META_AUTH_BASE = 'https://www.facebook.com/dialog/oauth';
 const META_TOKEN_URL = `https://graph.facebook.com/${META_API_VERSION}/oauth/access_token`;
 
+import {
+  getMetaAppId,
+  getMetaAppSecret,
+  requireMetaLoginConfigId,
+  isValidMetaLoginConfigId,
+  isMetaAdsConfigured,
+  META_LOGIN_CONFIG_ID_PATTERN,
+} from './meta-ads-config';
+
+export {
+  requireMetaLoginConfigId,
+  isValidMetaLoginConfigId,
+  isMetaAdsConfigured,
+  META_LOGIN_CONFIG_ID_PATTERN,
+};
+
 function appId(): string {
-  return (process.env.META_ADS_APP_ID || '').trim();
+  return getMetaAppId();
 }
 
 function appSecret(): string {
-  return (process.env.META_ADS_APP_SECRET || '').trim();
+  return getMetaAppSecret();
 }
 
 import type {
@@ -44,19 +61,25 @@ export * from './meta-ads-contract';
 
 export class MetaAdsClient {
   /**
-   * Step 1 — Build the Facebook OAuth URL.
-   * Scope: ads_read, which is sufficient for ad account discovery and reporting.
+   * Step 1 — Build the Facebook Login for Business authorization URL.
+   *
+   * Permission selection is owned by the reviewed Business Login configuration
+   * referenced by `config_id`, so the legacy `scope` parameter is intentionally
+   * omitted. Meta ignores `scope` when `config_id` is present, and sending both
+   * would let the requested permissions drift from the reviewed configuration.
    */
   getAuthorizeUrl(state: string, redirectUri: string): string {
     const id = appId();
     if (!id) throw new Error('META_ADS_APP_ID is not configured');
+    const configId = requireMetaLoginConfigId();
 
     const url = new URL(META_AUTH_BASE);
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('state', state);
-    url.searchParams.set('scope', 'ads_read');
+    url.searchParams.set('config_id', configId);
     url.searchParams.set('response_type', 'code');
+    url.searchParams.set('override_default_response_type', 'true');
 
     return url.toString();
   }
@@ -130,10 +153,24 @@ export class MetaAdsClient {
     url.searchParams.set('fields', 'id,name,currency,timezone_name,account_status');
     url.searchParams.set('access_token', accessToken);
 
-    const res = await fetch(url.toString());
-    const json = await res.json() as { data: Array<{ id: string; name: string; currency: string; timezone_name?: string; account_status: number }>; error?: { message: string } };
-    if (json.error) throw new Error(`Meta adaccounts error: ${(json as any).error.message}`);
-    return json.data ?? [];
+    type Account = { id: string; name: string; currency: string; timezone_name?: string; account_status: number };
+    const accounts = new Map<string, Account>();
+    const visited = new Set<string>();
+    let next: string | undefined = url.toString();
+    const signal = AbortSignal.timeout(15_000);
+    for (let page = 0; next; page++) {
+      if (page >= 20 || visited.has(next)) throw new Error("Meta account discovery pagination limit reached");
+      const pageUrl = new URL(next);
+      if (pageUrl.origin !== "https://graph.facebook.com" || pageUrl.username || pageUrl.password) throw new Error("Invalid Meta pagination URL");
+      visited.add(next);
+      const res = await fetch(pageUrl.toString(), { signal, redirect: "error" });
+      const json = await res.json() as { data?: Account[]; paging?: { next?: string }; error?: { message?: string } };
+      if (!res.ok || json.error) throw new Error("Meta ad account discovery failed");
+      if (!Array.isArray(json.data)) throw new Error("Invalid Meta account inventory");
+      for (const account of json.data) accounts.set(account.id, account);
+      next = json.paging?.next;
+    }
+    return [...accounts.values()];
   }
 }
 
@@ -149,6 +186,14 @@ export interface MetaThrottleState {
   estimatedTimeToRegainAccess?: number; // ms
 }
 
+export class MetaRateLimitError extends Error {
+  readonly retryable = true;
+  constructor(message: string, readonly retryAfterMs: number) {
+    super(message);
+    this.name = "MetaRateLimitError";
+  }
+}
+
 /**
  * Parse Meta's x-business-use-case-usage header.
  * Format: { "<adAccountId>": [{ call_count, total_cputime, total_time, type, estimated_time_to_regain_access }] }
@@ -162,18 +207,32 @@ function parseThrottleHeader(res: Response): MetaThrottleState | null {
     const parsed: Record<string, Array<{ call_count?: number; total_cputime?: number; total_time?: number; estimated_time_to_regain_access?: number }>> = JSON.parse(raw);
     const entries = Object.values(parsed).flat();
     if (!entries.length) return null;
-    const callCount = entries[0]?.call_count ?? 0;
-    const totalTime = entries[0]?.total_time ?? 0;
-    const regain = entries[0]?.estimated_time_to_regain_access;
+    const callCount = Math.max(...entries.map((entry) => entry.call_count ?? 0));
+    const totalTime = Math.max(...entries.map((entry) => entry.total_time ?? 0));
+    const regain = Math.max(...entries.map((entry) => entry.estimated_time_to_regain_access ?? 0));
     return {
       callCount,
       totalCalls: 100,
       pct: Math.max(callCount, totalTime),
-      estimatedTimeToRegainAccess: regain ? regain * 1000 : undefined,
+      // Meta reports this estimate in minutes.
+      estimatedTimeToRegainAccess: regain > 0 ? regain * 60_000 : undefined,
     };
   } catch {
     return null;
   }
+}
+
+function getRetryAfterMs(res: Response, throttle: MetaThrottleState | null): number {
+  const retryAfter = res.headers.get("retry-after");
+  let headerDelay = 0;
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const absoluteTime = Date.parse(retryAfter);
+    headerDelay = Number.isFinite(seconds) && seconds >= 0
+      ? seconds * 1000
+      : Number.isFinite(absoluteTime) ? Math.max(0, absoluteTime - Date.now()) : 0;
+  }
+  return Math.min(Math.max(headerDelay, throttle?.estimatedTimeToRegainAccess ?? 0, 60_000), 6 * 60 * 60 * 1000);
 }
 
 type RetrySleeper = (ms: number) => Promise<void>;
@@ -201,18 +260,31 @@ async function metaFetch(
   options?: RequestInit,
   maxRetries = 4,
 ): Promise<{ res: Response; throttle: MetaThrottleState | null }> {
+  // Build the final target from a fixed Graph API origin. Request dimensions
+  // may contain account/report identifiers, but cannot redirect server-side
+  // fetches to a caller-controlled host.
+  const graphOrigin = new URL(META_GRAPH_BASE).origin;
+  if (
+    url.protocol !== "https:" ||
+    url.origin !== graphOrigin ||
+    !url.pathname.startsWith(`/${META_API_VERSION}/`) ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error("Rejected invalid Meta Graph API destination");
+  }
+  const targetUrl = new URL(META_GRAPH_BASE);
+  targetUrl.pathname = url.pathname;
+  targetUrl.search = url.search;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const startMs = Date.now();
-    const res = await fetch(url.toString(), options);
+    const requestSignal = options?.signal
+      ? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)])
+      : AbortSignal.timeout(20_000);
+    const res = await fetch(targetUrl.toString(), { ...options, redirect: "error", signal: requestSignal });
     const durationMs = Date.now() - startMs;
     const throttle = parseThrottleHeader(res);
-
-    // Proactive throttle: if usage > 85%, wait before returning
-    if (throttle && throttle.pct >= 85) {
-      const pauseMs = throttle.estimatedTimeToRegainAccess ?? 15_000;
-      logger.warn(`[META_RATE_LIMIT] Usage at ${throttle.pct}%, pausing ${pauseMs}ms before continuing`);
-      await metaRetrySleeper(pauseMs);
-    }
 
     // 429 or Meta error code 17/32/613 → back off and retry
     if (res.status === 429) {
@@ -351,7 +423,8 @@ export class MetaReportClient {
       if (params.filtering?.length) url.searchParams.set('filtering', JSON.stringify(params.filtering));
       if (afterCursor) url.searchParams.set('after', afterCursor);
 
-      const { res } = await metaFetch(url);
+      const { res, throttle } = await metaFetch(url);
+      if (res.status === 429) throw new MetaRateLimitError("Meta rate limit: HTTP 429", getRetryAfterMs(res, throttle));
       const json = await res.json() as {
         data: MetaInsightsRow[];
         paging?: { cursors?: { after?: string }; next?: string };
@@ -361,6 +434,12 @@ export class MetaReportClient {
       if (json.error) {
         if (json.error.code === 190) {
           throw new MetaOAuthRevokedError(json.error.message, json.error.code);
+        }
+        if ([17, 32, 613, 80004].includes(json.error.code)) {
+          throw new MetaRateLimitError(
+            `Meta rate limit ${json.error.code}: ${json.error.message}`,
+            getRetryAfterMs(res, throttle),
+          );
         }
         throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);
       }

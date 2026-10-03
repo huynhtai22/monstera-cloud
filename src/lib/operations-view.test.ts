@@ -111,7 +111,7 @@ function createStubSummary(overrides?: Partial<OperationsSummary["sections"]>): 
         data: {
           sourceFreshnessHours: 24,
           escalationHours: 26,
-          totals: { fresh: 1, stale: 0, syncing: 0, pending: 0, error: 0, partial: 0, disconnected: 0, unknown: 0 },
+          totals: { stuck: 0, fresh: 1, stale: 0, syncing: 0, pending: 0, error: 0, partial: 0, disconnected: 0, unknown: 0 },
           attention: [],
         },
         truncated: false,
@@ -468,7 +468,7 @@ describe("Actionable Readiness v1 (deriveOperationsActions)", () => {
         data: {
           sourceFreshnessHours: 24,
           escalationHours: 26,
-          totals: { fresh: 0, stale: 3, syncing: 0, pending: 0, error: 2, partial: 0, disconnected: 0, unknown: 0 },
+          totals: { stuck: 0, fresh: 0, stale: 3, syncing: 0, pending: 0, error: 2, partial: 0, disconnected: 0, unknown: 0 },
           attention: [
             { connectionId: "c1", provider: "meta", name: "Meta", state: "stale", lastSyncAt: null, lastDataThrough: null },
             { connectionId: "c2", provider: "google_ads", name: "Google", state: "error", lastSyncAt: null, lastDataThrough: null },
@@ -593,6 +593,7 @@ function freshnessSection(
   truncated = false,
 ): FreshnessSection {
   const base: FreshnessData["totals"] = {
+    stuck: 0,
     fresh: 0,
     stale: 0,
     syncing: 0,

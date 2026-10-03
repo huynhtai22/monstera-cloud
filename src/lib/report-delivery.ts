@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import prisma from "./prisma";
+import { withDatabaseTenantContext } from "./database-tenant-context";
 import { RbacError } from "./rbac";
 import { parseReadinessRequest } from "./report-readiness-request";
 import { queryWarehouse, type WarehouseQueryInput, type ScopedTransaction } from "./warehouse-query";
@@ -139,7 +140,7 @@ export async function retrieveClientDelivery(input: WarehouseQueryInput & { clie
   const parsed = parseReadinessRequest({ workspaceId: input.workspaceId, clientId: input.clientId,
     start: input.startDate?.toISOString().slice(0, 10), end: input.endDate?.toISOString().slice(0, 10) });
   if (!parsed || !input.startDate || !input.endDate) throw new RbacError("A valid client and 1–90 day reporting window are required", "INVALID_REQUEST", 400);
-  return prisma.$transaction(async tx => {
+  return withDatabaseTenantContext(prisma, input.workspaceId, async tx => {
     const requirementClient = await tx.client.findFirst({ where: { workspaceId: input.workspaceId, id: input.clientId }, select: { requiredProviders: true, requirementsConfiguredAt: true } });
     const scope = requirementClient && requirementClient.requirementsConfiguredAt && requirementClient.requiredProviders.length > 0
       ? requirementClient.requiredProviders

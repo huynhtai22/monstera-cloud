@@ -366,14 +366,14 @@ export function ClientAccountsSection({
         body: JSON.stringify(targetClientId ? { clientId: targetClientId } : {}),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Cutover failed");
+      if (!res.ok) throw new Error(data.error || "Could not update account assignments");
       toast.success(
         targetClientId
-          ? `Cutover complete. Assigned ${data.assignedCount} accounts.`
-          : `Cutover complete for ${data.totalClients} clients.`
+          ? `Updated assignments for ${data.assignedCount} accounts.`
+          : `Updated account assignments for ${data.totalClients} clients.`
       );
       if (data.skippedAmbiguousCount > 0) {
-        toast.warning(`${data.skippedAmbiguousCount} ambiguous accounts skipped (manual assignment required).`);
+        toast.warning(`${data.skippedAmbiguousCount} accounts need you to choose a client manually.`);
       }
       await Promise.all([
         mutate(accountsKey),
@@ -381,7 +381,7 @@ export function ClientAccountsSection({
         mutate((key) => typeof key === "string" && key.includes("/api/reports")),
       ]);
     } catch (err: any) {
-      toast.error(err?.message || "Failed to cut over accounts");
+      toast.error(err?.message || "Could not update account assignments");
     } finally {
       setIsCuttingOver(false);
     }
@@ -400,22 +400,22 @@ export function ClientAccountsSection({
     <div className="space-y-4">
       {/* Mode & Cutover Banner */}
       {currentClient && (
-        <div className={cn(
+        <div data-console-assignment-notice role="status" className={cn(
           "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
           currentClient.accountAssignmentsConfiguredAt
             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-            : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+            : "border-line bg-panel text-ink-mute"
         )}>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold">
               {currentClient.accountAssignmentsConfiguredAt
-                ? "Explicit Assignment Mode (Authoritative)"
-                : "Legacy Compatibility Mode"}
+                ? "Using account assignments"
+                : "Using source assignments"}
             </span>
             <span className="text-[11px] opacity-80">
               {currentClient.accountAssignmentsConfiguredAt
-                ? "Only explicitly assigned accounts are included in reports and warehouse."
-                : "Falling back to legacy Connection.clientId until explicit cutover."}
+                ? "Reports and warehouse data include only this client’s assigned accounts."
+                : "Reports include accounts from this client’s assigned sources."}
             </span>
           </div>
           {!currentClient.accountAssignmentsConfiguredAt && (
@@ -423,28 +423,28 @@ export function ClientAccountsSection({
               type="button"
               onClick={() => handleCutover(currentClient.id)}
               disabled={isCuttingOver}
-              className="rounded-md bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+              className="rounded-md border border-line bg-canvas px-2.5 py-1 text-xs font-medium text-ink hover:bg-panel disabled:opacity-50 transition-colors cursor-pointer"
             >
-              {isCuttingOver ? "Cutting over…" : "Run Cutover"}
+              {isCuttingOver ? "Updating…" : "Use account assignments"}
             </button>
           )}
         </div>
       )}
       {selectedClientId === "all" && legacyClientsCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">Legacy Clients Detected</span>
+        <div data-console-assignment-notice role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs text-ink-mute">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-semibold">Account assignments available</span>
             <span className="text-[11px] opacity-80">
-              {legacyClientsCount} client{legacyClientsCount > 1 ? "s are" : " is"} in legacy compatibility mode.
+              {legacyClientsCount} client{legacyClientsCount > 1 ? "s use" : " uses"} source-level assignments.
             </span>
           </div>
           <button
             type="button"
             onClick={() => handleCutover()}
             disabled={isCuttingOver}
-            className="rounded-md bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+            className="rounded-md border border-line bg-canvas px-2.5 py-1 text-xs font-medium text-ink hover:bg-panel disabled:opacity-50 transition-colors cursor-pointer"
           >
-            {isCuttingOver ? "Cutting over…" : "Cutover All Clients"}
+            {isCuttingOver ? "Updating…" : "Update client assignments"}
           </button>
         </div>
       )}

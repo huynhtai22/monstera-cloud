@@ -1,5 +1,11 @@
 import { spawn } from "node:child_process";
-import { createTestPlan, findTests, runPlan, applyChildOutcome } from "./test-runner-lib.mjs";
+import {
+  assertPostgresTestSuiteConfigured,
+  createTestPlan,
+  findTests,
+  runPlan,
+  applyChildOutcome,
+} from "./test-runner-lib.mjs";
 
 let activeChild = null;
 
@@ -36,6 +42,7 @@ process.on("SIGTERM", forwardSignal);
 try {
   const tests = (await findTests("src")).sort();
   const plan = createTestPlan(process.argv.slice(2), tests);
+  assertPostgresTestSuiteConfigured(process.env, tests, plan);
   const result = await runPlan(plan, runTsx);
   applyChildOutcome(result);
 } catch (error) {

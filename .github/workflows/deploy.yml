@@ -18,17 +18,21 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -40,14 +44,23 @@ jobs:
         run: |
           vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Apply database migrations
+      - name: Install project dependencies
         run: |
-          set -a
-          source .vercel/.env.production.local
-          set +a
-          test -n "$DATABASE_URL"
           npm ci
-          DIRECT_URL="${DIRECT_URL:-$DATABASE_URL}" npm run db:migrate:prepare
+
+      # Migrations must never source the pulled environment file: the dedicated
+      # GitHub repository secret is scoped to this step and injected into the
+      # migration process only. Both URLs intentionally use the same direct,
+      # non-pooled connection. The validator fails closed on a missing,
+      # malformed or pooled DIRECT_URL before Prisma migration execution.
+      # `vercel pull` is retained for project/build configuration only.
+      - name: Apply database migrations
+        env:
+          DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+        run: |
+          node scripts/validate-migration-env.mjs
+          npm run db:migrate:prepare
 
       - name: Build project
         env:

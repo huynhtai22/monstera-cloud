@@ -51,6 +51,11 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ReportScheduleDispatchAttempt",
   "WorkspaceAiPolicy",
   "AgentJob",
+  "AgentRun",
+  "AgentTask",
+  "AgentTaskConnection",
+  "AgentRunMessage",
+  "AgentRunEvent",
   "AgentTrace",
   "EvidencePackRecord",
   "ConnectorRunArtifact",
@@ -65,8 +70,29 @@ export const TENANT_GUARDED_MODELS = new Set([
   "DestinationDeliveryReceipt",
   // Verified weekly report blueprint (2026-09): direct workspaceId owners
   "ReportSnapshot",
+  "ReportSnapshotApproval",
+  "ReportEmailDeliveryAttempt",
   // Client provider account assignment (2026-09): direct workspaceId owners
   "ClientProviderAccountAssignment",
+  // Checkpointed backfill slices (2026-09): direct workspaceId owners
+  "WarehouseBackfillChunk",
+  // Seat-sharing measurement counter (direct workspace owner)
+  "WorkspaceDailyUsage",
+  "ClientFreshnessState",
+  "WorkspaceSessionEvidence",
+  "ApiKeyMutationReceipt",
+  // Agent-first console: direct workspace-owned responsibility and execution records
+  "AgentApproval",
+  "AgentAuthorization",
+  "AgentCase",
+  "AgentConsoleEvent",
+  "AgentEvaluation",
+  "AgentEventSequence",
+  "AgentEvidenceSnapshot",
+  "AgentNotificationOutbox",
+  "AgentOperation",
+  "AgentResponsibility",
+  "AgentResponsibilityScope",
 ]);
 
 /**
@@ -75,6 +101,7 @@ export const TENANT_GUARDED_MODELS = new Set([
  * guarded here or explicitly documented below.
  */
 export const TENANT_GUARD_EXEMPTIONS: Readonly<Record<string, string>> = {
+  AgencyAlertDelivery: "Fleet alert dispatch scans pending rows across workspaces and claims each row by its opaque ID; creation and workspace association are restricted to internal alert code.",
   WorkspaceMember: "Membership joins are queried by user ID during authentication.",
   WorkspaceProviderAccess: "Provider entitlements are accessed through workspace-authorized routes.",
   SyncLock: "System lease infrastructure is keyed by provider scope.",

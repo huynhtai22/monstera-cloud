@@ -4,7 +4,7 @@ import { WarehouseWorkbench } from "@/components/data-explorer/WarehouseWorkbenc
 
 export default function DataExplorerPage() {
     return (
-        <PageShell className="w-full" withBackdrop>
+        <PageShell section="warehouse" className="w-full" withBackdrop>
             <Suspense fallback={<div className="p-8 text-center text-xs text-ink-mute">Loading warehouse...</div>}>
                 <WarehouseWorkbench />
             </Suspense>

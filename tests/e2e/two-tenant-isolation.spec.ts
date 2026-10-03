@@ -124,6 +124,7 @@ test.describe("two-tenant isolation", () => {
     expect(charlieCreatesKey.status()).toBe(403);
 
     const aliceKeyRes = await alice.page.request.post("/api/settings/api-keys", {
+      headers: { "Idempotency-Key": `tenant-rehearsal-api-key-${alpha!.id}` },
       data: { workspaceId: alpha!.id, name: "alpha-key-1" },
     });
     expect(aliceKeyRes.ok()).toBeTruthy();

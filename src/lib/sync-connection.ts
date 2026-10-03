@@ -22,7 +22,7 @@ import { syncShopeeCatalogWarehouse } from "@/lib/sync-shopee-catalog-warehouse"
 
 // Meta imports
 import { ingestMetaRows, META_CANONICAL_METRIC_GRAIN } from "@/lib/meta-ingest";
-import { MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { MetaOAuthRevokedError, MetaRateLimitError } from "@/lib/meta-ads";
 import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
@@ -37,7 +37,7 @@ import {
 } from "@/lib/connection-sync-lease";
 
 // Google imports
-import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
+import { googleAdsReportClient, isGoogleAdsAccessBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 import {
   assertGoogleRuntimeModeAllowed,
@@ -70,6 +70,7 @@ import {
   summarizeSyncOutcome,
 } from "@/lib/sync-outcome";
 import { refreshConnectionLastDataThrough, shouldRefreshLastDataThrough } from "@/lib/connection-data-through";
+import { scopeConnectionWhere } from "@/lib/workspace-scope";
 
 export interface SyncOptions {
   connectionId: string;
@@ -258,10 +259,10 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
           );
         }
         const children: SyncChildResult[] = [
-          { id: "campaign_catalog", kind: "connection", ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
-          { id: "product_catalog", kind: "connection", ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
+          { id: "campaign_catalog", kind: "connection", optional: true, ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
+          { id: "product_catalog", kind: "connection", optional: true, ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
           { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error, retryable: !orders.success && isRetryableSyncError(orders.error) },
-          { id: "ads_performance", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
+          { id: "ads_performance", kind: "connection", optional: true, ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
         ];
         const summary = summarizeSyncOutcome(children);
         await persistConnectionSyncOutcome(connectionId, summary, lease);
@@ -309,6 +310,7 @@ export async function persistConnectionSyncOutcome(
   connectionId: string,
   outcome: Pick<SyncResult, "outcome" | "error">,
   lease?: ConnectionLease,
+  scope?: { workspaceId: string; expectedCredentials?: string },
 ): Promise<void> {
   if (lease) {
     try {
@@ -325,22 +327,78 @@ export async function persistConnectionSyncOutcome(
     : `[${outcome.outcome}] ${outcome.error ?? "One or more requested accounts did not sync"}`.slice(0, 1900);
   // Never resurrect a disconnected connection: a sync that raced with Disconnect
   // must not flip status back to "connected".
-  await prisma.connection.updateMany({
-    where: { id: connectionId, status: { not: "disconnected" } },
+  const where = scope
+    ? scopeConnectionWhere(scope.workspaceId, {
+        id: connectionId,
+        status: { not: "disconnected" },
+        ...(scope.expectedCredentials !== undefined ? { credentials: scope.expectedCredentials } : {}),
+      })
+    : { id: connectionId, status: { not: "disconnected" } };
+  const updated = await prisma.connection.updateMany({
+    where,
     data: outcome.outcome === "success"
       ? { lastSyncAt: new Date(), lastError, status: "connected" }
       : { lastError },
   });
+  if (updated.count === 0) return;
 
-  const conn = await prisma.connection.findUnique({
-    where: { id: connectionId },
-    select: { workspaceId: true, provider: true },
-  });
+  const conn = scope
+    ? await prisma.connection.findFirst({
+        where: scopeConnectionWhere(scope.workspaceId, { id: connectionId }),
+        select: { workspaceId: true, provider: true },
+      })
+    : await prisma.connection.findUnique({
+        where: { id: connectionId },
+        select: { workspaceId: true, provider: true },
+      });
 
   if (shouldRefreshLastDataThrough(outcome.outcome)) {
     if (conn) {
       await refreshConnectionLastDataThrough(conn.workspaceId, connectionId);
     }
+  }
+}
+
+/**
+ * Persist a failure discovered before provider sync starts (for example,
+ * credential decryption or validation failure) without overwriting an outcome
+ * from another worker that currently owns this connection.
+ */
+export async function persistPreSyncConnectionFailure(params: {
+  connectionId: string;
+  workspaceId: string;
+  provider: string;
+  credentials: string;
+  error: string;
+}): Promise<void> {
+  const attempt = await acquireConnectionSyncLease(params);
+  if (!attempt.acquired) {
+    logger.warn(
+      `[syncConnectionData] Skipping pre-sync failure persistence for ${params.connectionId}; another worker owns the connection lease`,
+    );
+    return;
+  }
+
+  try {
+    const current = await prisma.connection.findFirst({
+      where: scopeConnectionWhere(params.workspaceId, { id: params.connectionId }),
+      select: { credentials: true, provider: true },
+    });
+    if (!current || current.credentials !== params.credentials || current.provider !== params.provider) {
+      logger.info(
+        `[syncConnectionData] Skipping stale pre-sync failure for ${params.connectionId}; source credentials or provider changed`,
+      );
+      return;
+    }
+
+    await persistConnectionSyncOutcome(
+      params.connectionId,
+      { outcome: "failed", error: params.error },
+      attempt.lease,
+      { workspaceId: params.workspaceId, expectedCredentials: params.credentials },
+    );
+  } finally {
+    await releaseConnectionSyncLease(attempt.lease, false);
   }
 }
 
@@ -630,7 +688,14 @@ async function syncMetaAds(opts: {
       const isAuth = isRevoked || /error validating access token|token.*revoked|code 190|oauthexception/i.test(msg);
       const metaRetryable = isRetryableSyncError(error) && !isAuth;
       const childError = isRevoked ? `Meta authorization revoked — reconnect required. (${msg})` : msg;
-      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: childError, retryable: metaRetryable });
+      children.push({
+        id: String(accountId),
+        kind: "ad_account",
+        ok: false,
+        error: childError,
+        retryable: metaRetryable,
+        ...(error instanceof MetaRateLimitError ? { retryAfterMs: error.retryAfterMs } : {}),
+      });
       await recordAccountOutcome({
         workspaceId,
         connectionId,
@@ -720,15 +785,12 @@ async function syncGoogleAds(opts: {
 
   logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
 
-  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedCustomerIds)
-    ? extraFields.selectedCustomerIds
-    : Array.isArray(credentials.selectedCustomerIds)
-      ? credentials.selectedCustomerIds
+  const selectedIds: string[] | undefined = Array.isArray(credentials.selectedCustomerIds)
+    ? credentials.selectedCustomerIds
+    : Array.isArray(extraFields.selectedCustomerIds)
+      ? extraFields.selectedCustomerIds
       : undefined;
-  if (selectedIds !== undefined) {
-    customerIds = customerIds.filter((id: string) => selectedIds.includes(id));
-    logger.info(`[syncGoogleAds] Filtered to ${customerIds.length} selected customers`);
-  }
+
 
   if (!customerIds.length) {
     const result = makeFailedSyncResult("No customer accounts selected or found on connection", false);
@@ -754,6 +816,7 @@ async function syncGoogleAds(opts: {
   type LeafAccount = { customerId: string; mccId: string; descriptiveName: string };
   const leafAccounts: LeafAccount[] = [];
   const seenLeafIds = new Set<string>();
+  const targetedHierarchyFailures: { rootId: string; error: string; retryable: boolean }[] = [];
 
   for (const rootId of customerIds) {
     try {
@@ -768,12 +831,12 @@ async function syncGoogleAds(opts: {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (isGoogleAdsDeveloperTokenBlocked(err)) {
-        // Application-level blocker: the developer token is not approved for
-        // this account. Every leaf query would fail identically — never mask
-        // it as per-account errors via the leaf fallback below.
+      if (isGoogleAdsAccessBlocked(err)) {
+        // Application-level blocker: Google Ads API access is not enabled for
+        // the Cloud project that owns the OAuth client. Every leaf query would
+        // fail identically — never mask it as per-account errors below.
         const result = makeFailedSyncResult(
-          `Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED). Check the production deployment configuration and Google Ads API Center status — selecting a different customer account will not resolve this application-level rejection.`,
+          `Google Ads API access is not enabled for the Google Cloud project that owns this OAuth client. Check the project's Google Ads API access level in Google Cloud Console. Selecting a different customer account will not resolve this application-level rejection.`,
           false,
         );
         await persistConnectionSyncOutcome(connectionId, result, lease);
@@ -782,11 +845,19 @@ async function syncGoogleAds(opts: {
       if (isRetryableSyncError(err)) {
         // A quota/network failure while expanding an MCC means its child scope
         // is unknown; never substitute a zero-row root query for completion.
-        children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        if (selectedIds === undefined) {
+          children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        } else {
+          targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: true });
+        }
         logger.warn(`[syncGoogleAds] Deferring root=${rootId} after retryable hierarchy failure: ${msg}`);
         continue;
       }
       logger.warn(`[syncGoogleAds] Could not resolve hierarchy for root=${rootId}: ${msg} — trying direct query`);
+      if (selectedIds !== undefined) {
+        targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: false });
+        continue;
+      }
       // Fallback: treat root as leaf with itself as login-customer-id
       if (!seenLeafIds.has(rootId)) {
         seenLeafIds.add(rootId);
@@ -802,11 +873,29 @@ async function syncGoogleAds(opts: {
   }
 
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
-  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId);
+  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId, {
+    // Old builds incorrectly quarantined accounts when project-level API access
+    // failed. Let Google retry those rows after the project configuration changes.
+    recoverableErrorPattern: /CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED|Google Ads API access is not enabled for the Google Cloud project/i,
+  });
+
+  // Selection refers to reportable leaves, not manager roots. Never expand consent.
+  const selectedLeaves = selectedIds === undefined ? leafAccounts : leafAccounts.filter(account => selectedIds.includes(account.customerId));
+  if (selectedIds !== undefined) {
+    for (const id of selectedIds) {
+      if (selectedLeaves.some(account => account.customerId === id)) continue;
+      // An unresolved hierarchy cannot prove revocation. Keep the approved leaf
+      // as the retry target; a manager ID must never become a report selection.
+      const transientFailure = targetedHierarchyFailures.find(failure => failure.retryable);
+      children.push({ id, kind: "customer", ok: false,
+        error: transientFailure ? `Could not resolve customer hierarchy: ${transientFailure.error}` : "Selected customer is no longer accessible under this connection",
+        retryable: Boolean(transientFailure) });
+    }
+  }
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────
-  for (const { customerId, mccId, descriptiveName } of leafAccounts) {
-    if (skippedCustomers.has(customerId)) {
+  for (const { customerId, mccId, descriptiveName } of selectedLeaves) {
+    if (skippedCustomers.has(customerId) && selectedIds === undefined) {
       logger.info(`[syncGoogleAds] Skipping quarantined/reconnect-required customer ${customerId}`);
       children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0, skipped: "account_health" });
       continue;
@@ -941,8 +1030,8 @@ async function syncGoogleAds(opts: {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
-      const isBlockedDevToken = isGoogleAdsDeveloperTokenBlocked(error);
-      const isAuth = isBlockedDevToken || /developer.?token|unauthorized|permission.*denied/i.test(msg);
+      const isAccessBlocked = isGoogleAdsAccessBlocked(error);
+      const isAuth = isAccessBlocked || /unauthorized|permission.*denied/i.test(msg);
       const gRetryable = isRetryableSyncError(error) && !isAuth;
       children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: gRetryable });
       await recordAccountOutcome({
@@ -952,12 +1041,14 @@ async function syncGoogleAds(opts: {
         accountId: customerId,
         accountName: descriptiveName,
         ok: false,
-        retryable: gRetryable,
-        authFailure: isAuth,
+        retryable: isAccessBlocked || gRetryable,
+        // Cloud-project access is application configuration, not a revoked
+        // customer authorization. Keep it retryable after project access is fixed.
+        authFailure: isAuth && !isAccessBlocked,
         error: msg,
       });
 
-      if (isBlockedDevToken) {
+      if (isAccessBlocked) {
         break; // every remaining customer fails identically
       }
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);

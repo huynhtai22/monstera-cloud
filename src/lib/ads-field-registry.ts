@@ -30,6 +30,7 @@ export const ADS_DIMENSIONS: AdsDimensionField[] = [
   { id: "account_name", kind: "dimension", label: "Account Name", prismaField: "accountName" },
   { id: "campaign_id", kind: "dimension", label: "Campaign ID", prismaField: "campaignId" },
   { id: "campaign", kind: "dimension", label: "Campaign", prismaField: "campaignName" },
+  { id: "campaignName", kind: "dimension", label: "Campaign Name", prismaField: "campaignName" },
   { id: "ad_group_id", kind: "dimension", label: "Ad Group / Ad Set ID", prismaField: "adsetId" },
   { id: "ad_group", kind: "dimension", label: "Ad Group / Ad Set", prismaField: "adsetName" },
   { id: "ad_id", kind: "dimension", label: "Ad ID", prismaField: "adId" },
@@ -48,7 +49,8 @@ export const ADS_METRICS: AdsMetricField[] = [
   // Conversions in CampaignMetric is generic conversion count/value; do not assume purchase.
   { id: "conversions", kind: "metric", label: "Conversions", prismaField: "conversions", agg: "sum" },
   // Stored as `revenue` in DB; semantically safer to expose as `conversion_value`.
-  { id: "conversion_value", kind: "metric", label: "Conversion Value", prismaField: "revenue", agg: "sum" }
+  { id: "conversion_value", kind: "metric", label: "Conversion Value", prismaField: "revenue", agg: "sum" },
+  { id: "revenue", kind: "metric", label: "Revenue", prismaField: "revenue", agg: "sum" }
 ];
 
 // Calculated metrics (never aggregated directly; computed from summed raw components).

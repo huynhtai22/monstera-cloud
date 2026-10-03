@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
+import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
 
 function useRelativeTime(date: Date | null): string {
     const [label, setLabel] = useState<string>("Just now");
@@ -48,8 +49,8 @@ export function RefreshedAt({ onRefresh, loading = false }: RefreshedAtProps) {
             title="Refresh page data"
             className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-500 dark:hover:bg-[#16181c] dark:hover:text-slate-300"
         >
-            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">Refreshed</span> {label}
+            <span className="hidden sm:inline">Refreshed</span>
+            <ConsoleSyncLabel active={loading} idleLabel={label} activeLabel="Refreshing…" idleIcon={<RefreshCw className="h-3 w-3" />} />
         </button>
     );
 }

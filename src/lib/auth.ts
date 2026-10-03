@@ -8,6 +8,16 @@ import bcrypt from "bcryptjs"
 import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
+import { recordLoginEvent, telemetryHashesFromRequest } from "@/lib/login-telemetry";
+import { recordSecurityControlEvent, securityActorHash } from "@/lib/security-control-events";
+import {
+  isSessionRevoked,
+  maybeNotifyNewDevice,
+  newSessionId,
+  registerSession,
+  touchSession,
+} from "@/lib/session-limits";
+import { sendNewDeviceEmail } from "@/lib/mail";
 import { isPlatformAdminEmail } from "@/lib/admin-auth";
 import { isWhitelistedProEmail } from "@/lib/plan-config";
 import { freePilotEndsAt } from "@/lib/free-pilot";
@@ -127,7 +137,16 @@ export const authOptions: NextAuthOptions = {
                     identity: email,
                     limit: 10,
                     windowSeconds: 15 * 60,
-                }))) return null;
+                }))) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure",
+                        outcome: "rejected",
+                        scope: "credentials",
+                        actorHash: securityActorHash(email),
+                        metadata: { reason: "rate_limited" },
+                    });
+                    return null;
+                }
 
                 // Case-insensitive match (Postgres) — avoids login failures when casing differs from DB
                 const dbUser = (await prisma.user.findFirst({
@@ -135,14 +154,26 @@ export const authOptions: NextAuthOptions = {
                 })) as any;
 
                 if (!dbUser) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "unknown_user" },
+                    });
                     return null;
                 }
 
                 if (!dbUser.hashedPassword) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "password_unavailable" },
+                    });
                     return null;
                 }
 
                 if (!dbUser.emailVerified) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "email_unverified" },
+                    });
                     return null;
                 }
 
@@ -150,14 +181,42 @@ export const authOptions: NextAuthOptions = {
                     const isPasswordValid = await bcrypt.compare(credentials.password, dbUser.hashedPassword);
 
                     if (!isPasswordValid) {
+                        await recordSecurityControlEvent({
+                            eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                            actorHash: securityActorHash(email), metadata: { reason: "invalid_password" },
+                        });
                         return null;
                     }
                 } catch (err: any) {
                     logger.error("[LOGIN_CRASH] bcrypt failed:", err);
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "password_check_error" },
+                    });
                     return null;
                 }
 
                 const rememberMe = credentials.rememberMe !== "false";
+
+                // P0 telemetry (fail-open): login visibility without enforcement.
+                const loginEventId = await recordLoginEvent({
+                  userId: dbUser.id,
+                    method: "credentials",
+                    request: req as unknown as Request,
+                });
+
+                // P3: new-device nudge (fail-open, fire-and-forget).
+                {
+                    const { ipHash } = telemetryHashesFromRequest(req as unknown as Request);
+                    void maybeNotifyNewDevice({
+                        userId: dbUser.id,
+                        email: dbUser.email,
+                        ipHash,
+                        currentLoginEventId: loginEventId,
+                        method: "email + password",
+                        notify: (email, method) => sendNewDeviceEmail(email, { method }),
+                    });
+                }
 
                 return {
                     id: dbUser.id,
@@ -212,7 +271,9 @@ export const authOptions: NextAuthOptions = {
             });
 
             if (!existingUser) {
-                // Truly new user — PrismaAdapter will create the row normally
+                // Truly new user — PrismaAdapter will create the row normally.
+                // P0 skips the first-signup event here (no stable userId yet);
+                // subsequent Google logins are recorded below.
                 return true;
             }
 
@@ -230,6 +291,10 @@ export const authOptions: NextAuthOptions = {
 
             if (existingAccount) {
                 // Already linked — nothing to do; allow sign-in
+                // P0 telemetry (fail-open, no request IP in this callback).
+                if (existingUser?.id) {
+                    await recordLoginEvent({ userId: existingUser.id, method: "google" });
+                }
                 return true;
             }
 
@@ -253,6 +318,8 @@ export const authOptions: NextAuthOptions = {
             // Mutate user.id so the JWT callback gets the existing user's ID
             user.id = existingUser.id;
             logger.info(`[AUTH] Linked Google account to existing user: ${email}`);
+            // P0 telemetry (fail-open, no request IP in this callback).
+            await recordLoginEvent({ userId: existingUser.id, method: "google" });
             return true;
         },
 
@@ -264,6 +331,14 @@ export const authOptions: NextAuthOptions = {
                 } else {
                     token.rememberMe = true
                 }
+                // P1: stable browser-session id, registered server-side for
+                // revocation + concurrent-session caps. No request IP is
+                // available here; the heartbeat enriches hashes later.
+                // Do not use the reserved JWT `jti` claim here. NextAuth's
+                // encoder owns and replaces it after this callback, which
+                // would make the registered row impossible to match later.
+                if (!token.sessionJti) token.sessionJti = newSessionId();
+                await registerSession({ userId: user.id, jti: token.sessionJti as string });
             }
             if (account?.provider === "google") {
                 token.rememberMe = true
@@ -277,6 +352,19 @@ export const authOptions: NextAuthOptions = {
             if (!session.user) return session
 
             session.user.isAdmin = isPlatformAdminEmail(session.user.email);
+
+            // P1: revoked browser sessions lose their identity, so every
+            // `!session?.user?.id` guard below returns 401. Legacy pre-P1
+            // JWTs carry no sessionJti and are grandfathered until re-login.
+            const jti = token.sessionJti as string | undefined;
+            if (jti) {
+                session.user.sessionId = jti;
+                if (await isSessionRevoked(jti)) {
+                    session.user.id = "";
+                    return session;
+                }
+                void touchSession(jti);
+            }
 
             let userId = token.id as string | undefined
             if (!userId && session.user.email) {

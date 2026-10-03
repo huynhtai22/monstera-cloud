@@ -75,7 +75,7 @@ export function derivePilotActivation(input: PilotActivationInput): PilotActivat
   const dataThroughDate = toIso(input.dataThroughDate);
   const firstSource = input.sources[0] ?? null;
   const blockingSource = input.sources.find((source) =>
-    ["error", "partial", "stale", "disconnected", "unknown"].includes(source.state),
+    ["error", "partial", "stale", "disconnected", "unknown", "stuck"].includes(source.state),
   );
 
   if (rows7d > 0 && dashboardReviewedAt) {

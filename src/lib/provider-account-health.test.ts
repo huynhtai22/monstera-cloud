@@ -134,6 +134,27 @@ describe("provider-account-health unit tests", () => {
       assert.ok(skipped.has("act-auth"));
     });
 
+    it("allows Google accounts quarantined by the old Cloud-project access error to retry", async () => {
+      mockStore.set("conn-1:1234567890", {
+        connectionId: "conn-1",
+        accountId: "1234567890",
+        status: "reconnect_required",
+        lastError: "Google Ads request failed 403: CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION",
+      });
+      mockStore.set("conn-1:act-auth", {
+        connectionId: "conn-1",
+        accountId: "act-auth",
+        status: "reconnect_required",
+        lastError: "OAuthException code 190 token expired",
+      });
+
+      const skipped = await getSkippedAccountIds("conn-1", "ws-1", {
+        recoverableErrorPattern: /CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED/,
+      });
+      assert.ok(!skipped.has("1234567890"), "project access failures can recover automatically");
+      assert.ok(skipped.has("act-auth"), "actual revoked OAuth remains skipped");
+    });
+
     it("degrades on retryable errors and never quarantines even beyond threshold", async () => {
       for (let i = 0; i < QUARANTINE_THRESHOLD + 2; i++) {
         await recordAccountOutcome({

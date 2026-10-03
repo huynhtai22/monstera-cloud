@@ -190,7 +190,11 @@ export async function recordAccountOutcome(input: AccountOutcomeInput): Promise<
  * Returns the set of account IDs that must be skipped for a connection
  * (i.e. those in quarantined or reconnect_required status).
  */
-export async function getSkippedAccountIds(connectionId: string, workspaceId?: string): Promise<Set<string>> {
+export async function getSkippedAccountIds(
+  connectionId: string,
+  workspaceId?: string,
+  options: { recoverableErrorPattern?: RegExp } = {},
+): Promise<Set<string>> {
   try {
     const rows = await withSystemScope(() =>
       prisma.providerAccountHealth.findMany({
@@ -199,10 +203,14 @@ export async function getSkippedAccountIds(connectionId: string, workspaceId?: s
           connectionId,
           status: { in: ["quarantined", "reconnect_required"] },
         },
-        select: { accountId: true },
+        select: { accountId: true, lastError: true },
       })
     );
-    return new Set(rows.map((r) => r.accountId));
+    return new Set(
+      rows
+        .filter((row) => !options.recoverableErrorPattern?.test(row.lastError ?? ""))
+        .map((r) => r.accountId),
+    );
   } catch (err) {
     logger.error("[ACCOUNT_HEALTH] getSkippedAccountIds failed (fail-open: sync continues):", err);
     return new Set();

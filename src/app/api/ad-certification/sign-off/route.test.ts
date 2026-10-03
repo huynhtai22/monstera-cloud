@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import prisma from "@/lib/prisma";
 import { setAuthSessionOverride } from "@/lib/auth-session";
 import { POST } from "./route";
-import { CertificationHarness } from "@/lib/ad-certification/harness";
+import { CertificationHarness, CURRENT_SCHEMA_VERSION } from "@/lib/ad-certification/harness";
 import { TestCertificationHarness } from "@/lib/ad-certification/test-simulation-adapter";
 import type { CertificationEvidencePack } from "@/lib/ad-certification/types";
 
@@ -50,7 +50,7 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
         evidenceClass: "live_certification_evidence",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: false,
         },
         simulation: {
@@ -96,7 +96,7 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
       evidenceClass: "synthetic_fixture",
       trustedRuntimeMetadata: {
         commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-        schemaVersion: "20260905000000",
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         workingTreeDirty: false,
       },
     });

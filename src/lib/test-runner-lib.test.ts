@@ -8,17 +8,17 @@ const postgres = resolve("src/lib/example.pg.integration.test.ts");
 const tests = [postgres, nonPostgres];
 
 describe("test runner planning and child-status semantics", () => {
-  it("creates the normal parallel then bounded-PostgreSQL phases", () => {
+  it("creates the normal parallel then serial-PostgreSQL phases", () => {
     assert.deepEqual(createTestPlan([], tests), [
       { name: "non-postgres", args: ["--test", nonPostgres] },
-      { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=1", postgres] },
     ]);
   });
 
   it("runs explicit non-PostgreSQL and PostgreSQL files exactly once in their own phases", () => {
     assert.deepEqual(createTestPlan([nonPostgres, postgres], tests), [
       { name: "non-postgres", args: ["--test", nonPostgres] },
-      { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=1", postgres] },
     ]);
   });
 
@@ -28,43 +28,43 @@ describe("test runner planning and child-status semantics", () => {
     ]);
   });
 
-  it("runs one explicit PostgreSQL file only in the bounded PostgreSQL phase", () => {
+  it("runs one explicit PostgreSQL file only in the serial PostgreSQL phase", () => {
     assert.deepEqual(createTestPlan([postgres], tests), [
-      { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=1", postgres] },
     ]);
   });
 
-  it("keeps caller concurrency for non-PostgreSQL tests but enforces exactly four for PostgreSQL", () => {
+  it("keeps caller concurrency for non-PostgreSQL tests but serializes PostgreSQL files even when callers request parallelism", () => {
     for (const override of [["--test-concurrency=99"], ["--test-concurrency", "99"]]) {
       assert.deepEqual(createTestPlan([...override, postgres], tests), [
-        { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+        { name: "postgres", args: ["--test", "--test-concurrency=1", postgres] },
       ]);
       assert.deepEqual(createTestPlan([...override, nonPostgres, postgres], tests), [
         { name: "non-postgres", args: ["--test", ...override, nonPostgres] },
-        { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+        { name: "postgres", args: ["--test", "--test-concurrency=1", postgres] },
       ]);
     }
 
     const fullPlan = createTestPlan(["--test-concurrency", "9"], tests);
     assert.deepEqual(fullPlan[0].args, ["--test", "--test-concurrency", "9", nonPostgres]);
-    assert.deepEqual(fullPlan[1].args, ["--test", "--test-concurrency=4", postgres]);
+    assert.deepEqual(fullPlan[1].args, ["--test", "--test-concurrency=1", postgres]);
     assert.equal(fullPlan[1].args.filter((arg) => arg.startsWith("--test-concurrency")).length, 1);
   });
 
   it("forwards separate and equals-form pattern values that look like test files", () => {
     assert.deepEqual(createTestPlan(["--test-name-pattern", "currency.test.ts"], tests), [
       { name: "non-postgres", args: ["--test", "--test-name-pattern", "currency.test.ts", nonPostgres] },
-      { name: "postgres", args: ["--test", "--test-concurrency=4", "--test-name-pattern", "currency.test.ts", postgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=1", "--test-name-pattern", "currency.test.ts", postgres] },
     ]);
     assert.deepEqual(createTestPlan(["--test-name-pattern=currency.test.ts"], tests), [
       { name: "non-postgres", args: ["--test", "--test-name-pattern=currency.test.ts", nonPostgres] },
-      { name: "postgres", args: ["--test", "--test-concurrency=4", "--test-name-pattern=currency.test.ts", postgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=1", "--test-name-pattern=currency.test.ts", postgres] },
     ]);
   });
 
   it("never reinterprets a discovered test path used as a flag value", () => {
     assert.deepEqual(createTestPlan(["--test-name-pattern", nonPostgres, postgres], tests), [
-      { name: "postgres", args: ["--test", "--test-concurrency=4", "--test-name-pattern", nonPostgres, postgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=1", "--test-name-pattern", nonPostgres, postgres] },
     ]);
   });
 

@@ -10,6 +10,7 @@ const SOURCE_TO_FRESHNESS: Record<SourceHealthState, EvidenceFreshness> = {
   unknown: "never",
   pending: "never",
   syncing: "refreshing",
+  stuck: "failed",
   stale: "stale",
   fresh: "fresh",
 };
