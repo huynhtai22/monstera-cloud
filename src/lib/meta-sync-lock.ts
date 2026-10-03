@@ -178,6 +178,15 @@ export async function assertMetaSyncLease(params: {
 
 // ── Fenced upsert ─────────────────────────────────────────────────────────────
 
+/**
+ * Normalize a Meta ad name exactly like the legacy warehouse reader does:
+ * a trimmed non-empty string is kept verbatim (including any surrounding
+ * whitespace); anything else becomes NULL. Empty values are NULL, never "".
+ */
+export function normalizeMetaAdName(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 export interface MetaMetricPayload {
   impressions: number;
   clicks: number;
@@ -208,6 +217,8 @@ export async function upsertMetaMetric(params: {
   adsetId?: string;
   adsetName?: string;
   adId?: string;
+  /** Promoted Meta ad name (dual write). Normalized; null when absent. */
+  adName?: string | null;
   date: Date;
   breakdownHash: string;
   metrics: MetaMetricPayload;
@@ -218,7 +229,7 @@ export async function upsertMetaMetric(params: {
 }): Promise<void> {
   const {
     workspaceId, connectionId, accountId, accountName,
-    level, entityId, campaignId, campaignName, adsetId, adsetName, adId,
+    level, entityId, campaignId, campaignName, adsetId, adsetName, adId, adName,
     date, breakdownHash, metrics, syncJobId, lockScope, leaseId, fencingToken,
   } = params;
 
@@ -243,6 +254,7 @@ export async function upsertMetaMetric(params: {
   const safeRoas = Number.isFinite(metrics.roas) ? Math.max(0, metrics.roas) : 0;
   const safeCpc = Number.isFinite(metrics.cpc) ? Math.max(0, metrics.cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
   const safeCtr = Number.isFinite(metrics.ctr) ? Math.max(0, metrics.ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
+  const safeAdName = normalizeMetaAdName(adName);
 
   await (prisma as any).campaignMetric.upsert({
     where: {
@@ -281,6 +293,7 @@ export async function upsertMetaMetric(params: {
       roas: safeRoas,
       currency: safeCurrency,
       rawData: metrics.rawData ? JSON.stringify(metrics.rawData) : null,
+      adName: safeAdName,
       syncJobId,
       lockScope,
       fencingToken,
@@ -304,6 +317,7 @@ export async function upsertMetaMetric(params: {
       roas: safeRoas,
       currency: safeCurrency,
       rawData: metrics.rawData ? JSON.stringify(metrics.rawData) : null,
+      adName: safeAdName,
       pulledAt: new Date(),
       syncJobId,
       lockScope,

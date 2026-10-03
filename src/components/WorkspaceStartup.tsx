@@ -1,0 +1,64 @@
+"use client";
+
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { AppLoader } from "./AppLoader";
+
+// Only completion of the initial request matters; background refreshes never reopen the loader.
+const StartupContext = createContext<{
+  configure: (session: boolean, dashboard: boolean, verified: boolean) => void;
+  completeDashboard: (success?: boolean, providers?: string[]) => void;
+  completeWorkspace: (providers?: string[]) => void;
+  handoff: boolean;
+  chrome: boolean;
+  fadeHandoff: boolean;
+  animateHandoff: boolean;
+} | null>(null);
+const StartupActions = createContext<Pick<NonNullable<React.ContextType<typeof StartupContext>>, "configure" | "completeDashboard" | "completeWorkspace"> | null>(null);
+
+export function WorkspaceStartup({ children }: { children: ReactNode }) {
+  const [workspace, setWorkspace] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [sourcesChecked, setSourcesChecked] = useState(false);
+  const [providers, setProviders] = useState<string[] | null>(null);
+  const completeWorkspace = useCallback((known?: string[]) => {
+    setWorkspace(true);
+    if (known) { setSourcesChecked(true); setProviders([...new Set(known)].slice(0,4)); }
+  }, []);
+  const [handoff, setHandoff] = useState(false);
+  const [animateHandoff, setAnimateHandoff] = useState(false);
+  const [chrome, setChrome] = useState(false);
+  const [fadeHandoff, setFadeHandoff] = useState(false);
+  const beginChrome = useCallback((mode: "flight" | "fade" | "none" = "none") => {
+    setChrome(true); setAnimateHandoff(mode === "flight"); setFadeHandoff(mode === "fade");
+  }, []);
+  const beginContent = useCallback(() => setHandoff(true), []);
+  const [session, setSession] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [configured, setConfigured] = useState(false);
+  const [dashboard, setDashboard] = useState(true);
+  const [dataReturned, setDataReturned] = useState(false);
+  const configure = useCallback((settled: boolean, needsDashboard: boolean, authenticated: boolean) => {
+    setSession(settled);
+    setVerified(authenticated);
+    setDashboard(needsDashboard);
+    setConfigured(true);
+  }, []);
+  const completeDashboard = useCallback((ok = false, known?: string[]) => {
+    setDataReturned(true); setSuccess(ok);
+    if (ok && known) { setSourcesChecked(true); setProviders([...new Set(known)].slice(0,4)); }
+  }, []);
+  const actions = useMemo(() => ({ configure, completeDashboard, completeWorkspace }), [configure, completeDashboard, completeWorkspace]);
+  const context = useMemo(() => ({ configure, completeDashboard, completeWorkspace, handoff, chrome, fadeHandoff, animateHandoff }), [configure, completeDashboard, completeWorkspace, handoff, chrome, fadeHandoff, animateHandoff]);
+  const pending = !configured || !session || (verified && dashboard && !dataReturned);
+  return (
+    <StartupContext.Provider value={context}>
+      <StartupActions.Provider value={actions}>
+      <AppLoader visible={pending} milestones={[verified, workspace, sourcesChecked, success]} providers={providers} measurable={dashboard} onChromeReveal={beginChrome} onContentReveal={beginContent} />
+      {children}
+      </StartupActions.Provider>
+    </StartupContext.Provider>
+  );
+}
+
+export function useWorkspaceStartup() { return useContext(StartupContext); }
+export function useWorkspaceStartupActions() { return useContext(StartupActions); }

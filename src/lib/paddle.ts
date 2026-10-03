@@ -52,11 +52,21 @@ export function paddleEnvironmentName(): "sandbox" | "production" {
   return paddleEnvironment() === Environment.production ? "production" : "sandbox";
 }
 
+/** Paddle is USD-only. VND uses PayOS / VietQR (`subscriptionProvider = vietqr_domestic`). */
+export function assertPaddleUsdCurrency(currency?: string | null): void {
+  if (!currency) return;
+  if (currency.toUpperCase() !== "USD") {
+    throw new Error("Paddle is USD-only. VND uses PayOS/VietQR.");
+  }
+}
+
 /** Map internal plan + billing cycle → Paddle catalog `pri_` price ID (set in Paddle dashboard). */
 export function priceIdForPlan(
   plan: PaddlePlan,
-  billingCycle: PaddleBillingCycle
+  billingCycle: PaddleBillingCycle,
+  currency?: "USD" | "VND" | string | null,
 ): string {
+  assertPaddleUsdCurrency(currency);
   const monthly = billingCycle === "monthly";
   if (plan === "starter") {
     return monthly
@@ -68,10 +78,11 @@ export function priceIdForPlan(
     : (process.env.PADDLE_PRICE_PROFESSIONAL_ANNUAL || "").trim();
 }
 
-/** Reverse-map a Paddle price ID to our plan name. */
+/** Reverse-map a Paddle price ID to our plan name. PayOS order codes are numeric — never map them. */
 export function planForPriceId(priceId: string | undefined | null): PaddlePlan | null {
   if (!priceId) return null;
   const id = priceId.trim();
+  if (!id || /^\d+$/.test(id)) return null;
   const pairs: [string, PaddlePlan][] = [
     [(process.env.PADDLE_PRICE_STARTER_MONTHLY || "").trim(), "starter"],
     [(process.env.PADDLE_PRICE_STARTER_ANNUAL || "").trim(), "starter"],
@@ -92,9 +103,10 @@ export async function createPaddleCheckoutUrl(
   plan: PaddlePlan,
   billingCycle: PaddleBillingCycle,
   workspaceId: string,
-  userId: string
+  userId: string,
+  invoiceCurrency: "USD" | "VND" = "USD",
 ): Promise<{ url: string; transactionId: string }> {
-  const priceId = priceIdForPlan(plan, billingCycle);
+  const priceId = priceIdForPlan(plan, billingCycle, invoiceCurrency);
   if (!priceId) {
     throw new Error(
       "Paddle is not fully configured: set PADDLE_PRICE_* env vars for this plan and billing cycle."

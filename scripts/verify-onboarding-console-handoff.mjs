@@ -1,0 +1,36 @@
+import { chromium, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+const base = process.argv[2] || 'http://localhost:3014';
+if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Use a local preview.');
+const output = 'test-results/onboarding-console-handoff';
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+const errors = [], requests = [];
+page.on('pageerror', error => errors.push(error.message));
+page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()); });
+try {
+  await page.goto(base + '/demo/ui/console-structure/console?onboardingRunId=sample-reviewed-run');
+  const card = page.getByRole('region', { name: 'Review advertising spend', exact: true });
+  await expect(card).toContainText('2026-09-25 — 2026-10-01');
+  await expect(card).toContainText('USD 21,500 source-reported spend');
+  await expect(card).toContainText('account timezone not verified');
+  await card.getByRole('button', { name: 'Review ongoing checks' }).click();
+  await expect(card.getByRole('alert')).toContainText('read-only');
+  await page.reload();
+  await expect(card).toContainText('USD 21,500');
+  await expect(card.getByRole('button', { name: 'Review ongoing checks' })).toBeEnabled();
+  console.log('PASS handoff preserves goal/window, discloses limitations and intercepts draft creation');
+  await page.getByRole('combobox', { name: 'Preview state' }).selectOption('Monitoring draft');
+  const setup = page.getByRole('region', { name: 'Keep my connected data healthy' });
+  await expect(setup).toContainText('Setup goal: Review advertising spend');
+  await expect(setup.getByRole('checkbox', { name: /^I approve daily checks/ })).not.toBeChecked();
+  await expect(setup.getByRole('button', { name: 'Approve and start daily checks' })).toBeDisabled();
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: output + '/handoff.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: output + '/handoff-mobile.png', fullPage: true });
+  expect(errors).toEqual([]); expect(requests).toEqual([]);
+  console.log('PASS linked draft retains goal, requires separate consent, fits mobile and sends no live requests');
+} finally { await browser.close(); }

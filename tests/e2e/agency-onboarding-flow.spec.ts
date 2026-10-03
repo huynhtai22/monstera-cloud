@@ -3,26 +3,27 @@ import { expect, test } from "@playwright/test";
 test.describe("Agency-First User Flow & Usability", () => {
   test("Homepage to Register CTA navigation", async ({ page }) => {
     // 1. Visit Homepage
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // 2. Verify Hero Headline (dark-first redesign, MarketingHomePage copy)
-    await expect(page.locator("h1")).toContainText("Your ad data, cleaned");
+    await expect(page.locator("h1")).toContainText(/More clients|Thêm khách hàng|Your ad data/);
 
-    // 3. Click Primary CTA: "Start free"
-    const ctaButton = page.getByRole("link", { name: /Start free/i }).first();
+    // 3. Use the visible header pilot CTA as the primary registration path.
+    const ctaButton = page.getByRole("link", { name: "7-day pilot", exact: true });
     await expect(ctaButton).toBeVisible();
+    await expect(ctaButton).toHaveAttribute("href", "/register?offer=agency-pro-pilot");
     await ctaButton.click();
 
     // 4. Verify user arrives on /register
     await expect(page).toHaveURL(/\/register/);
-    await expect(page.getByText("Create your account")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   });
 
   test("Registration form input validation", async ({ page }) => {
-    await page.goto("/register");
+    await page.goto("/register", { waitUntil: "domcontentloaded" });
 
     // Form heading check
-    await expect(page.getByText("Create your account")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
 
     // Verify input fields exist and are visible (name/email/password; no confirm field)
     const nameInput = page.locator('input#name');
@@ -37,7 +38,7 @@ test.describe("Agency-First User Flow & Usability", () => {
 
   test("Complete agency login and console navigation flow", async ({ page }) => {
     // 1. Visit Login Page
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Log in to Monstera Cloud")).toBeVisible();
 
     // 2. Verify login form fields exist (email + password + submit)

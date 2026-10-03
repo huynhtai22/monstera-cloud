@@ -1,0 +1,163 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+  max-width: 100%;
+}
+.symbol {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.iconOnly {
+  gap: 0;
+}
+.idleIcon,
+.dotStage {
+  grid-area: 1 / 1;
+  display: inline-grid;
+  place-items: center;
+  transform-origin: center;
+}
+.idleIcon {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+  transition: opacity var(--console-duration-normal, 240ms) var(--console-ease, ease), transform var(--console-duration-normal, 240ms) var(--console-ease, ease);
+}
+.dotStage {
+  opacity: 0;
+  transform: rotate(-65deg) scale(0.4);
+  transition: opacity var(--console-duration-normal, 240ms) var(--console-ease, ease), transform var(--console-duration-normal, 240ms) var(--console-ease, ease);
+}
+.root[data-busy="true"] .idleIcon {
+  color: var(--console-motion-accent);
+  opacity: 0;
+  transform: rotate(75deg) scale(0.45);
+  transition-delay: 0ms;
+}
+.root[data-busy="true"] .dotStage {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+  transition-delay: 0ms;
+}
+.dots {
+  display: grid;
+  grid-template-columns: repeat(3, 3px);
+  gap: 2px;
+  width: 13px;
+  height: 13px;
+}
+.dots > span {
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--console-motion-accent);
+  opacity: 0.3;
+  animation: dotWave 1.45s ease-in-out infinite;
+  animation-play-state: paused;
+}
+.root[data-busy="true"] .dots > span {
+  animation-play-state: running;
+}
+.dots > span:nth-child(2) {
+  animation-delay: 100ms;
+}
+.dots > span:nth-child(3) {
+  animation-delay: 200ms;
+}
+.dots > span:nth-child(4) {
+  animation-delay: 400ms;
+}
+.dots > span:nth-child(5) {
+  animation-delay: 300ms;
+}
+.dots > span:nth-child(6) {
+  animation-delay: 250ms;
+}
+.dots > span:nth-child(7) {
+  animation-delay: 500ms;
+}
+.dots > span:nth-child(8) {
+  animation-delay: 600ms;
+}
+.dots > span:nth-child(9) {
+  animation-delay: 700ms;
+}
+.labels {
+  display: inline-grid;
+  min-width: 0;
+}
+.idleText,
+.busyText {
+  grid-area: 1 / 1;
+  transition: opacity var(--console-duration-normal, 240ms) var(--console-ease, ease), transform var(--console-duration-normal, 240ms) var(--console-ease, ease);
+}
+.idleText {
+  opacity: 1;
+  transform: translateY(0);
+}
+.busyText {
+  opacity: 0;
+  transform: translateY(2px);
+  animation-play-state: paused;
+}
+.root[data-busy="true"] .idleText {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+.root[data-busy="true"] .busyText {
+  opacity: 1;
+  transform: translateY(0);
+  animation-play-state: running;
+}
+.root[data-busy="false"] .busyText {
+  animation-play-state: paused;
+}
+@keyframes dotWave {
+  0%,
+  70%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .root *,
+  .root[data-busy="true"] * {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .dots > span {
+    opacity: 0.65;
+  }
+  .busyText {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+@media (forced-colors: active) {
+  .dots > span {
+    background: CanvasText;
+  }
+  .root[data-busy="true"] .idleIcon {
+    color: CanvasText;
+  }
+  .busyText {
+    background: none;
+    -webkit-text-fill-color: CanvasText;
+  }
+}
+
+.large .symbol { width: 28px; height: 28px; }
+.large .dots { grid-template-columns: repeat(3, 6px); gap: 3px; width: 24px; height: 24px; }
+.large .dots > span { width: 6px; height: 6px; border-radius: 1.5px; }

@@ -31,3 +31,6 @@ scratch/
 *.mp4
 *.webm
 .idea/
+
+# Certification live evidence & reviewer reports
+/evidence/

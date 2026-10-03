@@ -15,16 +15,14 @@ test.describe("Onboarding & activation journey", () => {
   const prisma = new PrismaClient();
   const email = `onboard-${Date.now()}-${process.pid}@e2e.test`;
   const password = "Activation2026pw";
-  let apiKeyPlain: string;
-  let apiKeyId: string;
   let workspaceId: string;
 
   test.afterAll(async () => {
     await prisma.$disconnect();
   });
 
-  test("register provisions user + pilot workspace and issues an OTP", async ({ page }) => {
-    await page.goto("/register");
+  test("register provisions user + Start (free) workspace and issues an OTP", async ({ page }) => {
+    await page.goto("/register", { waitUntil: "domcontentloaded" });
     await page.locator("#name").fill("Onboarding Walker");
     await page.locator('input[type="email"]').fill(email);
     await page.locator("#password").fill(password);
@@ -39,6 +37,7 @@ test.describe("Onboarding & activation journey", () => {
       include: { workspace: true },
     });
     expect(membership?.workspace).toBeTruthy();
+    expect(["free", "professional"]).toContain(membership!.workspace.plan);
     expect(membership!.workspace.status).toBe("PILOT");
     workspaceId = membership!.workspace.id;
 
@@ -54,7 +53,7 @@ test.describe("Onboarding & activation journey", () => {
 
     // Fresh context: pass email via the supported query param (the page
     // immediately moves it into sessionStorage and strips the URL).
-    await page.goto(`/verify?email=${encodeURIComponent(email)}`);
+    await page.goto(`/verify?email=${encodeURIComponent(email)}`, { waitUntil: "domcontentloaded" });
     for (let i = 0; i < 6; i++) {
       await page.locator(`#otp-${i}`).fill(otp[i]);
     }
@@ -66,7 +65,7 @@ test.describe("Onboarding & activation journey", () => {
   });
 
   test("login lands on the provisioned console dashboard", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();
@@ -81,7 +80,7 @@ test.describe("Onboarding & activation journey", () => {
   });
 
   test("sync activity states its pipeline-only scope and retries without starting a sync", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();
@@ -98,7 +97,9 @@ test.describe("Onboarding & activation journey", () => {
       });
     });
 
-    await page.goto("/reports");
+    await page.goto("/reports", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Executive Performance" })).toBeVisible();
+    await page.getByRole("button", { name: "Sync Activity & Logs" }).click();
     await expect(page.getByRole("heading", { name: "Sync activity" })).toBeVisible();
     await expect(page.getByText("This page records source-to-destination pipeline runs.")).toBeVisible();
     await expect(page.getByText("Trying again only reloads this history; it will not start a sync.")).toBeVisible();
@@ -107,58 +108,24 @@ test.describe("Onboarding & activation journey", () => {
     await expect.poll(() => historyRequests).toBeGreaterThan(1);
   });
 
-  test("API key creation enables the Looker/Sheets delivery path, revocation closes it", async ({ page }) => {
-    await page.goto("/login");
+  test("Start plan blocks API-key Looker; Sheets remains the free destination", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();
     await expect(page.locator("h1")).toContainText("Dashboard", { timeout: 20_000 });
 
-    // Create key through the real route handler (same call the settings UI makes).
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { plan: "free" },
+    });
+
     const created = await page.request.post("/api/settings/api-keys", {
+      headers: { "Idempotency-Key": `onboarding-api-key-${workspaceId}` },
       data: { workspaceId, name: "activation-walkthrough" },
     });
-    expect([200, 201]).toContain(created.status());
+    expect(created.status()).toBe(403);
     const body = await created.json();
-    apiKeyId = body.id;
-    apiKeyPlain = body.key ?? body.apiKey ?? body.fullKey;
-    expect(apiKeyPlain).toBeTruthy();
-
-    // Limiter-aware delivery checks: with a reachable limiter (production-like),
-    // the fresh key must open the Looker/Sheets path (smoke C4/C5). Without one
-    // (isolated CI/local), the middleware must fail CLOSED with 503
-    // limiter_unavailable — which is itself a security guarantee worth asserting.
-    const limiterConfigured =
-      !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
-
-    const ping = await page.request.get(`/api/looker-studio?ping=1`, {
-      headers: { Authorization: `Bearer ${apiKeyPlain}` },
-    });
-
-    if (limiterConfigured) {
-      expect(ping.status()).toBe(200);
-      expect((await ping.json()).ok).toBe(true);
-
-      // C5 shape: data probe returns a data array (empty warehouse is valid).
-      const probe = await page.request.get(
-        `/api/looker-studio?startDate=2026-01-01&endDate=2026-01-31`,
-        { headers: { Authorization: `Bearer ${apiKeyPlain}` } },
-      );
-      expect(probe.status()).toBe(200);
-      expect(Array.isArray((await probe.json()).data)).toBe(true);
-    } else {
-      expect(ping.status()).toBe(503);
-    }
-
-    // C6: revocation closes the door.
-    const revoked = await page.request.delete(
-      `/api/settings/api-keys?id=${apiKeyId}&workspaceId=${encodeURIComponent(workspaceId)}`,
-    );
-    expect([200, 204]).toContain(revoked.status());
-    if (!limiterConfigured) return;
-    const afterRevoke = await page.request.get(`/api/looker-studio?ping=1`, {
-      headers: { Authorization: `Bearer ${apiKeyPlain}` },
-    });
-    expect(afterRevoke.status()).toBe(401);
+    expect(body.code).toBe("PLAN_API_KEY_BLOCKED");
   });
 });

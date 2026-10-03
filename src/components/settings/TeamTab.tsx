@@ -33,7 +33,14 @@ export function TeamTab({ workspaceId, currentRole }: { workspaceId: string | nu
     });
     const body = await response.json();
     setBusy(false);
-    if (!response.ok) return toast.error(body.error || "Could not create invitation");
+    if (!response.ok) {
+      if (body.code === "PLAN_SEAT_LIMIT") {
+        return toast.error(body.error || "Seat limit reached", {
+          action: body.upgradeHref ? { label: "Upgrade", onClick: () => { window.location.href = body.upgradeHref; } } : undefined,
+        });
+      }
+      return toast.error(body.error || "Could not create invitation");
+    }
     setInvitationUrl(body.invitationUrl);
     event.currentTarget.reset();
     toast.success("Invitation created");

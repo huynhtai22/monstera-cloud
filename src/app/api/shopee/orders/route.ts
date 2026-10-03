@@ -42,9 +42,11 @@ export async function POST(request: Request) {
     const timeFrom = startDate
       ? Math.floor(new Date(startDate).getTime() / 1000)
       : Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60; // 7 days ago
-    const timeTo = endDate
+    const rawTimeTo = endDate
       ? Math.floor(new Date(endDate).getTime() / 1000)
       : Math.floor(Date.now() / 1000);
+    // Shopee enforces time_to - time_from <= 15 days
+    const timeTo = Math.min(rawTimeTo, timeFrom + 14 * 24 * 60 * 60);
 
     const orderListRes = await shopeeDataClient.getOrderList(
       opts,

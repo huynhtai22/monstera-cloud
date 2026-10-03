@@ -1,32 +1,54 @@
 import { NextResponse, after } from "next/server";
+import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getAuthSession } from "@/lib/auth-session";
-import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
-import { syncConnectionData } from "@/lib/sync-connection";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
-import { listEnabledWorkspaceProviders } from "@/lib/workspace-provider-access";
 import { clampTimeRangeToPlanMaxDays, getPlanLimits } from "@/lib/plan-config";
-import {
-  createImportJob,
-  claimImportJob,
-  updateImportJobProgress,
-  completeImportJob,
-  retryPartialImportJob,
-  failImportJob,
-  heartbeatImportJob,
-  LeaseLostError,
-  type BatchImportItem,
-  type BatchImportJobResult,
-} from "@/lib/warehouse-import-job";
+import { createImportJob, claimImportJob, type BatchImportItem } from "@/lib/warehouse-import-job";
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
-import { emitMonitor } from "@/lib/observability/monitors";
-import { notifyWarehouseJobIfNeeded } from "@/lib/ingestion/notify-run";
+import { HistoricalBackfillPlanningError } from "@/lib/historical-backfill-plan";
+import {
+  assertExecutableWarehouseRange,
+  getOversizedExecutionDetails,
+  toOversizedExecutionResponse,
+} from "@/lib/warehouse-execution-guard";
+import { processBatchItems, runDurableImportWorker } from "@/lib/warehouse-import-worker";
 
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
 const MAX_ITEMS_PER_REQUEST = 50;
+
+/**
+ * Keeps the generic import endpoint from bypassing the historical planner.
+ * OAuth is the sole current caller that can persist its approved 90-day Meta
+ * and Google window as bounded item ranges; every other multi-chunk request
+ * must fail closed until a general resumable chunk dispatcher exists.
+ *
+ * Delegates to the shared Warehouse execution guard so single-import and
+ * batch-import enforce the identical raw-range policy before plan clamping,
+ * job creation, worker dispatch, database writes, or provider contact.
+ */
+export async function assertBatchHistoricalExecutionAllowed(opts: {
+  workspaceId: string;
+  since: string;
+  until: string;
+  planMaximumDays?: number;
+  items: BatchImportItem[];
+}): Promise<void> {
+  const connectionIds = Array.from(new Set(opts.items.map((item) => item.connectionId)));
+  const connections = await prisma.connection.findMany({
+    where: { id: { in: connectionIds }, workspaceId: opts.workspaceId },
+    select: { provider: true },
+  });
+
+  for (const provider of new Set(connections.map((connection) => connection.provider))) {
+    // A plan projection may be smaller than a dangerous raw request. The
+    // guard intentionally evaluates raw provider execution first; the
+    // route performs visible product clamping only after this check passes.
+    assertExecutableWarehouseRange({ provider, since: opts.since, until: opts.until });
+  }
+}
 
 const ItemSchema = z.object({
   connectionId: z.string().min(1, "connectionId is required"),
@@ -52,299 +74,6 @@ const ImportBatchSchema = z.object({
   async: z.boolean().optional(),
   idempotencyKey: z.string().max(128).optional(),
 });
-
-/**
- * Executes warehouse refresh sync for an array of items.
- */
-export async function processBatchItems(opts: {
-  workspaceId: string;
-  since: string;
-  until: string;
-  plan: string;
-  items: BatchImportItem[];
-  jobId?: string;
-  leaseId?: string;
-  syncFn?: typeof syncConnectionData;
-  isLeaseLost?: () => boolean;
-  onProgress?: (progress: {
-    completed: number;
-    total: number;
-    results: BatchImportJobResult[];
-  }) => Promise<void>;
-}): Promise<BatchImportJobResult[]> {
-  const { workspaceId, since, until, plan, items, onProgress, syncFn, isLeaseLost } = opts;
-  const syncRunner = syncFn ?? syncConnectionData;
-  const results: BatchImportJobResult[] = [];
-
-  const connIds = Array.from(new Set(items.map((i) => i.connectionId)));
-  const connections = await prisma.connection.findMany({
-    where: {
-      id: { in: connIds },
-      workspaceId,
-      status: "connected",
-    },
-  });
-  const connMap = new Map(connections.map((c) => [c.id, c]));
-  const enabledProviders = await listEnabledWorkspaceProviders(workspaceId);
-
-  for (let i = 0; i < items.length; i++) {
-    // Fencing check: halt processing immediately if lease was lost or heartbeat failed
-    if (isLeaseLost?.()) {
-      throw new LeaseLostError(opts.jobId ?? "unknown", opts.leaseId ?? "unknown");
-    }
-
-    const item = items[i];
-    const conn = connMap.get(item.connectionId);
-    if (!conn) {
-      results.push({
-        connectionId: item.connectionId,
-        provider: "unknown",
-        adAccountId: item.adAccountId,
-        ok: false,
-        error: "Connection not found or not connected",
-      });
-      if (onProgress) {
-        await onProgress({ completed: i + 1, total: items.length, results });
-      }
-      continue;
-    }
-
-    if (!enabledProviders.has(conn.provider)) {
-      results.push({
-        connectionId: conn.id,
-        provider: conn.provider,
-        adAccountId: item.adAccountId,
-        ok: false,
-        error: "Provider is not enabled for this workspace",
-      });
-      if (onProgress) {
-        await onProgress({ completed: i + 1, total: items.length, results });
-      }
-      continue;
-    }
-
-    try {
-      const rawCreds = safeDecrypt(conn.credentials);
-      const parsedCreds = parseConnectionCredentialsJson(rawCreds) as Record<
-        string,
-        unknown
-      >;
-      const credentials = {
-        ...parsedCreds,
-        remoteAccountId: conn.remoteAccountId,
-      };
-
-      const targetAccountId = item.accountId ?? item.adAccountId;
-      const providerTargetCredentials = targetAccountId
-        ? conn.provider === "meta_ads"
-          ? { selectedAdAccountIds: [targetAccountId] }
-          : conn.provider === "google_ads"
-            ? { selectedCustomerIds: [targetAccountId] }
-            : conn.provider === "tiktok_business"
-              ? { selectedAdvertiserIds: [targetAccountId] }
-              : {}
-        : {};
-      const itemCreds = { ...credentials, ...providerTargetCredentials };
-
-      const sync = await syncRunner({
-        workspaceId,
-        connectionId: conn.id,
-        provider: conn.provider,
-        credentials: itemCreds,
-        since,
-        until,
-        userPlan: plan,
-      });
-      // Keep the worker tolerant of older test doubles / extension providers while
-      // first-party sync providers always return the full outcome contract.
-      const syncOutcome = sync.outcome ?? (sync.success ? "success" : "failed");
-      const syncChildren = sync.children ?? [{ id: "connection", kind: "connection", ok: sync.success, error: sync.error, retryable: false }];
-
-      results.push({
-        connectionId: conn.id,
-        provider: conn.provider,
-        outcome: syncOutcome,
-        accountId: targetAccountId,
-        adAccountId: item.adAccountId,
-        ok: sync.success,
-        rowsIngested: sync.rowsIngested,
-        upserted: sync.rowsIngested,
-        error: sync.error,
-        retryable: syncChildren.some((child) => !child.ok && child.retryable),
-        retryItems: syncChildren
-          .filter((child) => !child.ok && child.retryable)
-          .map((child) => ({
-            connectionId: conn.id,
-            ...(child.kind === "connection" ? {} : { accountId: child.id }),
-          })),
-      });
-
-      if (syncOutcome === "success" && !conn.lastSyncAt) {
-        emitMonitor("time_to_first_row", {
-          workspaceId,
-          connectionId: conn.id,
-          provider: conn.provider,
-          rows: sync.rowsIngested ?? 0,
-        });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Import failed";
-      logger.error("[warehouse/import-batch]", { connectionId: conn.id }, e);
-      results.push({
-        connectionId: conn.id,
-        provider: conn.provider,
-        adAccountId: item.adAccountId,
-        ok: false,
-        error: msg,
-      });
-    }
-
-    if (onProgress) {
-      await onProgress({ completed: i + 1, total: items.length, results });
-    }
-  }
-
-  return results;
-}
-
-/**
- * Runs a background import job with durable state updates, continuous heartbeat,
- * deduplicated post-refresh data-quality checks, and exponential backoff retry.
- */
-export async function runDurableImportWorker(
-  jobId: string,
-  leaseId: string,
-  syncFn?: typeof syncConnectionData
-) {
-  let heartbeatTimer: NodeJS.Timeout | null = null;
-  let isLeaseLost = false;
-
-  try {
-    const jobRecord = await prisma.warehouseImportJob.findUnique({
-      where: { id: jobId },
-    });
-    if (!jobRecord) return;
-
-    // Start continuous heartbeat while processing (every 10s)
-    heartbeatTimer = setInterval(async () => {
-      try {
-        await heartbeatImportJob(jobId, leaseId);
-      } catch (err) {
-        isLeaseLost = true;
-        logger.error(`[runDurableImportWorker] Heartbeat failed for job ${jobId}, aborting execution:`, err);
-        if (heartbeatTimer) clearInterval(heartbeatTimer);
-      }
-    }, 10000);
-
-    const items = (jobRecord.items as unknown as BatchImportItem[]) || [];
-    const results = await processBatchItems({
-      workspaceId: jobRecord.workspaceId,
-      since: jobRecord.since,
-      until: jobRecord.until,
-      plan: jobRecord.plan,
-      items,
-      jobId,
-      leaseId,
-      syncFn,
-      isLeaseLost: () => isLeaseLost,
-      onProgress: async ({ completed, results: currentResults }) => {
-        if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
-        const approxRows = currentResults.reduce(
-          (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
-          0
-        );
-        await updateImportJobProgress(jobId, leaseId, {
-          completedItems: completed,
-          approximateRows: approxRows,
-          results: currentResults,
-        });
-      },
-    });
-
-    if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
-
-    // Run post-refresh data quality checks for each successfully refreshed connection (deduplicated)
-    const successfulConnections = Array.from(
-      new Set(results.filter((r) => r.ok).map((r) => r.connectionId))
-    );
-
-    for (const connId of successfulConnections) {
-      try {
-        await runPostWarehouseRefreshQualityChecks(jobRecord.workspaceId, connId);
-      } catch (dqErr) {
-        logger.error(`[runDurableImportWorker][DATA_QUALITY] Error checking connection ${connId}:`, dqErr);
-      }
-    }
-
-    const okCount = results.filter((r) => r.ok).length;
-    const totalUpserts = results.reduce(
-      (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
-      0
-    );
-
-    const retryItems = results.flatMap((result) => result.retryable ? (result.retryItems ?? []) : []);
-    const failedResults = results.filter((result) => !result.ok);
-    if (failedResults.length > 0 && retryItems.length > 0) {
-      const requeued = await retryPartialImportJob(
-        jobId,
-        leaseId,
-        dedupeRetryItems(retryItems),
-        results,
-        totalUpserts,
-        `Partial import: ${failedResults.length}/${results.length} requested source scope(s) failed. Retrying only retryable failed targets.`,
-      );
-      await notifyWarehouseJobIfNeeded(requeued).catch(() => {});
-      return;
-    }
-
-    const outcome = failedResults.length === 0
-      ? "completed"
-      : failedResults.length === results.length
-        ? "failed"
-        : "partial";
-    await completeImportJob(
-      jobId,
-      leaseId,
-      results,
-      totalUpserts,
-      outcome,
-      failedResults.length > 0
-        ? `${outcome === "failed" ? "Import failed" : "Partial import"}: ${failedResults.length}/${results.length} requested source scope(s) failed. ${failedResults.map((result) => result.error).filter(Boolean).slice(0, 2).join(" | ")}`
-        : undefined,
-    );
-
-    logger.info(
-      `[warehouse/import-batch] Durable job ${jobId} finished: ${okCount}/${results.length} succeeded`
-    );
-  } catch (err: unknown) {
-    if (err instanceof LeaseLostError || isLeaseLost) {
-      logger.warn(`[runDurableImportWorker] Aborted job ${jobId} due to lost lease or heartbeat failure`);
-      return;
-    }
-    const errorMsg = err instanceof Error ? err.message : "Batch job execution failed";
-    logger.error(`[warehouse/import-batch] Durable job ${jobId} failed:`, err);
-    try {
-      const failed = await failImportJob(jobId, leaseId, errorMsg);
-      await notifyWarehouseJobIfNeeded(failed).catch(() => {});
-    } catch {
-      // Lease may have been lost during fail update
-    }
-  } finally {
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer);
-    }
-  }
-}
-
-function dedupeRetryItems(items: BatchImportItem[]): BatchImportItem[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = `${item.connectionId}:${item.accountId ?? item.adAccountId ?? "connection"}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
 
 /**
  * POST /api/data-explorer/warehouse/import-batch
@@ -412,6 +141,40 @@ export async function POST(req: Request) {
 
   // Plan limits: clamp date span
   const planLimits = getPlanLimits(plan);
+  // Evaluate the caller's full request before a product limit can shrink it.
+  // Otherwise a 90-day generic Meta/Google request could be reduced to a
+  // smaller plan window and incorrectly reach the unchunked worker.
+  try {
+    await assertBatchHistoricalExecutionAllowed({
+      workspaceId,
+      since: rawSince,
+      until: rawUntil,
+      planMaximumDays: planLimits.maxHistoryDays,
+      items: rawItems,
+    });
+  } catch (error) {
+    const oversized = getOversizedExecutionDetails(error);
+    if (oversized) {
+      return NextResponse.json(
+        toOversizedExecutionResponse(oversized.provider, oversized.requestedRange, oversized.maxExecutableDays),
+        { status: 422 },
+      );
+    }
+    if (error instanceof HistoricalBackfillPlanningError) {
+      if (error.code === "INVALID_DATE_RANGE") {
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 422 },
+      );
+    }
+    throw error;
+  }
+
   const { since, until, clamped } = clampTimeRangeToPlanMaxDays(plan, {
     since: rawSince,
     until: rawUntil,
@@ -451,20 +214,23 @@ export async function POST(req: Request) {
     );
   }
 
-  if (isAsync) {
+  if (isAsync || warehouseUsesDedicatedWorker()) {
     const jobState = await createImportJob({
       workspaceId,
       userId: session.user.id,
       plan,
       since,
       until,
+      requestedSince: rawSince,
+      requestedUntil: rawUntil,
+      clamped,
       items,
       idempotencyKey,
       priority: planLimits.priority,
     });
 
     // Durably schedule execution in the serverless background context using Next.js after()
-    after(async () => {
+    if (!warehouseUsesDedicatedWorker()) after(async () => {
       try {
         const claim = await claimImportJob(jobState.id);
         if (claim.claimed && claim.leaseId) {
@@ -482,6 +248,9 @@ export async function POST(req: Request) {
         jobId: jobState.id,
         status: jobState.status,
         totalJobs: items.length,
+        requestedRange: { since: rawSince, until: rawUntil },
+        effectiveRange: { since, until },
+        clamped,
         message: `Durable batch import job ${jobState.id} queued with ${items.length} task(s).`,
       },
       { status: 202 }
@@ -520,6 +289,9 @@ export async function POST(req: Request) {
     totalJobs: results.length,
     approximateRows: totalUpserts,
     results,
+    requestedRange: { since: rawSince, until: rawUntil },
+    effectiveRange: { since, until },
+    clamped,
     message:
       okCount === results.length
         ? `All ${results.length} import job(s) completed.`

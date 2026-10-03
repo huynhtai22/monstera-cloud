@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from "@/lib/observability/connector-telemetry";
 
 /**
  * GET /api/google-ads/accounts?connectionId=
  * Returns the Google Ads customer IDs for this connection.
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -44,8 +44,13 @@ export async function GET(req: Request) {
     }
 
     // Refresh customer list from API
-    const accessToken = await getValidOAuthToken(conn);
-    const customerIds = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+    const customerIds = await runWithConnectorContext(
+      { workspaceId: conn.workspaceId, connectionId: conn.id, provider: "google_ads" },
+      async () => {
+        const accessToken = await getValidOAuthToken(conn);
+        return googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+      }
+    );
     return NextResponse.json({ customerIds });
   } catch (err: any) {
     logger.error('[GOOGLE_ADS_ACCOUNTS]', err);

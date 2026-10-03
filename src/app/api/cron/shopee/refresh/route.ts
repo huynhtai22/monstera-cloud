@@ -19,7 +19,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const denied = requireCronSecret(request);
+    const denied = requireCronSecret(request, "shopee_refresh");
     if (denied) return denied;
 
     logger.info("[CRON: SHOPEE REFRESH] Fleet token refresh starting…");

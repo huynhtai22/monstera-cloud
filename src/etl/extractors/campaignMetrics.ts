@@ -17,6 +17,8 @@ const DEFAULT_COLUMNS = [
 export async function extractCampaignMetricsFromDb(opts: {
   connectionId: string;
   cursorRaw: string | null;
+  provider: string;
+  level: string;
 }): Promise<ExtractResult> {
   const cursor = opts.cursorRaw ? safeJsonParse(opts.cursorRaw) : null;
   const after = cursor?.lastDate ? new Date(String(cursor.lastDate)) : null;
@@ -33,6 +35,8 @@ export async function extractCampaignMetricsFromDb(opts: {
     where: {
       workspaceId: connection.workspaceId,
       connectionId: opts.connectionId,
+      platform: opts.provider,
+      level: opts.level,
       ...(after ? { date: { gt: after } } : {}),
     },
     orderBy: { date: 'desc' },
@@ -61,4 +65,3 @@ export async function extractCampaignMetricsFromDb(opts: {
     nextCursor: { lastDate: new Date(metrics[0].date).toISOString() },
   };
 }
-

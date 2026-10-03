@@ -11,12 +11,15 @@ test("protected console redirects to login", async ({ page }) => {
 });
 
 test("version endpoint exposes an uncached release identity", async ({ request }) => {
+  const expectedCommitSha = process.env.GIT_COMMIT_SHA;
+  expect(expectedCommitSha).toMatch(/^[0-9a-f]{40}$/);
   const response = await request.get("/api/version");
   expect(response.ok()).toBeTruthy();
   expect(response.headers()["cache-control"]).toContain("no-store");
   await expect(response.json()).resolves.toMatchObject({
-    commitSource: expect.stringMatching(/^(build|vercel|development)$/),
-    schemaVersion: "20260819000000_support_tickets",
+    commitSha: expectedCommitSha,
+    commitSource: "build",
+    schemaVersion: expect.stringMatching(/^\d{14}_/),
   });
 });
 

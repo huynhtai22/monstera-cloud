@@ -2,6 +2,7 @@ import type { EvidenceCitation } from "@/lib/ai/evidence-pack";
 
 export type AiToolContext = {
   workspaceId: string;
+  clientId?: string;
   actorUserId?: string;
   jobId: string;
   role: "interactive" | "cron";

@@ -2,6 +2,7 @@ export type ReconnectStatusSnapshot = {
   status: string;
   updatedAt: string;
   hasError: boolean;
+  lastError?: string | null;
 };
 
 export type ReconnectVerificationOutcome =

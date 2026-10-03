@@ -8,6 +8,7 @@ import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 import { hashInvitationToken, normalizeEmail } from "@/lib/invitation-security";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { isWhitelistedProEmail } from "@/lib/plan-config";
+import { freePilotEndsAt } from "@/lib/free-pilot";
 
 /**
  * GET handler - Explicitly reject GET requests to prevent sensitive data
@@ -102,13 +103,15 @@ export async function POST(req: Request) {
       if (invitationRecord) {
         let workspaceId = invitationRecord.workspaceId;
         if (!workspaceId) {
+          const isFreePilot = (invitationRecord.plan || "pilot") === "pilot";
           const ws = await tx.workspace.create({
             data: {
               name: invitationRecord.agencyName || `${name.trim()}'s Agency`,
               slug: invitationRecord.agencySlug || `agency-${user.id.slice(0, 8)}`,
               ownerId: user.id,
-              plan: invitationRecord.plan || "pilot",
-              status: "PILOT",
+              plan: isFreePilot ? "professional" : invitationRecord.plan || "professional",
+              status: isFreePilot ? "PILOT" : "ACTIVE",
+              subscriptionEndsAt: isFreePilot ? freePilotEndsAt() : undefined,
               members: { create: { userId: user.id, role: "owner" } },
               providerAccess: {
                 create: (invitationRecord.enabledProviders || ["meta_ads", "google_ads", "tiktok_business", "shopee"]).map((provider: string) => ({
@@ -131,7 +134,7 @@ export async function POST(req: Request) {
         });
       } else {
         const isPro = isWhitelistedProEmail(email);
-        const defaultPlan = isPro ? "professional" : "pilot";
+        const defaultPlan = "professional";
         const defaultStatus = isPro ? "ACTIVE" : "PILOT";
 
         // Self-serve agency registration: provision default pilot workspace
@@ -142,6 +145,7 @@ export async function POST(req: Request) {
             ownerId: user.id,
             plan: defaultPlan,
             status: defaultStatus,
+            subscriptionEndsAt: isPro ? undefined : freePilotEndsAt(),
             members: { create: { userId: user.id, role: "owner" } },
             providerAccess: {
               create: [

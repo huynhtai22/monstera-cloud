@@ -1,17 +1,26 @@
 "use client";
 
 import React from "react";
+import { SlidingControlIndicator } from "@/components/console/ConsoleMotion";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, Clock, Database, Bookmark, Info, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Database, Bookmark, Info, RefreshCw, Search, Activity, TrendingUp } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { PageShell, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@/components/ui";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports-source-filters";
 import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
+import { ReportReadinessView } from "@/components/reports/ReportReadinessView";
+import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
+import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import { mergePendingUrlState } from "@/lib/pending-query";
+import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import { SavedViews } from "@/components/ui/SavedViews";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -27,14 +36,74 @@ export function ReportsClient() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
-    const sourceFilter = searchParams.get("source") ?? "";
-    const clientFilter = searchParams.get("clientId") ?? "";
+    const sourceParam = searchParams.get("source") ?? "";
+    const sourceFilter = REPORTS_SOURCE_CHIPS.some((chip) => chip.id === sourceParam) ? sourceParam : "";
+    const { switchClient } = useClientContextNavigation();
+    const clientFilterRaw = searchParams.get("clientId") ?? "";
+    const clientFilter = clientFilterRaw === ALL_CLIENTS_TOKEN ? "" : clientFilterRaw;
+    const viewParam = searchParams.get("view");
+    const viewMode: "performance" | "readiness" | "sync" = viewParam === "sync" ? "sync" : viewParam === "readiness" ? "readiness" : "performance";
 
-    const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
-    const [dateFrom, setDateFrom] = React.useState("");
-    const [dateTo, setDateTo] = React.useState("");
+    const statusParam = searchParams.get("status");
+    const statusFilter: "all" | "success" | "error" = statusParam === "success" || statusParam === "error"
+        ? statusParam
+        : "all";
+    const normalizeDate = (value: string | null) =>
+        value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime())
+            ? value
+            : "";
+    const dateFrom = normalizeDate(searchParams.get("dateFrom"));
+    const dateTo = normalizeDate(searchParams.get("dateTo"));
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+    // Pending navigations are owned by the shared provider store so filter
+    // edits, view-mode changes, the local client control, the global context
+    // bar and sidebar all observe the same pending query for this surface.
+    const pending = usePendingNavigation();
+    const observedSearchString = searchParams.toString();
+
+    const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
+        const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+        const { search } = mergePendingUrlState({
+            observedSearch: live,
+            pendingSearch: pending.pendingFor(pathname),
+            patch: changes,
+        });
+        pending.stage(pathname, live, search);
+        router[history](search ? `${pathname}${search}` : pathname, { scroll: false });
+    }, [pathname, router, observedSearchString, pending]);
+
+    // Acknowledge by serialized query content: recreated param objects with
+    // identical content cannot clear pending state, while genuine external
+    // history navigation discards it so controls hydrate from the observed URL.
+    React.useEffect(() => {
+        pending.acknowledge(pathname, `?${observedSearchString}`);
+    }, [pathname, observedSearchString, pending]);
+
+    const setStatusFilter = (value: "all" | "success" | "error") =>
+        updateFilters({ status: value === "all" ? null : value }, "push");
+    const setDateFrom = (value: string) => updateFilters({ dateFrom: value });
+    const setDateTo = (value: string) => updateFilters({ dateTo: value });
+
+    React.useEffect(() => {
+        const changes: Record<string, string | null> = {};
+        if (sourceParam && sourceFilter === "") changes.source = null;
+        if (statusParam && statusFilter === "all") changes.status = null;
+        if (searchParams.has("dateFrom") && !dateFrom) changes.dateFrom = null;
+        if (searchParams.has("dateTo") && !dateTo) changes.dateTo = null;
+        if (Object.keys(changes).length > 0) updateFilters(changes);
+    }, [dateFrom, dateTo, searchParams, sourceFilter, sourceParam, statusFilter, statusParam, updateFilters]);
+
+    const setViewMode = React.useCallback((mode: "performance" | "readiness" | "sync") => {
+        const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+        const { search } = mergePendingUrlState({
+            observedSearch: live,
+            pendingSearch: pending.pendingFor(pathname),
+            patch: { view: mode === "performance" ? null : mode },
+        });
+        pending.stage(pathname, live, search);
+        router.push(search ? `${pathname}${search}` : pathname, { scroll: false });
+    }, [observedSearchString, router, pathname, pending]);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const { data: clientsPayload } = useSWR(
@@ -63,14 +132,31 @@ export function ReportsClient() {
                 statusFilter?: "all" | "success" | "error";
                 dateFrom?: string;
                 dateTo?: string;
+                viewMode?: "performance" | "readiness" | "sync";
             };
-            if (v.statusFilter) setStatusFilter(v.statusFilter);
-            if (typeof v.dateFrom === "string") setDateFrom(v.dateFrom);
-            if (typeof v.dateTo === "string") setDateTo(v.dateTo);
-            if (v.source !== undefined && v.source !== (searchParams.get("source") ?? "")) {
-                const q = new URLSearchParams(searchParams.toString());
-                if (v.source) q.set("source", v.source);
-                else q.delete("source");
+            const q = new URLSearchParams(searchParams.toString());
+            let changed = false;
+            if (!searchParams.has("source") && v.source && REPORTS_SOURCE_CHIPS.some((chip) => chip.id === v.source)) {
+                q.set("source", v.source);
+                changed = true;
+            }
+            if (!searchParams.has("status") && (v.statusFilter === "success" || v.statusFilter === "error")) {
+                q.set("status", v.statusFilter);
+                changed = true;
+            }
+            if (!searchParams.has("dateFrom") && normalizeDate(v.dateFrom ?? "")) {
+                q.set("dateFrom", v.dateFrom!);
+                changed = true;
+            }
+            if (!searchParams.has("dateTo") && normalizeDate(v.dateTo ?? "")) {
+                q.set("dateTo", v.dateTo!);
+                changed = true;
+            }
+            if (v.viewMode && !searchParams.get("view") && (v.viewMode === "sync" || v.viewMode === "readiness")) {
+                q.set("view", v.viewMode);
+                changed = true;
+            }
+            if (changed) {
                 const qs = q.toString();
                 router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
             }
@@ -82,7 +168,7 @@ export function ReportsClient() {
     const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
     const clientQuery = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : "";
     const { data, error, isLoading, isValidating, mutate: retryLogs } = useSWR(
-        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
+        activeWorkspaceId && viewMode === "sync" ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
         fetcher
     );
 
@@ -149,39 +235,25 @@ export function ReportsClient() {
                     statusFilter,
                     dateFrom,
                     dateTo,
+                    viewMode,
                 })
             );
-            toast.success("Saved as your default Sync Activity view on this browser.");
+            toast.success(`Saved as your default ${viewMode === "performance" ? "Executive Performance" : viewMode === "readiness" ? "Report readiness" : "Sync Activity"} view on this browser.`);
         } catch {
             toast.error("Could not save view.");
         }
     };
 
     const setSource = (id: string) => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (id) q.set("source", id);
-        else q.delete("source");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        updateFilters({ source: id }, "push");
     };
 
     const setClient = (id: string) => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (id) q.set("clientId", id);
-        else q.delete("clientId");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        switchClient(id ? id : ALL_CLIENTS_TOKEN);
     };
 
     const resetFilters = () => {
-        const q = new URLSearchParams(searchParams.toString());
-        q.delete("source");
-        q.delete("clientId");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-        setDateFrom("");
-        setDateTo("");
-        setStatusFilter("all");
+        updateFilters({ source: null, dateFrom: null, dateTo: null, status: null }, "push");
     };
 
     const activeSourceLabel = REPORTS_SOURCE_CHIPS.find((chip) => chip.id === sourceFilter)?.label ?? "All sources";
@@ -190,27 +262,93 @@ export function ReportsClient() {
     const hasActiveFilters = Boolean(sourceFilter || clientFilter || dateFrom || dateTo || statusFilter !== "all");
 
     return (
-        <PageShell>
-            <div className="relative z-10 mb-5">
-                <div className="mb-3">
-                    <h1 className="text-xl font-semibold tracking-tight text-ink">Sync activity</h1>
-                    <p className="mt-1 max-w-2xl text-sm text-ink-mute">
-                        Destination pipeline run history and row counts for {activeWorkspace?.name ?? "the active workspace"}.
-                    </p>
+        <PageShell section="reports">
+            <div className="relative z-10 mb-6">
+                <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h1 className="text-xl font-semibold tracking-tight text-ink">
+                            {viewMode === "performance" ? "Executive Performance" : viewMode === "readiness" ? "Report readiness" : "Sync activity"}
+                        </h1>
+                        <p className="mt-1 max-w-2xl text-sm text-ink-mute">
+                            {viewMode === "performance"
+                                ? `Holistic marketing performance, ROAS, and campaign analytics for ${activeWorkspace?.name ?? "the active workspace"}.`
+                                : viewMode === "readiness" ? "Check account coverage and delivery evidence for a client and reporting window."
+                                : `Destination pipeline run history and row counts for ${activeWorkspace?.name ?? "the active workspace"}.`}
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SavedViews href={`${pathname}${observedSearchString ? `?${observedSearchString}` : ""}`} />
+                    <div role="group" aria-label="Report views" className="flex items-center rounded-lg border border-line bg-panel p-1">
+                        <SlidingControlIndicator />
+                        <button
+                            type="button"
+                            aria-pressed={viewMode === "performance"}
+                            onClick={() => setViewMode("performance")}
+                            className={cn(
+                                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                                viewMode === "performance"
+                                    ? "bg-white/[0.08] text-ink shadow-sm"
+                                    : "text-ink-mute hover:text-ink hover:bg-white/[0.02]"
+                            )}
+                        >
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            Executive Performance
+                        </button>
+                        <button type="button" aria-pressed={viewMode === "readiness"} onClick={() => setViewMode("readiness")} className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition-colors", viewMode === "readiness" ? "bg-white/[0.08] text-ink" : "text-ink-mute hover:text-ink")}>Report readiness</button>
+                        <button
+                            type="button"
+                            aria-pressed={viewMode === "sync"}
+                            onClick={() => setViewMode("sync")}
+                            className={cn(
+                                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                                viewMode === "sync"
+                                    ? "bg-white/[0.08] text-ink shadow-sm"
+                                    : "text-ink-mute hover:text-ink hover:bg-white/[0.02]"
+                            )}
+                        >
+                            <Activity className="h-3.5 w-3.5" />
+                            Sync Activity & Logs
+                        </button>
+                    </div>
+                    </div>
                 </div>
-                <div className="flex max-w-3xl items-start gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink-mute">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink" aria-hidden="true" />
-                    <p>
-                        This page records source-to-destination pipeline runs. Manual and nightly Warehouse source refresh status lives on{" "}
-                        <Link href="/sources" className="font-medium text-ink underline underline-offset-2">Sources</Link>.
-                    </p>
-                </div>
+            </div>
+
+            {viewMode === "readiness" ? (
+                <ReportReadinessView workspaceId={activeWorkspaceId ?? ""} clients={clients} clientId={clientFilter} onClientChange={setClient} onWindowChange={(changes) => updateFilters(changes)} />
+            ) : viewMode === "performance" ? (
+                <>
+                    <WeeklyPerformanceBlueprint
+                        workspaceId={activeWorkspaceId ?? ""}
+                        clients={clients}
+                        selectedClientId={clientFilter}
+                        onClientChange={setClient}
+                    />
+                    <div className="mt-6">
+                        <PerformanceReportDashboard
+                            workspaceId={activeWorkspaceId ?? ""}
+                            clients={clients}
+                            selectedClientId={clientFilter}
+                            onClientChange={setClient}
+                        />
+                    </div>
+                </>
+            ) : (
+                <>
+                    <div className="relative z-10 mb-5">
+                        <div className="flex max-w-3xl items-start gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink-mute">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink" aria-hidden="true" />
+                            <p>
+                                This page records source-to-destination pipeline runs. Manual and nightly Warehouse source refresh status lives on{" "}
+                                <Link href="/sources" className="font-medium text-ink underline underline-offset-2">Sources</Link>.
+                            </p>
+                        </div>
                 {clients.length > 0 ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Client</span>
                         <button
                             type="button"
-                            onClick={() => setClient("")}
+                            onClick={() => setClient(ALL_CLIENTS_TOKEN)}
                             className={cn(
                                 "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                                 clientFilter === ""
@@ -355,6 +493,12 @@ export function ReportsClient() {
                             {isValidating ? "Trying again…" : "Try again"}
                         </button>
                     </div>
+                ) : data?.attribution === "unavailable" ? (
+                    <EmptyState
+                        icon={<Info className="h-12 w-12" />}
+                        title="Client-level sync activity unavailable"
+                        description="These pipeline logs do not record provider-account identity, so activity from a shared source cannot be safely attributed to this client. Warehouse data remains account-scoped."
+                    />
                 ) : rawLogs.length === 0 && !hasActiveFilters ? (
                     <EmptyState
                         icon={<Database className="h-12 w-12" />}
@@ -474,6 +618,8 @@ export function ReportsClient() {
                     </div>
                 )}
             </div>
+                </>
+            )}
 
             <SyncLogDiagnosticsDrawer
                 isOpen={isDrawerOpen}

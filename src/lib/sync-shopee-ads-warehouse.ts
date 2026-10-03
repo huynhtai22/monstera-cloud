@@ -8,8 +8,12 @@
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeAdsClient, shopeeDataClient, type ShopeeProductCampaignSetting } from "@/lib/shopee";
-import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import { upsertCampaignMetric, type CampaignMetricPayload } from "@/lib/ad-platform-ingest";
 import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
+import {
+  flushGenericPayloadBatches,
+  isWarehouseBulkUpsertEnabled,
+} from "@/lib/warehouse-bulk-upsert";
 import {
   mapShopeeProductDailyToCampaignMetricPayload,
   mapShopeeRowToCampaignMetricPayload,
@@ -17,9 +21,28 @@ import {
 } from "@/lib/shopee-ads-mapper";
 import { isShopeeRegionEligible, assertShopeeRegionEligible } from "@/lib/provider-market-policy";
 import type { MarketplaceSyncResult } from "@/lib/sync-marketplace-warehouse";
-import { refreshConnectionLastDataThrough } from "@/lib/connection-data-through";
 
 const UPSERT_CHUNK_SIZE = 25;
+const SHOPEE_ADS_MAX_DAYS_PER_REQUEST = 28;
+
+function parseYmdUtc(ymd: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) throw new Error(`Invalid Shopee Ads date: ${ymd}`);
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+export function splitShopeeAdsDateRange(since: string, until: string): Array<{ since: string; until: string }> {
+  const end = parseYmdUtc(until);
+  let cursor = parseYmdUtc(since);
+  if (cursor > end) throw new Error("Shopee Ads range start must not be after its end");
+  const windows: Array<{ since: string; until: string }> = [];
+  while (cursor <= end) {
+    const chunkEnd = new Date(Math.min(cursor.getTime() + (SHOPEE_ADS_MAX_DAYS_PER_REQUEST - 1) * 86_400_000, end.getTime()));
+    windows.push({ since: cursor.toISOString().slice(0, 10), until: chunkEnd.toISOString().slice(0, 10) });
+    cursor = new Date(chunkEnd.getTime() + 86_400_000);
+  }
+  return windows;
+}
 
 function isShopeeAdsSyncDisabled(): boolean {
   const v = (process.env.SHOPEE_ADS_SYNC ?? "").trim().toLowerCase();
@@ -50,6 +73,25 @@ async function upsertPayloadsInChunks(
   lease?: ConnectionLease
 ): Promise<number> {
   const valid = payloads.filter((p): p is NonNullable<typeof p> => p != null);
+  // Bulk path (disabled by default): batched UNNEST upsert with per-row
+  // fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    // Attach the lease before sanitization so bulk writes stamp the same
+    // lockScope/fencingToken evidence as the per-row path.
+    const leased = valid.map((payload) => ({ ...payload, lease }) as CampaignMetricPayload);
+    const result = await flushGenericPayloadBatches(leased, {
+      fallbackRow: (payload) => upsertCampaignMetric(payload),
+      onHeartbeat: lease ? () => heartbeatConnectionSyncLease(lease) : undefined,
+    });
+    // Preserve the previous failure semantics: the per-row Promise.all path
+    // rejected on the first row failure and produced a failed sync result.
+    if (result.failed > 0) {
+      throw new Error(
+        `[syncShopeeAdsWarehouse] Bulk upsert wrote ${result.upserted} rows with ${result.failed} failures`,
+      );
+    }
+    return result.upserted;
+  }
   let upserted = 0;
   for (let i = 0; i < valid.length; i += UPSERT_CHUNK_SIZE) {
     if (lease) {
@@ -176,12 +218,9 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
     // Step 5: If no product campaign metrics were found or if shop has overall CPC ads, query shop-level daily performance
     if (payloads.length === 0) {
       try {
-        const cpcResult = await shopeeAdsClient.getAllCpcAdsDailyPerformance(
-          apiOpts,
-          clampedSince,
-          until
-        );
-        for (const raw of cpcResult.rows) {
+        for (const window of splitShopeeAdsDateRange(clampedSince, until)) {
+          const cpcResult = await shopeeAdsClient.getAllCpcAdsDailyPerformance(apiOpts, window.since, window.until);
+          for (const raw of cpcResult.rows) {
           if (!raw || typeof raw !== "object") continue;
           const row = raw as Record<string, unknown>;
           const d = parseShopeeAdsRowDate(row);
@@ -198,8 +237,9 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
             syncJobId: jobId,
             apiMode: cpcResult.mode,
           });
-          if (payload) {
-            payloads.push(payload);
+            if (payload) {
+              payloads.push(payload);
+            }
           }
         }
       } catch (e) {
@@ -224,12 +264,6 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
     }
 
     const upserted = await upsertPayloadsInChunks(payloads, opts.lease);
-
-    await prisma.connection.update({
-      where: { id: connectionId },
-      data: { lastSyncAt: new Date() },
-    });
-    await refreshConnectionLastDataThrough(workspaceId, connectionId);
 
     logger.info(
       `[syncShopeeAdsWarehouse] ${upserted} granular Shopee Ads rows ingested for connection ${connectionId}`

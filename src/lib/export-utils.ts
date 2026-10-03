@@ -46,3 +46,22 @@ export function downloadExcel(rows: Record<string, unknown>[], filename: string)
   XLSX.utils.book_append_sheet(wb, ws, "Data");
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
+
+/** Trigger a browser Excel (.xlsx) download with multiple named sheets. */
+export function downloadMultiSheetExcel(
+  sheets: Array<{ name: string; rows: Record<string, unknown>[] }>,
+  filename: string,
+) {
+  const wb = XLSX.utils.book_new();
+  for (const s of sheets) {
+    if (s.rows.length === 0) continue;
+    const ws = XLSX.utils.json_to_sheet(s.rows);
+    const headers = Object.keys(s.rows[0]);
+    ws["!cols"] = headers.map((key) => ({
+      wch: Math.max(key.length, ...s.rows.map((r) => String(r[key] ?? "").length)) + 2,
+    }));
+    XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31)); // Excel limits sheet name to 31 chars
+  }
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+

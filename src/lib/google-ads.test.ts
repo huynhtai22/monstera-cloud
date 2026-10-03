@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   GoogleAdsProviderError,
+  GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED,
   GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED,
+  isGoogleAdsAccessBlocked,
   isGoogleAdsDeveloperTokenBlocked,
   isGoogleAdsCustomerUnavailable,
   isGoogleAdsRetryableFailure,
   normalizeGoogleAdsRow,
   googleAdsOAuthClient,
   googleAdsReportClient,
+  setGoogleAdsRetrySleeperForTest,
 } from "./google-ads";
+import { captureTelemetryForTest } from "./observability/connector-telemetry";
 
 /**
  * Unit coverage for the Google Ads connector (no network): normalization,
@@ -20,7 +24,6 @@ import {
 const TOKEN_ENV = {
   GOOGLE_ADS_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
   GOOGLE_ADS_CLIENT_SECRET: "test-client-secret",
-  GOOGLE_ADS_DEVELOPER_TOKEN: "test-developer-token-VALUE",
 };
 
 let captured: { url: string; init: RequestInit }[] = [];
@@ -51,6 +54,7 @@ describe("google ads connector", () => {
     delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
     delete process.env.GOOGLE_ADS_CLIENT_ID;
     delete process.env.GOOGLE_ADS_CLIENT_SECRET;
+    setGoogleAdsRetrySleeperForTest(null);
   });
 
   // ── Normalization ──────────────────────────────────────────────────────────
@@ -90,7 +94,7 @@ describe("google ads connector", () => {
 
   // ── searchStream: headers, ids, pagination batches ────────────────────────
 
-  it("strips dashes from customer id, injects developer token, and sets login-customer-id for MCC", async () => {
+  it("strips dashes from customer id and sets login-customer-id for MCC without a developer-token header", async () => {
     const restore = stubFetch([{ results: [] }]);
     try {
       await googleAdsReportClient.searchStream("access-token", "123-456-7890", "SELECT campaign.id FROM campaign", "999-999-9999");
@@ -100,7 +104,7 @@ describe("google ads connector", () => {
     const { url, init } = captured[0];
     assert.ok(url.includes("/customers/1234567890/googleAds:searchStream"), url);
     const headers = init.headers as Record<string, string>;
-    assert.equal(headers["developer-token"], "test-developer-token-VALUE");
+    assert.equal(headers["developer-token"], undefined);
     assert.equal(headers["login-customer-id"], "9999999999");
     assert.equal(headers.Authorization, "Bearer access-token");
     assert.ok(!url.includes("999"));
@@ -190,6 +194,12 @@ describe("google ads connector", () => {
     assert.equal(isGoogleAdsDeveloperTokenBlocked(new Error("unrelated")), false);
   });
 
+  it("classifies current Cloud project access denial as an application-level blocker", () => {
+    const structured = new GoogleAdsProviderError("project access denied", false, 403, GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED);
+    assert.equal(isGoogleAdsDeveloperTokenBlocked(structured), true);
+    assert.equal(isGoogleAdsDeveloperTokenBlocked(new Error("CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION")), true);
+  });
+
   it("retry matrix: 429/5xx/quota retryable, 400 permission permanent", () => {
     assert.equal(isGoogleAdsRetryableFailure(429, ""), true);
     assert.equal(isGoogleAdsRetryableFailure(503, ""), true);
@@ -230,19 +240,116 @@ describe("google ads connector", () => {
     }
   });
 
-  it("never leaks the developer-token value through thrown error text", async () => {
+  it("emits every transport attempt before retrying and retains a later success", async () => {
+    const original = globalThis.fetch;
+    const delays: number[] = [];
+    const outcomes: Array<Response | Error> = [new Error("synthetic network one"), new Response(JSON.stringify({ resourceNames: [] }))];
+    globalThis.fetch = (async () => {
+      const outcome = outcomes.shift()!;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async (delay) => { delays.push(delay); });
+    const capture = captureTelemetryForTest();
+    try {
+      await googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token");
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 2);
+      assert.deepEqual(events.map((event) => event.attempt), [1, 2]);
+      assert.equal(events[0].errorCategory, "network_error");
+      assert.equal(events[0].outcome, "retryable_failure");
+      assert.ok((events[0].retryDelayMs ?? 0) >= 500);
+      assert.equal(events[1].outcome, "success");
+      assert.equal(events[1].retryDelayMs, undefined);
+      assert.equal(delays.length, 1);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("retains multiple transport failures before a later success", async () => {
+    const original = globalThis.fetch;
+    const delays: number[] = [];
+    const outcomes: Array<Response | Error> = [
+      new Error("synthetic network one"),
+      new Error("synthetic network two"),
+      new Response(JSON.stringify({ resourceNames: [] })),
+    ];
+    globalThis.fetch = (async () => {
+      const outcome = outcomes.shift()!;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async (delay) => { delays.push(delay); });
+    const capture = captureTelemetryForTest();
+    try {
+      await googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token");
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 3);
+      assert.deepEqual(events.map((event) => event.attempt), [1, 2, 3]);
+      assert.deepEqual(events.map((event) => event.outcome), ["retryable_failure", "retryable_failure", "success"]);
+      assert.equal(delays.length, 2);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("records each rejected transport attempt exactly once, including the terminal failure", async () => {
+    const original = globalThis.fetch;
+    const delays: number[] = [];
+    globalThis.fetch = (async () => { throw new Error("synthetic network failure"); }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async (delay) => { delays.push(delay); });
+    const capture = captureTelemetryForTest();
+    try {
+      await assert.rejects(
+        () => googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token"),
+        (error: unknown) => error instanceof GoogleAdsProviderError && error.retryable,
+      );
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 3);
+      assert.deepEqual(events.map((event) => event.attempt), [1, 2, 3]);
+      assert.ok(events.slice(0, 2).every((event) => (event.retryDelayMs ?? 0) > 0));
+      assert.equal(events[2].retryDelayMs, undefined);
+      assert.deepEqual(delays.length, 2);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("does not lose a transport-failure event when the retry sleeper rejects", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new Error("synthetic network failure"); }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async () => { throw new Error("synthetic sleeper failure"); });
+    const capture = captureTelemetryForTest();
+    try {
+      await assert.rejects(() => googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token"), /synthetic sleeper failure/);
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 1);
+      assert.equal(events[0].attempt, 1);
+      assert.equal(events[0].errorCategory, "network_error");
+      assert.ok((events[0].retryDelayMs ?? 0) > 0);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("ignores the retired developer-token setting and never sends it", async () => {
+    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "retired-token-must-not-be-sent";
     const original = globalThis.fetch;
     globalThis.fetch = (async (_url: string, init?: RequestInit) => {
-      const sent = (init?.headers as Record<string, string>)?.["developer-token"] ?? "";
-      // Simulate a hostile echo of whatever was sent.
-      return new Response(JSON.stringify({ error: { message: `Rejected request ${sent}` } }), { status: 400 });
+      assert.equal((init?.headers as Record<string, string>)?.["developer-token"], undefined);
+      return new Response(JSON.stringify({ error: { message: "Rejected request" } }), { status: 400 });
     }) as typeof fetch;
     try {
       await assert.rejects(() => googleAdsOAuthClient.listAccessibleCustomers("t"));
       try {
         await googleAdsOAuthClient.listAccessibleCustomers("t");
       } catch (e: any) {
-        assert.ok(!String(e.message).includes("test-developer-token-VALUE"), "token leaked in error text");
+        assert.ok(!String(e.message).includes("retired-token-must-not-be-sent"), "retired token leaked in error text");
       }
     } finally {
       globalThis.fetch = original;
@@ -323,7 +430,56 @@ describe("google ads connector", () => {
     ]);
     try {
       const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["100", "200", "300"]);
-      assert.deepEqual(result, { eligibleCustomerIds: ["100"], excludedCustomerIds: ["200", "300"] });
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["100"],
+        excludedCustomerIds: ["200", "300"],
+        roots: [{ rootCustomerId: "100", isManager: true, customerIds: ["111"] }],
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps distinct MCC roots while suppressing children already covered by an MCC", async () => {
+    const restore = stubFetch([
+      { results: [{ customerClient: { id: "901", descriptiveName: "MCC child", manager: false, status: "ENABLED" } }] },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+    ]);
+    try {
+      const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["900", "901", "777"]);
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["900", "777"],
+        excludedCustomerIds: [],
+        roots: [
+          { rootCustomerId: "900", isManager: true, customerIds: ["901"] },
+          { rootCustomerId: "777", isManager: false, customerIds: ["777"] },
+        ],
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not create a second root for an MCC nested beneath another selected manager", async () => {
+    const restore = stubFetch([
+      {
+        results: [
+          { customerClient: { id: "100", descriptiveName: "Parent MCC", manager: true, status: "ENABLED" } },
+          { customerClient: { id: "200", descriptiveName: "Nested MCC", manager: true, status: "ENABLED" } },
+          { customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } },
+        ],
+      },
+      { results: [{ customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } }] },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+    ]);
+    try {
+      const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["100", "200", "300"]);
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["100"],
+        excludedCustomerIds: [],
+        roots: [{ rootCustomerId: "100", isManager: true, customerIds: ["300"] }],
+      });
     } finally {
       restore();
     }
@@ -339,17 +495,31 @@ describe("google ads connector", () => {
     }
   });
 
-  it("requires the developer token for discovery (missing config is loud)", async () => {
-    const saved = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  it("discovers accounts without a developer-token setting", async () => {
     delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-    const restore = stubFetch([]);
+    const restore = stubFetch([{ resourceNames: ["customers/1234567890"] }]);
+    try {
+      assert.deepEqual(await googleAdsOAuthClient.listAccessibleCustomers("t"), ["1234567890"]);
+      const headers = captured[0].init.headers as Record<string, string>;
+      assert.equal(headers["developer-token"], undefined);
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not turn Cloud project access denial into a standalone account fallback", async () => {
+    const restore = stubFetch([
+      {
+        __status: 403,
+        __body: JSON.stringify({ error: { message: "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" } }),
+      },
+    ]);
     try {
       await assert.rejects(
-        () => googleAdsOAuthClient.listAccessibleCustomers("t"),
-        /GOOGLE_ADS_DEVELOPER_TOKEN not configured/,
+        () => googleAdsReportClient.listCustomerClients("t", "1234567890"),
+        (error: unknown) => error instanceof GoogleAdsProviderError && isGoogleAdsAccessBlocked(error),
       );
     } finally {
-      process.env.GOOGLE_ADS_DEVELOPER_TOKEN = saved;
       restore();
     }
   });

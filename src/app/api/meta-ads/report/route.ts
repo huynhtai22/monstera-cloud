@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { metaReportClient, MetaInsightsParams, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import {
@@ -9,6 +8,7 @@ import {
 } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/meta-ads/report
@@ -48,7 +48,7 @@ function buildCacheKey(connectionId: string, adAccountId: string, params: MetaIn
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -114,19 +114,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...cached.result, cached: true, cache_expires_in_seconds: remainingSec });
     }
 
-    const accessToken = await getValidOAuthToken(conn);
-
-    let responsePayload: Record<string, unknown>;
-
-    if (body.async) {
-      // Large dataset — create async report job
-      const reportRunId = await metaReportClient.createAsyncReport(accessToken, params);
-      responsePayload = { mode: 'async', report_run_id: reportRunId };
-    } else {
-      // Synchronous — good for up to ~14-day ranges
-      const rows = await metaReportClient.getInsights(accessToken, params);
-      responsePayload = { mode: 'sync', rows };
-    }
+    const responsePayload = await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'meta_ads',
+      accountId: adAccountId,
+    }, async () => {
+      const accessToken = await getValidOAuthToken(conn);
+      if (body.async) {
+        // Large dataset — create async report job
+        const reportRunId = await metaReportClient.createAsyncReport(accessToken, params);
+        return { mode: 'async', report_run_id: reportRunId };
+      } else {
+        // Synchronous — good for up to ~14-day ranges
+        const rows = await metaReportClient.getInsights(accessToken, params);
+        return { mode: 'sync', rows };
+      }
+    });
 
     // Cache result
     reportCache.set(cacheKey, { result: responsePayload as Record<string, unknown>, cachedAt: Date.now() });

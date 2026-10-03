@@ -59,8 +59,8 @@ describe("Google Ads DEVELOPER_TOKEN_NOT_APPROVED classification", () => {
 
 describe("Shopee transport retry (shopeeGet)", () => {
   const originalFetch = globalThis.fetch;
-  process.env.SHOPEE_PARTNER_ID = process.env.SHOPEE_PARTNER_ID ?? "850001";
-  process.env.SHOPEE_PARTNER_KEY = process.env.SHOPEE_PARTNER_KEY ?? "test-partner-key";
+  process.env.SHOPEE_TEST_PARTNER_ID = process.env.SHOPEE_TEST_PARTNER_ID ?? "850001";
+  process.env.SHOPEE_TEST_PARTNER_KEY = process.env.SHOPEE_TEST_PARTNER_KEY ?? "test-partner-key";
   const calls: Array<{ status: number; retryAfter?: string }> = [];
   const opts = { accessToken: "tok", shopId: 123, sandbox: true } as any;
 

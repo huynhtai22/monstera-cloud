@@ -1,25 +1,28 @@
 # Monstera Cloud — Known Limitations
 
-Last reviewed: 2026-08-21
+Last reviewed: 2026-09-04 (targeted billing, AI/tenant and provider-health review; not a fresh production audit)
 Release stage: Controlled Pilot
 
 ## Current release posture
 
 Production-capable architecture, suitable for controlled pilot use, with documented operational hardening remaining before broad GA.
 
-**Google Ads status update (2026-08-25):** Basic Access is approved, removing the prior external developer-token approval blocker. Production connector validation is still pending: a real authorized account must complete bounded OAuth, MCC/customer selection, a seven-day sync, reconciliation, and destination retrieval. This is not a claim of controlled-pilot readiness; see [google-ads-basic-access.md](./google-ads-basic-access.md).
+The August evidence is historical, not blanket approval of newer billing/AI/portfolio surfaces. See [September security validation](./SECURITY-VALIDATION-2026-09-04.md) for local fixes, test coverage, and separate production acceptance gates. Local validation does not establish that these changes have been deployed.
+
+**Google Ads status update (2026-09-27):** Google retired developer-token headers; the connector no longer requires or sends one. Live validation is still pending: verify Ads API access for the OAuth client's Cloud project, then complete bounded OAuth, MCC/customer selection, a seven-day sync, reconciliation, and destination retrieval with an authorized account. This is not a claim of controlled-pilot readiness; see [google-ads-basic-access.md](./google-ads-basic-access.md).
 
 ## ETL / Sync
 
 ### 1. Overlapping connection sync protection
 
-**Status:** Implemented (2026-08-24, PR pending merge at time of writing) — verified by real-PostgreSQL concurrency suites.
+**Status:** Implemented (2026-08-24) — verified by real-PostgreSQL concurrency suites.
 
 Connection-scoped PostgreSQL lease with fencing token is implemented in `src/lib/connection-sync-lease.ts` (advisory xact lock + `SyncLock` lease row + monotonic `fencingToken`, 20-minute lease with heartbeat renewal). All execution paths (manual sync, cron warehouse refresh, batch import, OAuth backfill, pipeline pre-sync) funnel through `syncConnectionData`, which acquires the lease and fences outcome persistence.
 
 Coverage as of this hardening pass:
 
 - Outcome persistence (`lastSyncAt`/`lastError`/`status`) is lease-fenced everywhere, including pipeline runs, which now hold source + destination leases across ETL.
+- Scheduled warehouse-refresh failures detected before provider sync (such as credential decryption errors) acquire the connection lease before persisting `lastError`; if another worker owns it, the diagnostic write is skipped. Regression coverage lives in `sync-connection.test.ts`.
 - Row-level ingestion is fenced for all providers: Meta per-ad-account leases, and Google Ads / TikTok / Shopee / Lazada via `upsertCampaignMetric` lease stamping + heartbeat self-abort.
 - Shopee fleet token refresh holds the connection lease (refresh tokens are single-use; overlapping refreshes are skipped until the next cycle).
 - Admin force-unlock expires lease rows instead of deleting them, preserving `fencingToken` monotonicity.
@@ -27,40 +30,33 @@ Coverage as of this hardening pass:
 **Remaining notes (accepted):**
 
 - `WarehouseImportJob` uses leaseId + expiry CAS fencing without a monotonic token column (safe; less forensic detail).
-- A non-fenced `lastError` write remains on the warehouse-refresh error path (best-effort diagnostics write).
 - Stale-worker protection is application-layer enforcement, not PostgreSQL RLS.
 
 ### 2. Deleted / missing provider row reconciliation
 
-**Status:** Limitation
+**Status:** Partially addressed — observability implemented; deletion/reconciliation policy remains a limitation.
 
-Rolling re-sync and deterministic upserts correctly update returned rows, including late-arriving attribution changes. However, when a provider permanently stops returning a previously stored row, Monstera does not universally reconcile or soft-delete that missing row.
+`9d6f572` added complete-snapshot stale-row detection in `provider-row-reconciliation.ts`, invoked by Meta, Google Ads and TikTok sync paths. Unit and real-PostgreSQL tests verify that incomplete fetches do not produce false comparisons, tenant scope is retained, and missing rows are detected **without mutation**.
 
-**Future:** Provider snapshot reconciliation / stale-row detection.
+Missing rows are still retained. This is not automatic provider deletion reconciliation, soft deletion, or a retention policy. Do not move the entire limitation to Resolved or enable deletion without an approved retention decision and isolated drill.
 
 ### 3. Data-through-date semantics
 
-**Status:** Limitation
+**Status:** Separate reporting date implemented; provider-level accuracy remains a certification concern.
 
-`lastSyncAt` currently represents successful sync completion time, not the maximum reporting date actually present in the warehouse.
-
-**Future:** Expose a separate `dataThroughDate` / reporting-freshness indicator.
+`lastSyncAt` represents sync completion, not the latest reporting date. `Connection.lastDataThrough` and reporting-readiness/warehouse DTOs now expose separate reporting freshness. Do not substitute completion time for reporting date, or assume every provider's real-account reporting coverage is certified merely because the field exists.
 
 ### 4. Retry pickup latency
 
-**Status:** Limitation
+**Status:** Provider-directed retry scheduling implemented; pickup cadence remains approximately 15 minutes.
 
-Provider retry backoff may be eligible within seconds or minutes, but production cron cadence can delay pickup until the next scheduler run. The current scheduler cadence is approximately 15 minutes.
-
-**Future:** Evaluate queue-driven retry execution if pilot usage requires lower latency.
+Meta requests have bounded deadlines, rate-limit responses carry provider retry hints into durable import-job scheduling, and scheduled refreshes enqueue idempotent jobs for the worker. A 15-minute GitHub Actions cadence can still delay eligible retries; lower-latency queue wakeups require a production queue/worker decision.
 
 ### 5. Poison-account isolation
 
-**Status:** Limitation
+**Status:** Resolved in code for Meta, Google Ads and TikTok — see Resolved §16.
 
-Individual provider-account failures are isolated within a sync run, but there is no durable per-account quarantine / reconnect-required state. Permanently broken child accounts may be retried on later jobs.
-
-**Future:** Durable account-health state and quarantine policy.
+Live provider recovery/certification evidence remains separate; do not infer equivalent quarantine behavior for every marketplace connector.
 
 ## Provider-specific
 
@@ -111,15 +107,19 @@ Provider/warehouse freshness is owned by the Monstera backend scheduler. Do not 
 
 ### 11. Report level semantics
 
-**Status:** Limitation
+**Status:** Implemented in code; export-size acceptance remains.
 
-The Sheets add-on sends `reportLevel` values such as `campaign`, `account`, and `adset`. The current warehouse endpoint accepts the parameter and includes it in caching, but campaign-level selection does not yet necessarily perform a distinct aggregation/grouping operation.
+The Looker/Sheets warehouse endpoint validates `reportLevel`; `campaign`, `adset`, and `account` are grouped at their requested grain, with currency retained in the grouping key. Derived rates are recalculated from summed numerators/denominators, and non-additive reach is returned as null. Aggregated results report when the requested row cap truncates them. Large exports still need acceptance against the actual destination connector limits.
 
-**Future:** Implement explicit report-level aggregation only if user need is confirmed.
+### 12. Scheduled work and alert delivery
+
+**Status:** Durable code path implemented; production delivery and recovery acceptance pending.
+
+Scheduled imports use idempotent durable jobs. The pilot workflow now checks structured scheduler results and fails on terminal job errors or prolonged worker backlog, instead of treating an HTTP 200 response alone as proof of completed work. Operational alerts are persisted in a PostgreSQL outbox, leased, retried, and dead-lettered after bounded attempts. Production cron pickup, token refresh, partial recovery, and receipt by the configured alert owner still require a live operational walkthrough.
 
 ## Verification / release discipline
 
-### 12. PostgreSQL integration coverage
+### 13. PostgreSQL integration coverage
 
 **Status:** Verification gap
 
@@ -186,6 +186,12 @@ An agency may eventually want output ordered as Account 1 → Account 3 → Acco
 Do not add custom account ordering before Marketplace approval unless pilot users demonstrate a clear recurring need.
 
 ## Resolved
+
+### 16. Durable poison-account health and quarantine
+
+`9d6f572` (2026-09-03) added durable `ProviderAccountHealth` records, reconnect-required/quarantined states, sibling-account isolation, and skip sets consumed by Meta, Google Ads and TikTok sync. `provider-account-health.test.ts` and `provider-account-health.pg.integration.test.ts` pass in the September 4 isolated PostgreSQL validation.
+
+This resolves the absence of durable account state described in §5; it does not certify real provider credentials, approval status, or operator alert delivery.
 
 ### 15. Source disconnect no longer deletes historical warehouse data
 

@@ -24,7 +24,7 @@ This document defines **expected behavior** for authentication boundaries and pa
 | App routes: `/console`, `/overview`, `/settings`, `/meta-ads`, … | **Protected** — `src/middleware.ts` requires a valid JWT (`getToken`). Missing session → **302** to `/login?callbackUrl=…` (sanitized via `safe-callback-url`). |
 | `/api/*` (data) | Session checked in each route handler (`getServerSession`); workspace actions require **membership**. |
 
-**After login:** User lands on `callbackUrl` when safe, else default `/console` — **unless** they are on the **free** plan and the destination is **`/console`**, in which case they are sent to **`/pricing`** first (buyer-style journey: compare plans → checkout → app). Paid plans (`starter`, `professional`, …) still go straight to `callbackUrl`. Users can still open **`/console`** from the nav for Free-tier limits. Google OAuth uses **`/auth/continue`** to apply the same rule.
+**After login:** User lands on `callbackUrl` when safe, else default `/console`. Start (`free`) is a real trial workspace and is **not** bounced to `/pricing`. Entitlements still gate Looker, extra sources, and scheduled refresh in-product. Google OAuth uses **`/auth/continue`** to apply the same rule.
 
 ---
 

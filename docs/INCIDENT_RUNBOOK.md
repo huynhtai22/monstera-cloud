@@ -91,9 +91,21 @@ Reference: guarded-model list and deferred models are documented in `src/lib/ten
 
 | Path | Cadence | Fails how |
 |---|---|---|
-| `/api/cron/master` | Daily (Vercel Hobby) | Fan-out fetcher; downstream crons log failures |
-| `/api/cron/warehouse-jobs`, `token-prefetch`, `shopee/refresh`, `health-tick` | ~15 min via GitHub Actions `pilot-cron.yml` | Requires `CRON_SECRET` match; non-200 marks the workflow failed |
+| `/api/cron/master` | Daily (Vercel Hobby) | High-privilege fan-out; child jobs each receive their own scoped secret |
+| `/api/cron/warehouse-jobs`, `token-prefetch`, `shopee/refresh`, `health-tick`, retention, security posture | ~15 min via GitHub Actions `pilot-cron.yml` | Requires the route-specific `CRON_SECRET_*`; non-200 marks the workflow failed |
 | Sync workers | On demand / queued | Lease-fenced; see Runbook 2 |
 | External limiters (Upstash) | Every API request | Fail-closed 503; see Runbook 1 |
 
 After any incident: record timeline + root cause in the incident thread, and update this runbook if the procedure changed.
+
+---
+
+## Runbook 4 — security-posture cron returns 503
+
+Inspect the sanitized `breaches` codes; no IP, email, token, or user agent is
+returned. `AUTH_FAILURE_SPIKE` suggests credential stuffing or a broken login
+client. `API_KEY_PIN_REJECTION_SPIKE` suggests a shared/leaked key or a changed
+office egress address. `CRON_FAILURE` points to the failing scoped job in the
+master result or Actions logs. `RETENTION_LAG` means the bounded retention job
+has no success within 26 hours. Do not disable the control to clear the alert:
+fix the cause, invoke the affected scoped job, then re-run security posture.

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { productionRouteDisabled } from "@/lib/request-auth";
@@ -12,7 +11,7 @@ export async function GET(req: Request) {
   if (productionRouteDisabled("ENABLE_GOVERNED_ANALYST")) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const workspaceId = new URL(req.url).searchParams.get("workspaceId") ?? "";
   if (!workspaceId) return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -32,14 +31,14 @@ export async function GET(req: Request) {
     take: 30,
     select: { id: true, status: true, result: true, refusalCode: true, createdAt: true },
   });
-  return NextResponse.json({ turns });
+  return NextResponse.json({ turns }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: Request) {
   if (productionRouteDisabled("ENABLE_GOVERNED_ANALYST")) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
@@ -60,6 +59,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (clientId && !await prisma.client.findFirst({ where: { id: clientId, workspaceId }, select: { id: true } })) {
+    return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
 
   const budget = await getMonthlyAiBudget(workspaceId);
@@ -87,6 +90,7 @@ export async function POST(req: Request) {
     result: {
       status: turn.status,
       answer: turn.answer,
+      structured: turn.structured,
       blockers: turn.blockers,
       evidence: turn.evidence,
       queuedCopy: turn.queuedCopy,
@@ -100,12 +104,20 @@ export async function POST(req: Request) {
     promptVersion: turn.usage?.promptVersion,
   });
 
-  return NextResponse.json({
-    turnId: job.id,
-    status: turn.status,
-    answer: turn.answer,
-    evidence: turn.evidence,
-    blockers: turn.blockers,
-    queuedCopy: turn.queuedCopy,
-  });
+  return NextResponse.json(
+    {
+      turnId: job.id,
+      status: turn.status,
+      answer: turn.answer,
+      structured: turn.structured,
+      evidence: turn.evidence,
+      blockers: turn.blockers,
+      queuedCopy: turn.queuedCopy,
+    },
+    {
+      headers: {
+        "Cache-Control": "private, no-store",
+      },
+    },
+  );
 }

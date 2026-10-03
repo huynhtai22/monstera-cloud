@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { isMockClientId } from "@/lib/mock-console-data";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
@@ -11,7 +10,7 @@ import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
  */
 export async function GET(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -26,14 +25,63 @@ export async function GET(req: Request) {
         // Verify membership
         await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
 
+        const clientInclude = {
+            _count: {
+                select: { pipelines: true, connections: true, accountAssignments: true }
+            },
+            connections: {
+                where: { workspaceId, type: "source" },
+                select: {
+                    id: true,
+                    name: true,
+                    provider: true,
+                    status: true,
+                    lastSyncAt: true,
+                    lastError: true,
+                },
+            },
+            accountAssignments: {
+                where: { workspaceId },
+                select: {
+                    id: true,
+                    provider: true,
+                    accountId: true,
+                    connectionId: true,
+                    assignedAt: true,
+                    connection: {
+                        select: {
+                            id: true,
+                            name: true,
+                            provider: true,
+                            status: true,
+                            lastSyncAt: true,
+                            lastError: true,
+                        },
+                    },
+                },
+                orderBy: [{ provider: "asc" as const }, { accountId: "asc" as const }],
+            },
+        };
+
         const clients = await prisma.client.findMany({
             where: { workspaceId },
             orderBy: { createdAt: "desc" },
-            include: {
-                _count: {
-                    select: { pipelines: true, connections: true }
-                }
-            }
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                logoUrl: true,
+                workspaceId: true,
+                createdAt: true,
+                updatedAt: true,
+                requiredProviders: true,
+                requiredDestinations: true,
+                requirementsConfiguredAt: true,
+                accountAssignmentsConfiguredAt: true,
+                _count: clientInclude._count,
+                connections: clientInclude.connections,
+                accountAssignments: clientInclude.accountAssignments,
+            },
         });
 
         return NextResponse.json(clients);
@@ -50,7 +98,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -88,7 +136,7 @@ export async function POST(req: Request) {
  */
 export async function DELETE(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -128,7 +176,7 @@ export async function DELETE(req: Request) {
  */
 export async function PATCH(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }

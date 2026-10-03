@@ -1,4 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { validateE2eCommitSha } from "./src/lib/e2e-env-guard";
+
+// Port is overridable so suites can run on a non-3000 port; default unchanged.
+const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+// Explicit disposable workspace cohort; never broadens production rollout.
+const onboardingTestCohort = process.env.MONSTERA_E2E_ISOLATED === "1" && process.env.ENABLE_AGENT_ONBOARDING === "1"
+  ? ["desktop-chromium", "mobile-chromium"].flatMap(project => Array.from({ length: 64 }, (_, worker) => `agent-ui-workspace-${project}-${worker}`)).join(",")
+  : "";
+const commitSha = validateE2eCommitSha(process.env);
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -8,25 +17,36 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${port}`,
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npx next start -H 127.0.0.1 -p 3000",
-    url: "http://127.0.0.1:3000/api/version",
+    command: `npx next start -H 127.0.0.1 -p ${port}`,
+    url: `http://127.0.0.1:${port}/api/version`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
-      ...process.env,
+      // `npx next start` needs a home directory for its runtime cache. Keep it
+      // explicit so the test server still receives no ambient credentials.
+      HOME: process.env.HOME ?? "",
       HOSTNAME: "127.0.0.1",
-      PORT: "3000",
-      DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
-      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || "e2e-nextauth-secret-at-least-32-characters",
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || "http://127.0.0.1:3000",
-      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      CRON_SECRET: process.env.CRON_SECRET || "e2e-cron-secret-at-least-32-characters",
-      GOOGLE_ID_TOKEN_AUDIENCES: process.env.GOOGLE_ID_TOKEN_AUDIENCES || "e2e-client.apps.googleusercontent.com",
+      PORT: port,
+      DATABASE_URL: process.env.DATABASE_URL ?? "",
+      DIRECT_URL: process.env.DIRECT_URL ?? "",
+      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? "e2e-nextauth-secret-at-least-32-characters",
+      NEXTAUTH_URL: `http://127.0.0.1:${port}`,
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      CRON_SECRET: process.env.CRON_SECRET ?? "e2e-cron-secret-at-least-32-characters",
+      GOOGLE_ID_TOKEN_AUDIENCES: "e2e-client.apps.googleusercontent.com",
+      MONSTERA_E2E_ISOLATED: process.env.MONSTERA_E2E_ISOLATED ?? "",
+      CLIENT_ASSIGNMENT_TEST_DB: process.env.CLIENT_ASSIGNMENT_TEST_DB ?? "",
+      GIT_COMMIT_SHA: commitSha,
+      AGENCY_HOST_ROUTING_ENABLED: process.env.MONSTERA_E2E_ISOLATED === "1" ? "1" : "",
+      ENABLE_AGENT_ONBOARDING: process.env.ENABLE_AGENT_ONBOARDING ?? "",
+      AGENT_ONBOARDING_WORKSPACE_IDS: process.env.AGENT_ONBOARDING_WORKSPACE_IDS ?? onboardingTestCohort,
       PILOT_MODE: "1",
+      ENABLE_GOVERNED_ANALYST: "1",
+      NEXT_PUBLIC_ENABLE_GOVERNED_ANALYST: "1",
     },
   },
   projects: [

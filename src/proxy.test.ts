@@ -65,6 +65,7 @@ describe("proxy page authentication (deny-by-default)", () => {
     const proxy = __createProxyForTests({ getSessionToken: async () => null });
     for (const path of [
       "/console",
+      "/onboarding?workspaceId=ws_123",
       "/sources/setup",
       "/explorer?tab=warehouse",
       "/admin/signal",
@@ -148,6 +149,23 @@ describe("proxy page authentication (deny-by-default)", () => {
     assert.equal(getTokenCalls, 0);
   });
 
+  it("retires quick-start in favor of the canonical console before authentication", async () => {
+    let getTokenCalls = 0;
+    const proxy = __createProxyForTests({
+      getSessionToken: async () => {
+        getTokenCalls += 1;
+        return null;
+      },
+    });
+
+    for (const path of ["/quickstart", "/agencies/acme/quickstart"]) {
+      const res = await proxy(pageRequest(path));
+      assert.equal(res.status, 307);
+      assert.equal(new URL(res.headers.get("location") ?? "").pathname, "/console");
+    }
+    assert.equal(getTokenCalls, 0, "obsolete quick-start must redirect before session lookup");
+  });
+
   it("preserves agency-host rewrites after authentication succeeds", async () => {
     process.env.AGENCY_HOST_ROUTING_ENABLED = "1";
     process.env.AGENCY_DEV_SLUG = "acme";
@@ -160,6 +178,59 @@ describe("proxy page authentication (deny-by-default)", () => {
       new NextRequest("http://localhost:3000/", { headers: { host: "localhost" } }),
     );
     assert.equal(anon.headers.get("x-monstera-agency-slug"), "acme", "public paths still rewrite");
+  });
+
+  it("authenticates and rewrites onboarding on agency hosts while preserving workspace context", async () => {
+    process.env.AGENCY_HOST_ROUTING_ENABLED = "1";
+    const request = new NextRequest("https://acme.monsteracloud.com/onboarding?workspaceId=ws_123", { headers: { host: "acme.monsteracloud.com" } });
+    const authenticated = __createProxyForTests({ getSessionToken: async () => ({ sub: "user" }) });
+    const response = await authenticated(request);
+    const rewrite = new URL(response.headers.get("x-middleware-rewrite")!);
+    assert.equal(rewrite.pathname, "/agencies/acme/onboarding");
+    assert.equal(rewrite.searchParams.get("workspaceId"), "ws_123");
+    assert.equal(response.headers.get("x-monstera-agency-slug"), "acme");
+    const anonymous = __createProxyForTests({ getSessionToken: async () => null });
+    assert.equal(new URL((await anonymous(request)).headers.get("location")!).pathname, "/login");
+    assert.equal((await authenticated(new NextRequest("https://app.example.test/agencies/acme/onboarding"))).headers.get("x-middleware-rewrite"), null);
+  });
+
+  it("rewrites /operations under agency tenant layout while preserving client context", async () => {
+    process.env.AGENCY_HOST_ROUTING_ENABLED = "1";
+    process.env.AGENCY_PRIMARY_DOMAIN_SUFFIX = "monsteracloud.com";
+    const proxy = __createProxyForTests({ getSessionToken: async () => ({ sub: "user_1" }) });
+
+    // 1. Authenticated agency host rewrites and sets x-monstera-agency-slug header
+    const req = new NextRequest("https://alpha-agency.monsteracloud.com/operations?clientId=cl_123", {
+      headers: { host: "alpha-agency.monsteracloud.com" },
+    });
+    const res = await proxy(req);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-monstera-agency-slug"), "alpha-agency");
+
+    // 2. Ordinary non-agency host does not rewrite and omits agency header
+    const ordinaryReq = new NextRequest("https://monsteracloud.com/operations?clientId=cl_123", {
+      headers: { host: "monsteracloud.com" },
+    });
+    const ordinaryRes = await proxy(ordinaryReq);
+    assert.equal(ordinaryRes.status, 200);
+    assert.equal(ordinaryRes.headers.get("x-monstera-agency-slug"), null);
+
+    // 3. Already-prefixed route does not trigger a rewrite loop
+    const prefixedReq = new NextRequest("https://alpha-agency.monsteracloud.com/agencies/alpha-agency/operations?clientId=cl_123", {
+      headers: { host: "alpha-agency.monsteracloud.com" },
+    });
+    const prefixedRes = await proxy(prefixedReq);
+    assert.equal(prefixedRes.status, 200);
+    assert.equal(prefixedRes.headers.get("x-monstera-agency-slug"), null);
+
+    // 4. Anonymous visitor to agency-host /operations is redirected to login
+    const anonProxy = __createProxyForTests({ getSessionToken: async () => null });
+    const anonRes = await anonProxy(req);
+    assert.equal(anonRes.status, 307);
+    const location = anonRes.headers.get("location") ?? "";
+    const loginUrl = new URL(location);
+    assert.equal(loginUrl.pathname, "/login");
+    assert.equal(loginUrl.searchParams.get("callbackUrl"), "/operations?clientId=cl_123");
   });
 });
 
@@ -277,6 +348,36 @@ describe("proxy API pipeline", () => {
     assert.equal(res.headers.get("retry-after"), null);
   });
 
+  it("isolates 30 office users across all session self-service routes by verified JWT identity", async () => {
+    const counts = new Map<string, number>();
+    const limiter: SharedLimiter = { limit: async key => {
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return { success: count <= 4, limit: 4, remaining: Math.max(0, 4 - count), reset: Math.ceil(Date.now() / 1000) + 60 };
+    } };
+    for (let user = 0; user < 30; user++) {
+      const proxy = __createProxyForTests({
+        getSessionToken: async () => ({ sub: `verified-${user}` }),
+        enforceOptions: { limiters: { "internal-api": limiter, credential: denyLimiter() }, isProduction: true },
+      });
+      for (const path of ["/api/auth/heartbeat", "/api/auth/sessions", "/api/auth/sessions/revoke", "/api/auth/login-events"]) {
+        const res = await proxy(apiRequest(path, { headers: { "x-forwarded-for": "192.0.2.44", "x-user-id": "forged-same-user" } }));
+        assert.equal(res.status, 200, `${path} user ${user}`);
+      }
+      assert.equal((await proxy(apiRequest("/api/auth/heartbeat"))).status, 429, "one user still cannot exceed their budget");
+    }
+    assert.equal(counts.size, 30);
+  });
+
+  it("keeps anonymous session calls IP-limited and valid users fail-open during limiter outages", async () => {
+    const anonymous = __createProxyForTests({ getSessionToken: async () => null,
+      enforceOptions: { limiters: { "internal-api": denyLimiter() }, isProduction: true } });
+    assert.equal((await anonymous(apiRequest("/api/auth/heartbeat", { headers: { "x-user-id": "forged" } }))).status, 429);
+    const valid = __createProxyForTests({ getSessionToken: async () => ({ sub: "verified" }),
+      enforceOptions: { limiters: { "internal-api": throwingLimiter() }, isProduction: true } });
+    assert.equal((await valid(apiRequest("/api/auth/sessions/revoke"))).status, 200);
+  });
+
   it("applies the credential class to password/reset endpoints", async () => {
     const proxy = __createProxyForTests({
       enforceOptions: { limiters: { credential: denyLimiter() }, isProduction: true },
@@ -312,17 +413,21 @@ describe("matcher contract", () => {
     assert.doesNotMatch("/api/auth/callback/google", rx);
     assert.doesNotMatch("/api/auth/session", rx);
 
-    const credentialPatterns = config.matcher.slice(1, 6);
+    const credentialPatterns = config.matcher.slice(1, -1);
     for (const endpoint of [
       "/api/auth/forgot-password",
       "/api/auth/register",
       "/api/auth/resend-otp",
       "/api/auth/reset-password",
       "/api/auth/verify",
+      "/api/auth/sessions",
+      "/api/auth/sessions/revoke",
+      "/api/auth/login-events",
+      "/api/auth/heartbeat",
     ]) {
       assert.ok(
         credentialPatterns.some((pattern) => asMatcherRegex(pattern).test(endpoint)),
-        `${endpoint} must be matched for credential limiting`,
+        `${endpoint} must be matched for rate limiting`,
       );
     }
   });

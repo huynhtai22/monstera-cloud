@@ -2,23 +2,31 @@
 
 import { MessageCircle } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+export function ConsoleSupportControl() {
+    return <Link href="mailto:founders@monsteracloud.com?subject=Console Support" aria-label="Contact support" title="Contact support" className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-panel text-ink-mute hover:text-ink"><MessageCircle size={16} strokeWidth={1.5} /></Link>;
+}
+
 export function LiveChatWidget() {
+    const pathname = usePathname();
     const [isVisible, setIsVisible] = useState(false);
 
     // Delay the appearance slightly so it doesn't distract immediately on load
     useEffect(() => {
-        const timer = setTimeout(() => setIsVisible(true), 1500);
+        setIsVisible(false);
+        const timer = setTimeout(() => setIsVisible(!document.querySelector("[data-console-theme]")), 1500);
         return () => clearTimeout(timer);
-    }, []);
+    }, [pathname]);
 
     if (!isVisible) return null;
 
     return (
-        <div className="fixed bottom-6 right-6 z-[9999] animate-in fade-in slide-in-from-bottom-5 duration-500">
+        <div className="fixed bottom-5 right-5 z-30 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-5 duration-500">
             <Link 
                 href="mailto:founders@monsteracloud.com?subject=Trial Inquiry / Support"
+                aria-label="Contact support"
                 className="group flex flex-col items-end"
             >
                 {/* Tooltip bubble */}

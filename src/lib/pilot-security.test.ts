@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { afterEach, describe, it } from "node:test";
 import { generateApiKey, hashApiKey } from "./api-key-security";
-import { decrypt, encrypt, safeDecrypt } from "./encryption";
+import { decrypt, encrypt, isEncrypted, safeDecrypt } from "./encryption";
 import { normalizeEmail, normalizeWorkspaceSlug } from "./invitation-security";
 import { isOAuthAttemptValid } from "./oauth-attempt";
 import { hasRole, sanitizeRole } from "./rbac";
@@ -10,6 +11,34 @@ import { mergeWorkspaceWhere } from "./workspace-scope";
 
 const originalEncryptionKey = process.env.ENCRYPTION_KEY;
 const originalCronSecret = process.env.CRON_SECRET;
+const testEncryptionKey = "01".repeat(32);
+
+function tamperFinalCiphertextByte(encrypted: string): string {
+  const [iv, authTag, ciphertext, ...extra] = encrypted.split(":");
+  if (!iv || !authTag || !ciphertext || extra.length > 0 || !/^[0-9a-f]+$/i.test(ciphertext) || ciphertext.length < 2) {
+    throw new Error("Expected encrypted ciphertext with a non-empty hexadecimal payload");
+  }
+
+  const finalByte = ciphertext.slice(-2);
+  const replacement = finalByte.toLowerCase() === "00" ? "01" : "00";
+  return `${iv}:${authTag}:${ciphertext.slice(0, -2)}${replacement}`;
+}
+
+function encryptWithFinalCiphertextByte(finalByte: number): string {
+  const key = Buffer.from(testEncryptionKey, "hex");
+  const iv = Buffer.alloc(16, 0x5a);
+  const probe = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const streamByte = probe.update(Buffer.from([0]))[0];
+  probe.final();
+
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from([streamByte ^ finalByte])),
+    cipher.final(),
+  ]).toString("hex");
+
+  return `${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${ciphertext}`;
+}
 
 afterEach(() => {
   if (originalEncryptionKey === undefined) delete process.env.ENCRYPTION_KEY;
@@ -47,11 +76,29 @@ describe("pilot security primitives", () => {
   });
 
   it("rejects plaintext credential payloads and detects ciphertext tampering", () => {
-    process.env.ENCRYPTION_KEY = "01".repeat(32);
+    process.env.ENCRYPTION_KEY = testEncryptionKey;
     assert.throws(() => safeDecrypt('{"accessToken":"plaintext"}'), /not encrypted/);
     const ciphertext = encrypt("sensitive");
     assert.equal(decrypt(ciphertext), "sensitive");
-    assert.throws(() => decrypt(`${ciphertext.slice(0, -2)}00`));
+    const tampered = tamperFinalCiphertextByte(ciphertext);
+    assert.notEqual(tampered, ciphertext);
+    assert.equal(isEncrypted(tampered), true);
+    assert.throws(() => decrypt(tampered), /authenticate|auth/i);
+  });
+
+  it("always changes and invalidates the final authenticated ciphertext byte", () => {
+    process.env.ENCRYPTION_KEY = testEncryptionKey;
+
+    for (const finalByte of [0x7f, 0x00]) {
+      const ciphertext = encryptWithFinalCiphertextByte(finalByte);
+      const tampered = tamperFinalCiphertextByte(ciphertext);
+
+      assert.equal(ciphertext.split(":")[2]?.slice(-2).toLowerCase(), finalByte.toString(16).padStart(2, "0"));
+      assert.doesNotThrow(() => decrypt(ciphertext));
+      assert.notEqual(tampered, ciphertext);
+      assert.equal(isEncrypted(tampered), true);
+      assert.throws(() => decrypt(tampered), /authenticate|auth/i);
+    }
   });
 
   it("enforces the complete workspace role hierarchy", () => {
