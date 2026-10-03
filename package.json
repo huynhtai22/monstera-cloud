@@ -47,6 +47,8 @@
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "@paddle/paddle-js": "^1.6.2",
     "@paddle/paddle-node-sdk": "^3.7.0",
+    "@polar-sh/nextjs": "0.9.6",
+    "@polar-sh/sdk": "0.47.1",
     "@prisma/client": "^5.22.0",
     "@sentry/nextjs": "^10.70.0",
     "@tailwindcss/postcss": "^4.2.1",

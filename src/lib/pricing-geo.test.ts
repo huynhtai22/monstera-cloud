@@ -31,7 +31,7 @@ describe("geo currency split", () => {
       isVietnam: false,
     });
     assert.equal(billingGateForCurrency("VND"), "vietqr_domestic");
-    assert.equal(billingGateForCurrency("USD"), "paddle");
+    assert.equal(billingGateForCurrency("USD"), "polar");
   });
 });
 
@@ -61,8 +61,8 @@ describe("payment gates never mix", () => {
     }
   });
 
-  it("checkout path is Paddle for USD and PayOS/VietQR for VND; CheckoutButton still does not charge", () => {
-    assert.equal(getCheckoutApiPath("USD"), "/api/checkout/paddle");
+  it("checkout path is Polar for new USD and PayOS/VietQR for VND; CheckoutButton still does not charge", () => {
+    assert.equal(getCheckoutApiPath("USD"), "/api/checkout/polar");
     assert.equal(getCheckoutApiPath("VND"), "/api/payments/vietqr/create");
     const href = pilotSupportHref({ plan: "starter", invoiceCurrency: "VND" });
     assert.match(href, /^\/support\?/);
