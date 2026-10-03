@@ -40,8 +40,9 @@ test.describe("persisted agent onboarding (M2)", () => {
     await expect(delegation.getByRole("heading", { name: "What would you like Monstera to do?" })).toBeVisible();
     await delegation.getByLabel("Task reporting client").selectOption(client.id);
     await delegation.getByLabel("Additional reporting context (optional)").fill("Prepare the weekly North report");
-    await delegation.getByRole("button", { name: "Prepare task" }).click();
+    await delegation.getByLabel("Additional reporting context (optional)").press("Enter");
     await expect(delegation.getByRole("link", { name: "Continue task" })).toBeVisible();
+    await expect(delegation.getByRole("link", { name: "Continue task" })).toBeFocused();
     const run = await db.agentRun.findFirstOrThrow({ where: { workspaceId } });
     expect(run.clientId).toBe(client.id);
     expect(await db.agentTask.count({ where: { workspaceId } })).toBe(0);
