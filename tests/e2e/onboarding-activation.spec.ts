@@ -98,7 +98,7 @@ test.describe("Onboarding & activation journey", () => {
     });
 
     await page.goto("/reports", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Performance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Performance", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Sync Activity & Logs" }).click();
     await expect(page.getByRole("heading", { name: "Sync activity" })).toBeVisible();
     await expect(page.getByText("This page records source-to-destination pipeline runs.")).toBeVisible();
