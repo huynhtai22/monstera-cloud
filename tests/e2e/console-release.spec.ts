@@ -127,8 +127,7 @@ test("light connector cards and consent portal use readable light surfaces", asy
 
 test("light failure notification uses the same light surface as the console", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("monstera-theme", "light"));
-  await page.goto("/sources");
-  await page.getByRole("button", { name: "Sync", exact: true }).first().click();
+  await page.goto("/sources?meta_ads_error=access_denied");
   const notification = page.locator("[data-sonner-toast]").first();
   await expect(notification).toBeVisible();
   expect(await notification.evaluate(element => getComputedStyle(element).backgroundColor)).toBe("rgb(255, 255, 255)");
