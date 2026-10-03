@@ -7,18 +7,19 @@ import { useWorkspaceStore } from "@/store/workspace";
 import Link from "next/link";
 import { CompletionCheck } from "./OnboardingMotion";
 import styles from "./Onboarding.module.css";
+import { ReportingJourneyMotion } from "./ReportingJourneyMotion";
 
 type Task = AgentSnapshot["tasks"][number];
 export type TaskAction = "defer" | "reconnect" | "discover" | "reuse" | "change_scope" | "retry_failed";
 export type ImportChoice = { selectedAccountIds: string[]; since: string; until: string; expectedVersion: number };
 export type DataPreview = { provider: string; coverage: { limitations: string[] }; verified: boolean; rowsCount: number; timezone: string; omissions: string | null; window: { since: string; until: string }; accounts: { id: string; accountId: string; connectionId: string; groups: { currency: string | null; rows: number; spend: number; conversions: number; revenue: number; dataThroughDate: string | null }[] }[]; sampleRows: { date: string; accountId: string; campaignName: string; spend: number; revenue: number; conversions: number; currency: string | null }[] };
 
-export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAction, onConfirm, onReviewed, explorerPath }: {
+export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAction, onConfirm, onReviewed, explorerPath, paused = false, scopeLabel = "Workspace reporting scope" }: {
   task: Task; workspaceId: string; canAuthorize: boolean; disabled: boolean;
   onAction: (task: Task, action: TaskAction, connectionId?: string | string[]) => void;
   onConfirm: (task: Task, input: ImportChoice) => void;
   onReviewed: (id: string, evidence: WarehouseEvidence, preview?: DataPreview) => void;
-  explorerPath: string;
+  explorerPath: string; paused?: boolean; scopeLabel?: string;
 }) {
   const [connections, setConnections] = useState<{ id: string; name: string }[] | null>(null);
   const [chosenConnections, setChosenConnections] = useState<string[]>([]);
@@ -56,6 +57,8 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
   const providerName = { meta_ads: "Meta Ads", tiktok_business: "TikTok Ads", google_ads: "Google Ads", shopee: "Shopee" }[task.provider];
 
   return <div className={styles.executionControls}>
+    {(task.state === "waiting_authorization" || (task.state === "needs_attention" && !task.confirmedScope)) && <ReportingJourneyMotion compact visual={{ step: "connect", provider: task.provider }} />}
+    {["queued", "importing", "verifying"].includes(task.state) && task.confirmedScope && <ReportingJourneyMotion visual={{ step: "import", running: !paused && task.state === "importing", status: paused ? "Setup paused · saved import status" : task.state === "queued" ? "Waiting for an import worker" : task.state === "verifying" ? "Checking warehouse evidence" : "Importing approved accounts", completed: task.result?.completedItems ?? null, total: task.result?.totalItems ?? null, since: task.confirmedScope.since, until: task.confirmedScope.until }} />}
     {error && <p role="alert">{error}</p>}
     {(task.state === "waiting_authorization" || (task.state === "needs_attention" && !task.confirmedScope)) && <>
       {canAuthorize ? <a className={styles.connect} href={`/api/auth/connect?provider=${encodeURIComponent(task.provider)}&workspaceId=${encodeURIComponent(workspaceId)}&agentTaskId=${encodeURIComponent(task.id)}`} aria-disabled={busy} onClick={event => { if (busy) event.preventDefault(); }}>Connect {providerName} ↗</a> : <button className={styles.connect} disabled>Connect {providerName}</button>}
@@ -66,7 +69,7 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
       {connections && <div className={styles.connectionChoices}>{connections.length ? task.provider === "google_ads" ? <><fieldset disabled={busy}><legend>Choose Google Ads connections</legend>{connections.map(connection => <label key={connection.id}><input type="checkbox" checked={chosenConnections.includes(connection.id)} onChange={event => setChosenConnections(ids => event.target.checked ? [...ids, connection.id] : ids.filter(id => id !== connection.id))} /> {connection.name}</label>)}</fieldset><button disabled={busy || !chosenConnections.length} onClick={() => onAction(task, "reuse", chosenConnections)}>Discover accounts in selected connections →</button></> : connections.map(connection => <button key={connection.id} disabled={busy} onClick={() => onAction(task, "reuse", connection.id)}>{connection.name} →</button>) : <p className={styles.small}>No connected source is available in this workspace.</p>}</div>}
     </>}
     {(task.state === "discovering_accounts" || (task.state === "needs_attention" && !task.confirmedScope && !!task.requestedScope?.connectionId)) && <button className={styles.textButton} disabled={busy} onClick={() => onAction(task, "discover")}>Refresh authorized accounts</button>}
-    {task.state === "waiting_selection" && task.requestedScope && <AccountChoice key={task.requestedScope.discoveredAt} task={task} disabled={busy} onConfirm={onConfirm} />}
+    {task.state === "waiting_selection" && task.requestedScope && <AccountChoice key={task.requestedScope.discoveredAt} task={task} disabled={busy} onConfirm={onConfirm} scopeLabel={scopeLabel} />}
     {task.confirmedScope && <p className={styles.small}>{task.confirmedScope.selectedAccountIds.length} selected account(s) · {task.confirmedScope.since} — {task.confirmedScope.until}</p>}
     {task.state === "needs_attention" && task.confirmedScope && <p className={styles.small}>{task.reasonCode === "no_data_found" ? "No usable data was found for the confirmed accounts and dates." : task.reasonCode === "partial_import" ? "Some account imports did not finish. Retry includes only the failed accounts." : "Import did not finish. Check this source in Data explorer."} You can save this source for later.</p>}
     {task.state === "needs_attention" && task.confirmedScope && task.result?.retryRemaining !== 0 && ["partial_import", "import_failed"].includes(task.reasonCode ?? "") && <button className={styles.connect} disabled={busy} onClick={() => onAction(task, "retry_failed")}>Retry failed accounts</button>}
@@ -91,12 +94,13 @@ export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAc
   </div>;
 }
 
-function AccountChoice({ task, disabled, onConfirm }: { task: Task; disabled: boolean; onConfirm: (task: Task, input: ImportChoice) => void }) {
+function AccountChoice({ task, disabled, onConfirm, scopeLabel }: { scopeLabel: string; task: Task; disabled: boolean; onConfirm: (task: Task, input: ImportChoice) => void }) {
   const offered = task.requestedScope!;
   const [selected, setSelected] = useState<string[]>([]);
   const [since, setSince] = useState(offered.window.since);
   const [until, setUntil] = useState(offered.window.until);
   return <form className={styles.accountChoice} onSubmit={event => { event.preventDefault(); onConfirm(task, { selectedAccountIds: selected, since, until, expectedVersion: task.version }); }}>
+    <ReportingJourneyMotion visual={{ step: "scope", groupLabel: scopeLabel, accounts: offered.accounts.filter(account => selected.includes(account.id)).map(account => ({ id: account.id, name: account.name })) }} />
     <fieldset disabled={disabled}><legend>Choose authorized {task.provider === "shopee" ? "shops" : "ad accounts"}</legend>{offered.accounts.map(account => <label key={account.id}><input type="checkbox" checked={selected.includes(account.id)} onChange={event => setSelected(ids => event.target.checked ? [...ids, account.id] : ids.filter(id => id !== account.id))} /><span>{account.name}<small>{account.accountId ?? account.id}</small></span></label>)}</fieldset>
     <div className={styles.importDates}><label>From<input aria-label="Import from" type="date" required value={since} disabled={disabled} max={until} onChange={event => setSince(event.target.value)} /></label><label>Through<input aria-label="Import through" type="date" required value={until} disabled={disabled} min={since} max={offered.window.until} onChange={event => setUntil(event.target.value)} /></label></div>
     <p className={styles.small}>Choose up to 50 accounts. Default: seven complete provider reporting days. Up to 30 days, subject to your plan. Only checked accounts are imported into the scope shown above. For client setup, they are assigned to the selected client; existing assignments are never moved.</p>

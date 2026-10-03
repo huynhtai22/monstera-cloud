@@ -15,6 +15,7 @@ import { trackEvent } from "@/lib/analytics-events";
 import { useMounted } from "@/hooks/useMounted";
 import { LogoMark } from "@/components/Logo";
 import styles from "./ConnectSourceModal.module.css";
+import { ReportingJourneyMotion } from "./onboarding/ReportingJourneyMotion";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -417,11 +418,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-5 sm:px-8">
-                        <div className={styles.visual} aria-hidden="true">
-                            <div className={styles.node}><IntegrationMark src={logoSrc} alt="" size="lg" /></div>
-                            <div className={styles.bridge}><span /></div>
-                            <div className={cn(styles.node, styles.monsteraNode)}><LogoMark className="h-11 w-11" /></div>
-                        </div>
+                        <ReportingJourneyMotion compact visual={{ step: "connect", provider: id, logoSrc, running: Boolean(displayPhase) }} />
 
                         <div className={cn(styles.waitingPanel, displayPhase && styles.waitingPanelActive)} aria-hidden={!displayPhase} inert={!displayPhase} role={displayPhase ? "status" : undefined} aria-live={displayPhase ? "polite" : undefined}>
                             <div className="pb-4 text-center">

@@ -7,6 +7,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import type { onboardingGoal } from "@/lib/agent/onboarding-goals";
 import { confirmedFirstResultTasks, firstResultAccounts } from "./first-result";
 import styles from "./Onboarding.module.css";
+import { ReportingJourneyMotion } from "./ReportingJourneyMotion";
 
 export function FirstResult({ tasks, previews, goal, explorerPath, workspaceId, reportsPath, clientId, acknowledged, onAcknowledge }: {
   tasks: AgentSnapshot["tasks"]; previews: Record<string, { scopeRevision: number; data: DataPreview }>;
@@ -18,6 +19,7 @@ export function FirstResult({ tasks, previews, goal, explorerPath, workspaceId, 
     <p className={styles.eyebrow}>YOUR FIRST OVERVIEW</p><h2 id="first-result-title">{goal?.context ?? "Your connected campaign data"}</h2>
     <p className={styles.small}>A snapshot of the data available for your approved accounts and dates. Provider results are shown separately; this is not a reconciled cross-platform report.</p>
     {confirmed.map(task => { const data = previews[task.id].data; const accounts = firstResultAccounts(data); const populatedCount = data.accounts.filter(account => account.groups.some(group => group.rows > 0)).length; return <article key={task.id}>
+      <ReportingJourneyMotion visual={{ step: "output", destination: "Data explorer · warehouse preview", inspectedLabel: "Warehouse preview reviewed", inspected: acknowledged, rows: data.rowsCount, since: data.window.since, until: data.window.until }} />
       <h3>{ONBOARDING_PROVIDERS.find(provider => provider.id === task.provider)?.name}</h3>
       <p>{data.window.since} — {data.window.until} · {data.accounts.length} accounts · {data.rowsCount.toLocaleString()} warehouse rows</p>
       {accounts.map(account => <div key={account.id}><strong>{task.requestedScope?.accounts.find(offered => (offered.accountId ?? offered.id) === account.accountId)?.name ?? account.accountId}</strong>{account.groups.map((group, index) => <p key={index}>{group.currency ? `${group.currency} ${(task.provider === "shopee" ? group.revenue : group.spend).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${task.provider === "shopee" ? "order revenue" : "spend"}` : "Currency unverified; spend total withheld"} · {group.rows.toLocaleString()} {group.rows === 1 ? "row" : "rows"}{group.dataThroughDate ? ` · data through ${group.dataThroughDate.slice(0, 10)}` : ""}</p>)}</div>)}
