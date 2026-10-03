@@ -12,6 +12,8 @@
  */
 
 import { logger } from "@/lib/logger";
+import { parse as parseCsv } from "csv-parse/sync";
+import { emitConnectorTelemetry } from "@/lib/observability/connector-telemetry";
 
 /** app_id from business-api.tiktok.com/portal */
 function appId(): string {
@@ -39,6 +41,11 @@ export interface TikTokBusinessTokenResponse {
   advertiser_ids: string[];
   scope: string;
   token_type: string;
+}
+
+export interface TikTokAdvertiserDiscoveryResponse {
+  advertiser_ids: string[];
+  request_id?: string;
 }
 
 export class TikTokBusinessClient {
@@ -80,8 +87,9 @@ export class TikTokBusinessClient {
 
     const json = (await res.json()) as Record<string, unknown>;
     if ((json.code as number) !== 0 || !json.data) {
-      const msg = (json.message as string) || JSON.stringify(json);
-      throw new Error(`TikTok Marketing API token error ${json.code}: ${msg}`);
+      // Provider messages can echo credentials; retain only a numeric diagnostic code.
+      const code = typeof json.code === "number" && Number.isSafeInteger(json.code) ? json.code : "unknown";
+      throw new Error(`TikTok Marketing API token error ${code}: Token exchange rejected; verify app configuration or reconnect TikTok Ads.`);
     }
 
     // The advertiser authorization flow returns a long-lived token. It normally
@@ -114,6 +122,55 @@ export class TikTokBusinessClient {
     return tokenData as unknown as TikTokBusinessTokenResponse;
   }
 
+  /**
+   * Retrieve the complete advertiser list authorized for an access token.
+   * TikTok explicitly recommends this endpoint after token exchange; some
+   * successful token responses omit or incompletely populate advertiser_ids.
+   */
+  async listAuthorizedAdvertisers(accessToken: string): Promise<TikTokAdvertiserDiscoveryResponse> {
+    const endpoint = "/open_api/v1.3/oauth2/advertiser/get/";
+    const res = await fetch(`https://business-api.tiktok.com${endpoint}`, {
+      method: "GET",
+      headers: { "Access-Token": accessToken },
+    });
+
+    const json = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const requestId = typeof json.request_id === "string" ? json.request_id : undefined;
+    if (!res.ok || json.code !== 0) {
+      const code = json.code ?? res.status;
+      const message = typeof json.message === "string" ? json.message : "Advertiser discovery failed";
+      logger.warn("[TikTok OAuth] Advertiser discovery failed", {
+        endpoint,
+        httpStatus: res.status,
+        code,
+        requestId,
+      });
+      throw new Error(`TikTok advertiser discovery error ${code}: ${message}`);
+    }
+
+    const data = json.data && typeof json.data === "object"
+      ? json.data as Record<string, unknown>
+      : {};
+    const list = Array.isArray(data.list) ? data.list : [];
+    const advertiserIds = [
+      ...(Array.isArray(data.advertiser_ids) ? data.advertiser_ids : []),
+      ...list.map((entry) =>
+        entry && typeof entry === "object"
+          ? (entry as Record<string, unknown>).advertiser_id
+          : undefined
+      ),
+    ].filter((value): value is string => typeof value === "string");
+
+    logger.info("[TikTok OAuth] Advertiser discovery completed", {
+      endpoint,
+      httpStatus: res.status,
+      requestId,
+      advertiserCount: advertiserIds.length,
+    });
+
+    return { advertiser_ids: advertiserIds, request_id: requestId };
+  }
+
   /** Refresh an expired access token. */
   async refreshAccessToken(refreshToken: string): Promise<TikTokBusinessTokenResponse> {
     const id = appId();
@@ -133,8 +190,9 @@ export class TikTokBusinessClient {
 
     const json = (await res.json()) as Record<string, unknown>;
     if ((json.code as number) !== 0 || !json.data) {
-      const msg = (json.message as string) || JSON.stringify(json);
-      throw new Error(`TikTok Marketing API refresh error ${json.code}: ${msg}`);
+      // Never propagate an echoed refresh token into logs or persisted connection errors.
+      const code = typeof json.code === "number" && Number.isSafeInteger(json.code) ? json.code : "unknown";
+      throw new Error(`TikTok Marketing API refresh error ${code}: Token refresh rejected; verify app configuration or reconnect TikTok Ads.`);
     }
 
     return json.data as unknown as TikTokBusinessTokenResponse;
@@ -165,10 +223,22 @@ export function isTikTokRetryableFailure(status: number, code: unknown, message:
   return status === 429 || status >= 500 || /rate[ _-]?limit|quota|throttl|too many|temporar|timeout/i.test(`${code ?? ""} ${message ?? ""}`);
 }
 
-function retryAfterMs(value: string | null): number | null {
+export function retryAfterMs(value: string | null): number | null {
   if (!value) return null;
-  const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const seconds = Number(trimmed);
+  return Number.isSafeInteger(seconds) && Number.isSafeInteger(seconds * 1000)
+    ? seconds * 1000
+    : null;
+}
+
+type RetrySleeper = (delayMs: number) => Promise<void>;
+let retrySleeper: RetrySleeper = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
+
+/** Test-only seam; production always uses the normal timer-backed sleeper. */
+export function setTikTokRetrySleeperForTest(sleeper: RetrySleeper | null): void {
+  retrySleeper = sleeper ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
 }
 
 /**
@@ -178,28 +248,91 @@ function retryAfterMs(value: string | null): number | null {
 async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const startMs = Date.now();
     let response: Response;
     try {
       response = await fetch(url, init);
     } catch (error) {
+      const durationMs = Date.now() - startMs;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "tiktok_business",
+          operation: "report_download",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "retryable_failure",
+          errorCategory: "network_error",
+          durationMs,
+          retryDelayMs: 500 * 2 ** attempt,
+        });
+        await retrySleeper(500 * 2 ** attempt);
         continue;
       }
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "report_download",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "retryable_failure",
+        errorCategory: "network_error",
+        durationMs,
+      });
       throw new TikTokProviderError(error instanceof Error ? error.message : "TikTok request failed", true);
     }
 
-    if (response.ok) return response;
+    const durationMs = Date.now() - startMs;
+    if (response.ok) {
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "report_download",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "success",
+        httpStatus: response.status,
+        durationMs,
+      });
+      return response;
+    }
 
     const body = await response.clone().json().catch(() => ({})) as Record<string, unknown>;
     const message = String(body.message ?? `TikTok request failed with HTTP ${response.status}`);
     const retryable = isTikTokRetryableFailure(response.status, body.code, message);
-    if (!retryable || attempt === maxAttempts - 1) {
+    const retryAfterRaw = response.headers.get("retry-after");
+    const retryAfterSupplied = typeof retryAfterRaw === "string" && retryAfterRaw.length > 0;
+    const isRateLimit = response.status === 429 || body.code === 40001 || /rate[_ ]limit|too many/i.test(message);
+
+    const parsedRetryAfterMs = retryAfterMs(retryAfterRaw);
+    const willRetry = retryable && attempt < maxAttempts - 1;
+    const emitResponseTelemetry = (retryAfterHonored: boolean) => emitConnectorTelemetry({
+      eventCategory: "provider_request",
+      provider: "tiktok_business",
+      operation: "report_download",
+      attempt: attempt + 1,
+      maxAttempts,
+      outcome: isRateLimit ? "throttled" : retryable ? "retryable_failure" : "permanent_failure",
+      errorCategory: isRateLimit ? "rate_limited" : retryable ? "provider_unavailable" : "internal_error",
+      httpStatus: response.status,
+      durationMs,
+      retryAfterSupplied,
+      retryAfterHonored,
+    });
+
+    if (!willRetry) {
+      emitResponseTelemetry(false);
       throw new TikTokProviderError(`TikTok API error ${body.code ?? response.status}: ${message}`, retryable, response.status);
     }
 
-    const delay = retryAfterMs(response.headers.get("retry-after")) ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    const delay = parsedRetryAfterMs ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
+    try {
+      await retrySleeper(delay);
+    } catch (error) {
+      emitResponseTelemetry(false);
+      throw error;
+    }
+    emitResponseTelemetry(parsedRetryAfterMs !== null);
   }
   throw new TikTokProviderError("TikTok request failed", true);
 }
@@ -207,29 +340,93 @@ async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise
 async function fetchTikTokJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const startMs = Date.now();
     let response: Response;
     try {
       response = await fetch(url, init);
     } catch (error) {
+      const durationMs = Date.now() - startMs;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "tiktok_business",
+          operation: "api_json",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "retryable_failure",
+          errorCategory: "network_error",
+          durationMs,
+          retryDelayMs: 500 * 2 ** attempt,
+        });
+        await retrySleeper(500 * 2 ** attempt);
         continue;
       }
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "api_json",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "retryable_failure",
+        errorCategory: "network_error",
+        durationMs,
+      });
       throw new TikTokProviderError(error instanceof Error ? error.message : "TikTok request failed", true);
     }
 
+    const durationMs = Date.now() - startMs;
     const json = await response.json().catch(() => ({})) as Record<string, unknown>;
     const failed = !response.ok || json.code !== 0;
-    if (!failed) return json;
+    if (!failed) {
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "api_json",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "success",
+        httpStatus: response.status,
+        durationMs,
+      });
+      return json;
+    }
 
     const message = String(json.message ?? `TikTok request failed with HTTP ${response.status}`);
     const retryable = isTikTokRetryableFailure(response.status, json.code, message);
-    if (!retryable || attempt === maxAttempts - 1) {
+    const retryAfterRaw = response.headers.get("retry-after");
+    const retryAfterSupplied = typeof retryAfterRaw === "string" && retryAfterRaw.length > 0;
+    const isRateLimit = response.status === 429 || json.code === 40001 || /rate[_ ]limit|too many/i.test(message);
+    const isAuthRevoked = json.code === 40100 || /token expired|invalid_token|unauthorized/i.test(message);
+
+    const parsedRetryAfterMs = retryAfterMs(retryAfterRaw);
+    const willRetry = retryable && attempt < maxAttempts - 1;
+    const emitResponseTelemetry = (retryAfterHonored: boolean) => emitConnectorTelemetry({
+      eventCategory: "provider_request",
+      provider: "tiktok_business",
+      operation: "api_json",
+      attempt: attempt + 1,
+      maxAttempts,
+      outcome: isRateLimit ? "throttled" : isAuthRevoked ? "permanent_failure" : retryable ? "retryable_failure" : "permanent_failure",
+      errorCategory: isRateLimit ? "rate_limited" : isAuthRevoked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
+      httpStatus: response.status,
+      durationMs,
+      retryAfterSupplied,
+      retryAfterHonored,
+    });
+
+    if (!willRetry) {
+      emitResponseTelemetry(false);
       throw new TikTokProviderError(`TikTok API error ${json.code ?? response.status}: ${message}`, retryable, response.status);
     }
 
-    const delay = retryAfterMs(response.headers.get("retry-after")) ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    const delay = parsedRetryAfterMs ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
+    try {
+      await retrySleeper(delay);
+    } catch (error) {
+      emitResponseTelemetry(false);
+      throw error;
+    }
+    emitResponseTelemetry(parsedRetryAfterMs !== null);
   }
   throw new TikTokProviderError("TikTok request failed", true);
 }
@@ -256,22 +453,20 @@ export const TIKTOK_CAMPAIGN_REPORT_DIMENSIONS = [
 
 export const TIKTOK_CAMPAIGN_REPORT_METRICS = [
   "campaign_name",
-  "impression",
-  "click",
   "spend",
+  "impressions",
+  "clicks",
   "cpc",
   "ctr",
   "conversion",
-  "revenue",
-  "roas",
 ] as const;
 
 export interface ReportTaskStatus_Response {
-  task_id: string;
+  task_id?: string;
   status: ReportTaskStatus;
   create_time?: string;
   complete_time?: string;
-  url?: string;          // download URL when COMPLETED
+  message?: string;
 }
 
 export interface ReportRow {
@@ -283,6 +478,18 @@ export interface ReportRow {
 // Production : https://business-api.tiktok.com/open_api/v1.3
 // Sandbox    : https://sandbox-ads.tiktok.com/open_api/v1.3
 export class TikTokReportClient {
+  /** Account facts, never derived from browser locale or report amounts. */
+  async getAdvertiserReportingContext(accessToken: string, advertiserId: string, sandbox = false) {
+    const url = new URL(`${this.getBase(sandbox)}/advertiser/info/`);
+    url.searchParams.set("advertiser_ids", JSON.stringify([advertiserId]));
+    url.searchParams.set("fields", JSON.stringify(["advertiser_id", "timezone", "currency"]));
+    const response = await fetch(url.toString(), { headers: { "Access-Token": accessToken }, signal: AbortSignal.timeout(10_000) });
+    const json = await response.json();
+    if (!response.ok || json.code !== 0) throw new Error("TikTok reporting context unavailable");
+    const account = Array.isArray(json.data?.list) ? json.data.list.find((a: { advertiser_id?: unknown }) => String(a.advertiser_id) === advertiserId) : undefined;
+    if (!account) throw new Error("TikTok advertiser context missing");
+    return { timezone: account.timezone as unknown, currency: account.currency as unknown };
+  }
   private getBase(sandbox = false): string {
     return sandbox
       ? 'https://sandbox-ads.tiktok.com/open_api/v1.3'
@@ -309,6 +516,8 @@ export class TikTokReportClient {
         start_date: params.start_date,
         end_date: params.end_date,
         page_size: params.page_size ?? 1000,
+        output_format: 'CSV_DOWNLOAD',
+        file_name: `monstera-${params.advertiser_id}`,
         lifetime: false,
         query_lifetime: false,
       }),
@@ -319,7 +528,8 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 2 — Poll task status. Returns status + download URL when COMPLETED.
+   * Step 2 — Poll task status. TikTok returns status only; SUCCESS does not
+   * include the download URL.
    */
   async checkTask(accessToken: string, advertiser_id: string, task_id: string, sandbox = false): Promise<ReportTaskStatus_Response> {
     const base = this.getBase(sandbox);
@@ -336,16 +546,45 @@ export class TikTokReportClient {
   }
 
   /**
+   * Step 3 — Exchange a successful task ID for a short-lived download URL.
+   */
+  async getDownloadUrl(
+    accessToken: string,
+    advertiser_id: string,
+    task_id: string,
+    sandbox = false,
+  ): Promise<string> {
+    const base = this.getBase(sandbox);
+    const url = new URL(`${base}/report/task/download/`);
+    url.searchParams.set('advertiser_id', advertiser_id);
+    url.searchParams.set('task_id', task_id);
+
+    const json = await fetchTikTokJson(url.toString(), {
+      headers: { 'Access-Token': accessToken },
+    });
+    const data = json.data as Record<string, unknown> | undefined;
+    const downloadUrl = typeof data?.download_url === 'string' ? data.download_url.trim() : '';
+    if (!downloadUrl) {
+      throw new TikTokProviderError(
+        `TikTok report task ${task_id} download response did not include download_url`,
+        true,
+      );
+    }
+    return downloadUrl;
+  }
+
+  /**
    * Parse NDJSON (one JSON object per line) or CSV report text.
    */
   parseReportText(text: string): ReportRow[] {
-    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-    if (!lines.length) return [];
+    const trimmedText = text.trim();
+    if (!trimmedText) return [];
 
     const rows: ReportRow[] = [];
 
     // Format 1: NDJSON or JSON lines
-    if (lines[0].startsWith('{')) {
+    if (trimmedText.startsWith('{')) {
+      const lines = trimmedText.split('\n').map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
         try {
           const parsed = JSON.parse(line);
@@ -378,30 +617,30 @@ export class TikTokReportClient {
       }
     } else {
       // Format 2: CSV format
-      const header = lines[0].split(',').map((h) => h.trim().toLowerCase());
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',');
-        const rowObj: Record<string, string> = {};
-        header.forEach((h, idx) => {
-          rowObj[h] = parts[idx]?.trim() ?? '';
-        });
+      const records = parseCsv(trimmedText, {
+        bom: true,
+        columns: (header: string[]) => header.map((value) => value.trim().toLowerCase()),
+        skip_empty_lines: true,
+        trim: true,
+      }) as Record<string, string>[];
+      for (const rowObj of records) {
         rows.push({
           dimensions: {
-            campaign_id: rowObj.campaign_id || parts[0] || '',
-            campaign_name: rowObj.campaign_name || parts[1] || '',
-            adgroup_id: rowObj.adgroup_id || parts[2] || '',
-            adgroup_name: rowObj.adgroup_name || parts[3] || '',
-            stat_time_day: rowObj.stat_time_day || rowObj.date || parts[4] || '',
+            campaign_id: rowObj.campaign_id || '',
+            campaign_name: rowObj.campaign_name || '',
+            adgroup_id: rowObj.adgroup_id || '',
+            adgroup_name: rowObj.adgroup_name || '',
+            stat_time_day: rowObj.stat_time_day || rowObj.date || '',
           },
           metrics: {
-            impression: rowObj.impression || rowObj.impressions || parts[5] || '0',
-            click: rowObj.click || rowObj.clicks || parts[6] || '0',
-            spend: rowObj.spend || rowObj.cost || parts[7] || '0',
-            cpc: rowObj.cpc || parts[8] || '0',
-            ctr: rowObj.ctr || parts[9] || '0',
-            conversion: rowObj.conversion || rowObj.conversions || parts[10] || '0',
-            revenue: rowObj.revenue || rowObj.conversion_value || parts[11] || '0',
-            roas: rowObj.roas || parts[12] || '0',
+            impression: rowObj.impression || rowObj.impressions || '0',
+            click: rowObj.click || rowObj.clicks || '0',
+            spend: rowObj.spend || rowObj.cost || '0',
+            cpc: rowObj.cpc || '0',
+            ctr: rowObj.ctr || '0',
+            conversion: rowObj.conversion || rowObj.conversions || '0',
+            revenue: rowObj.revenue || rowObj.conversion_value || '0',
+            roas: rowObj.roas || '0',
           },
         });
       }
@@ -411,7 +650,7 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 3 — Once SUCCESS, download rows from the returned URL.
+   * Step 4 — Download rows from the short-lived URL.
    * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
    */
   async downloadRows(downloadUrl: string): Promise<ReportRow[]> {

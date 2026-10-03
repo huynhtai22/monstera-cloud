@@ -64,6 +64,40 @@ describe("PostgreSQL Integration: Real Database Atomicity & Concurrency Fencing"
     }
   });
 
+  it("releases all provider manual keys on terminal outcomes while preserving retries and request replay", async (t) => {
+    if (!isDbAvailable || !prisma) { t.skip("PostgreSQL database required"); return; }
+    for (const provider of ["tiktok", "meta", "google_ads", "shopee", "lazada"]) {
+      for (const outcome of ["completed", "partial", "failed"] as const) {
+        const key = `manual-${provider}:pg-${outcome}`;
+        const input = { workspaceId: testWorkspace1, userId: testUser, since: "2026-01-01", until: "2026-01-10",
+          items: [{ connectionId: "conn-1" }], idempotencyKey: key };
+        const first = await createImportJob(input);
+        assert.equal((await createImportJob(input)).id, first.id);
+        const claim = await claimImportJob(first.id);
+        assert.ok(claim.leaseId);
+        if (outcome === "failed") {
+          await failImportJob(first.id, claim.leaseId, "retryable");
+          assert.equal((await createImportJob(input)).id, first.id);
+          await prisma.warehouseImportJob.update({ where: { id: first.id }, data: { scheduledAt: new Date(0), retryCount: 3 } });
+          const terminalClaim = await claimImportJob(first.id);
+          assert.ok(terminalClaim.leaseId);
+          await failImportJob(first.id, terminalClaim.leaseId, "exhausted");
+        } else {
+          await completeImportJob(first.id, claim.leaseId, [], 0, outcome);
+        }
+        assert.equal((await prisma.warehouseImportJob.findUniqueOrThrow({ where: { id: first.id } })).idempotencyKey, null);
+        assert.notEqual((await createImportJob(input)).id, first.id);
+      }
+    }
+    const input = { workspaceId: testWorkspace1, userId: testUser, since: "2026-01-01", until: "2026-01-10",
+      items: [{ connectionId: "conn-1" }], idempotencyKey: "batch:pg-replay" };
+    const first = await createImportJob(input);
+    const claim = await claimImportJob(first.id);
+    assert.ok(claim.leaseId);
+    await completeImportJob(first.id, claim.leaseId, [], 0);
+    assert.equal((await createImportJob(input)).id, first.id);
+  });
+
   it("REAL POSTGRES CONCURRENCY: Two workers concurrently claiming the same job results in exactly one claim", async (t) => {
     if (!isDbAvailable) {
       t.skip("PostgreSQL database not reachable; run with real DATABASE_URL in CI");

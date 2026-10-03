@@ -11,4 +11,11 @@ describe("public plan pricing source of truth", () => {
       assert.equal(formatPlanPrice(plan, "VND", true).amount, PLAN_PRICING[plan].vndAnnualMonthly);
     }
   });
+
+  it("uses Studio $49 annual / $59 MoM and Agency $129 annual / $149 MoM", () => {
+    assert.equal(formatPlanPrice("starter", "USD", true).formatted, "$49");
+    assert.equal(formatPlanPrice("starter", "USD", false).formatted, "$59");
+    assert.equal(formatPlanPrice("professional", "USD", true).formatted, "$129");
+    assert.equal(formatPlanPrice("professional", "USD", false).formatted, "$149");
+  });
 });

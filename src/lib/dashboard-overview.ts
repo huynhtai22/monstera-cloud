@@ -1,9 +1,15 @@
+import { countConsoleConnections } from "@/lib/console-connections";
 import prisma from "@/lib/prisma";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { logger } from "@/lib/logger";
 import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
 import { resolveSourceHealthState, type SourceHealthState } from "@/lib/source-health";
+import {
+  DASHBOARD_REVIEWED_ACTION,
+  derivePilotActivation,
+  type PilotActivationState,
+} from "@/lib/pilot-activation";
 
 export interface DashboardSourceItem {
   id: string;
@@ -63,7 +69,10 @@ export interface DashboardOverviewDTO {
     name: string;
     slug: string;
     plan: string;
+    status: string;
+    subscriptionEndsAt: string | null;
   };
+  pilotActivation: PilotActivationState;
   overallStatus: {
     state: "healthy" | "attention" | "syncing" | "onboarding";
     headline: string;
@@ -157,6 +166,8 @@ export function resolveDashboardSourceState(input: {
   lastError: string | null;
   lastSyncAt: Date | null;
   isSyncing: boolean;
+  syncStartedAt?: Date | null;
+  syncAttemptAt?: Date | null;
   staleBefore: Date;
 }): DashboardSourceItem["state"] {
   return resolveSourceHealthState(input);
@@ -455,7 +466,14 @@ export async function getWorkspaceDashboardOverview(
 ): Promise<DashboardOverviewDTO | null> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { id: true, name: true, slug: true, plan: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      plan: true,
+      status: true,
+      subscriptionEndsAt: true,
+    },
   });
 
   if (!workspace) return null;
@@ -476,6 +494,7 @@ export async function getWorkspaceDashboardOverview(
     syncLogCounts7d,
     apiKeysCount,
     lookerJobs,
+    dashboardReviewedEvent,
   ] = await Promise.all([
     // 1. All Connections in workspace
     prisma.connection.findMany({
@@ -576,6 +595,13 @@ export async function getWorkspaceDashboardOverview(
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
+
+    // 12. Durable onboarding milestone
+    prisma.auditEvent.findFirst({
+      where: { workspaceId, action: DASHBOARD_REVIEWED_ACTION },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
   ]);
 
   // Parse Sources
@@ -631,7 +657,10 @@ export async function getWorkspaceDashboardOverview(
             const clean = String(id).replace(/\D/g, "");
             return clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : String(id);
           });
-          accountCount = customers.length;
+          const discoveredCustomerCount = Number(creds.discoveredCustomerCount);
+          accountCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
+            ? discoveredCustomerCount
+            : customers.length;
         }
         const mccId = creds.mccId || creds.managerCustomerId;
         if (mccId) {
@@ -685,6 +714,8 @@ export async function getWorkspaceDashboardOverview(
       lastError: conn.lastError,
       lastSyncAt: conn.lastSyncAt,
       isSyncing: runningSourceConnectionId === conn.id,
+      syncStartedAt: latestSyncJob?.createdAt,
+      syncAttemptAt: conn.updatedAt,
       staleBefore: oneDayAgo,
     });
     let safeLastError: string | null = null;
@@ -698,6 +729,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: sanitized.explanation,
         actionType: sanitized.actionType,
         actionLabel: sanitized.actionLabel,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -710,11 +742,14 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "retry",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
       });
+    } else if (state === "stuck") {
+      safeLastError = "The sync has exceeded one hour. Review the source and retry.";
+      needsAttention.push({ id: `conn-stuck-${conn.id}`, title: `${providerLabel} sync is stuck`, explanation: safeLastError, actionType: "retry", actionLabel: "Review source", href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`, connectionId: conn.id, provider: conn.provider, timestamp: conn.updatedAt.toISOString() });
     } else if (state === "stale") {
       safeLastError = "The last successful sync is older than the one-day freshness threshold.";
       needsAttention.push({
@@ -723,7 +758,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "retry",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: conn.lastSyncAt?.toISOString() ?? (conn.updatedAt || conn.createdAt).toISOString(),
@@ -736,7 +771,7 @@ export async function getWorkspaceDashboardOverview(
         explanation: safeLastError,
         actionType: "review",
         actionLabel: "Review source",
-        href: `/sources/${conn.id}`,
+        href: `/sources/${encodeURIComponent(conn.id)}#source-recovery`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
@@ -779,7 +814,9 @@ export async function getWorkspaceDashboardOverview(
       explanation: sanitized.explanation,
       actionType: "retry",
       actionLabel: "Review",
-      href: "/reports",
+      href: latestSyncJob.pipeline?.sourceConnection?.id
+        ? `/sources/${encodeURIComponent(latestSyncJob.pipeline.sourceConnection.id)}#source-recovery`
+        : "/reports?view=sync&status=error",
       timestamp: (latestSyncJob.finishedAt || latestSyncJob.createdAt).toISOString(),
     });
   }
@@ -991,6 +1028,10 @@ export async function getWorkspaceDashboardOverview(
     overallState = "attention";
     overallHeadline = "Attention needed";
     overallSupportingText = needsAttention[0].title + " — " + needsAttention[0].explanation;
+  } else if (sourcesList.some(source => ["disconnected", "unknown", "partial", "stuck"].includes(source.state))) {
+    overallState = "attention";
+    overallHeadline = "Sources need review";
+    overallSupportingText = "Review authorization and sync status for the affected connections.";
   } else if (warehouseStatus === "refreshing") {
     overallState = "syncing";
     overallHeadline = "Warehouse syncing";
@@ -1011,12 +1052,27 @@ export async function getWorkspaceDashboardOverview(
 
   const healthySources = sourcesList.filter((source) => source.state === "fresh").length;
   const sourceAttentionCount = sourcesList.filter(
-    (source) => source.state === "error" || source.state === "stale" || source.state === "disconnected",
+    (source) => ["error", "stale", "disconnected", "unknown", "partial", "stuck"].includes(source.state),
   ).length;
   const pendingSources = sourcesList.filter(
     (source) => source.state === "pending" || source.state === "syncing",
   ).length;
   const accountSummary = `${totalConnectedAccounts} account${totalConnectedAccounts === 1 ? "" : "s"}`;
+  const pilotActivation = derivePilotActivation({
+    workspaceStatus: workspace.status,
+    subscriptionEndsAt: workspace.subscriptionEndsAt,
+    sources: sourcesList.map((source) => ({
+      id: source.id,
+      state: source.state,
+      lastSyncAt: source.lastSyncAt,
+    })),
+    rows7d,
+    dataThroughDate: latestWarehouseDataDate,
+    dashboardReviewedAt: dashboardReviewedEvent?.createdAt ?? null,
+    latestImport: latestImportJob
+      ? { status: latestImportJob.status, approximateRows: latestImportJob.approximateRows }
+      : null,
+  });
 
   return {
     workspace: {
@@ -1024,7 +1080,10 @@ export async function getWorkspaceDashboardOverview(
       name: workspace.name,
       slug: workspace.slug,
       plan: workspace.plan,
+      status: workspace.status,
+      subscriptionEndsAt: workspace.subscriptionEndsAt?.toISOString() ?? null,
     },
+    pilotActivation,
     overallStatus: {
       state: overallState,
       headline: overallHeadline,
@@ -1032,7 +1091,7 @@ export async function getWorkspaceDashboardOverview(
     },
     summaryCards: {
       sources: {
-        total: sourceConnections.length,
+        total: countConsoleConnections(sourceConnections),
         healthy: healthySources,
         attention: sourceAttentionCount,
         accountsTotal: totalConnectedAccounts,

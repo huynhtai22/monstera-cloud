@@ -9,19 +9,30 @@ on:
   # This workflow intentionally only runs the Vercel CLI deploy on `main` to avoid
   # free-tier upload rate limits (`api-upload-free`) when many PR updates happen.
 
+# The job that runs `prisma migrate deploy` must never overlap another release
+# job against the same production database. Keep queued deployments rather than
+# cancelling an in-flight migration.
+concurrency:
+  group: monstera-production-schema-and-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -33,13 +44,22 @@ jobs:
         run: |
           vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Apply database migrations
+      - name: Install project dependencies
         run: |
-          set -a
-          source .vercel/.env.production.local
-          set +a
-          test -n "$DATABASE_URL"
           npm ci
+
+      # Migrations must never source the pulled environment file: the dedicated
+      # GitHub repository secret is scoped to this step and injected into the
+      # migration process only. Both URLs intentionally use the same direct,
+      # non-pooled connection. The validator fails closed on a missing,
+      # malformed or pooled DIRECT_URL before Prisma migration execution.
+      # `vercel pull` is retained for project/build configuration only.
+      - name: Apply database migrations
+        env:
+          DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+        run: |
+          node scripts/validate-migration-env.mjs
           npm run db:migrate:prepare
 
       - name: Build project
@@ -64,11 +84,13 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          EXPECTED_SCHEMA=$(node -e 'const fs=require("node:fs"); const dirs=fs.readdirSync("prisma/migrations").filter(d=>/^\d{14}_/.test(d)).sort(); console.log(dirs[dirs.length-1]);')
+          export EXPECTED_SCHEMA
           for attempt in {1..12}; do
             if curl --fail --silent --show-error \
               --output version.json \
               "https://monsteracloud.com/api/version" && \
-              node -e 'const fs=require("node:fs"); const v=JSON.parse(fs.readFileSync("version.json", "utf8")); if (v.commitSha !== process.env.EXPECTED_SHA) { console.error(`Expected ${process.env.EXPECTED_SHA}, got ${v.commitSha}`); process.exit(1) } if (v.commitSource !== "build") { console.error(`Expected build commit source, got ${v.commitSource}`); process.exit(1) } if (!v.buildTime) { console.error("Missing build time"); process.exit(1) } if (v.schemaVersion !== "20260819000000_support_tickets") process.exit(1)'; then
+              node -e 'const fs=require("node:fs"); const v=JSON.parse(fs.readFileSync("version.json", "utf8")); if (v.commitSha !== process.env.EXPECTED_SHA) { console.error(`Expected ${process.env.EXPECTED_SHA}, got ${v.commitSha}`); process.exit(1) } if (v.commitSource !== "build") { console.error(`Expected build commit source, got ${v.commitSource}`); process.exit(1) } if (!v.buildTime) { console.error("Missing build time"); process.exit(1) } if (v.schemaVersion !== process.env.EXPECTED_SCHEMA) { console.error(`Expected schema ${process.env.EXPECTED_SCHEMA}, got ${v.schemaVersion}`); process.exit(1) }'; then
               exit 0
             fi
             echo "Production alias is not ready yet (attempt $attempt/12)"

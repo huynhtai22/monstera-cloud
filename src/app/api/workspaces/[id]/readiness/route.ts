@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
+import { parseReadinessRequest } from "@/lib/report-readiness-request";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { deriveReportingReadiness } from "@/lib/reporting-readiness";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/workspaces/[id]/readiness?since=&until=&clientId=
  * Derived DTO — no ReportingReadiness table.
  */
 export async function GET(req: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -20,6 +26,8 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
   const since = searchParams.get("since") ?? undefined;
   const until = searchParams.get("until") ?? undefined;
   const clientId = searchParams.get("clientId") ?? undefined;
+  const parsed = parseReadinessRequest({ workspaceId, clientId, start: since, end: until });
+  if (!parsed) return NextResponse.json({ error: "Invalid readiness window" }, { status: 400 });
 
   try {
     await requireWorkspaceAccess({
@@ -32,6 +40,17 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
     return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const readiness = await deriveReportingReadiness(workspaceId, { since, until, clientId });
-  return NextResponse.json(readiness);
+  try {
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+    assertQueryableClientContext(resolution);
+    const scopedClientId = warehouseClientId(resolution);
+    const readiness = await deriveReportingReadiness(workspaceId, { since: parsed.window.start, until: parsed.window.end, clientId: scopedClientId });
+    return NextResponse.json(readiness, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return toClientContextResponse(error) ?? toRbacResponse(error) ?? NextResponse.json({ error: "Unable to evaluate readiness" }, { status: 500 });
+  }
 }

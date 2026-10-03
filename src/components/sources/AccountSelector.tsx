@@ -3,8 +3,9 @@
 import React, { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { Check, ChevronDown, Building2, Copy, Layers, Search, Users, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Building2, Copy, Layers, Search, Users, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SourceReconnectBanner } from "@/components/sources/SourceReconnectBanner";
 
 interface Account {
   id: string;
@@ -18,7 +19,10 @@ interface AccountSelectorProps {
   provider: string;
   connectionName?: string;
   managerBadge?: string | null;
+  accountEmail?: string | null;
   variant?: "panel" | "compact";
+  needsReconnect?: boolean;
+  onReconnect?: () => void;
 }
 
 const fetcher = async (url: string) => {
@@ -46,9 +50,10 @@ const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; ty
   },
 };
 
-export function AccountSelector({ connectionId, provider, connectionName, managerBadge, variant = "panel" }: AccountSelectorProps) {
+export function AccountSelector({ connectionId, provider, connectionName, managerBadge, accountEmail, variant = "panel", needsReconnect = false, onReconnect }: AccountSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
 
   const { data, error, isLoading, mutate } = useSWR(
@@ -56,6 +61,23 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     fetcher,
     { refreshInterval: 0 }
   );
+
+  const config = PROVIDER_CONFIG[provider];
+
+  const refreshAccounts = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/connections/${connectionId}/accounts?refresh=true`);
+      const updated = await res.json();
+      if (!res.ok) throw new Error(updated.error || "Failed to refresh accounts");
+      await mutate(updated, false);
+      toast.success(`Discovered ${updated.total ?? 0} accounts from ${config?.title || "provider"}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to refresh accounts");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const accounts: Account[] = useMemo(() => data?.accounts || [], [data?.accounts]);
   const selectedCount = accounts.filter((a) => a.selected).length;
@@ -105,7 +127,6 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     }
   }, [accounts, connectionId, mutate]);
 
-  const config = PROVIDER_CONFIG[provider];
   if (!config) return null;
 
   const setVisibleSelection = (selected: boolean) => {
@@ -136,21 +157,40 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     );
   }
 
-  if (error || accounts.length === 0) {
+  if (needsReconnect) {
+    return (
+      <SourceReconnectBanner
+        provider={provider}
+        needsReconnect={true}
+        onReconnect={onReconnect}
+      />
+    );
+  }
+
+  if (error) {
     return (
       <div className="rounded-xl border border-line/80 bg-panel/50 p-5 shadow-xs">
-        <div className="flex items-start gap-3.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400">
-            <AlertCircle className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="text-sm font-semibold tracking-tight text-ink">No ad accounts discovered</h4>
-            <p className="mt-1 text-xs leading-relaxed text-ink-mute">
-              {error?.message || "Monstera could not find ad accounts attached to this connection. Reconnecting will re-authorize OAuth access and discover available ad accounts."}
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-ink-mute">Failed to load accounts for this connection.</p>
+          <button
+            type="button"
+            onClick={() => mutate()}
+            className="rounded-lg border border-line bg-canvas px-3 py-1 text-xs text-ink hover:bg-panel transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <SourceReconnectBanner
+        provider={provider}
+        needsReconnect={false}
+        onReconnect={onReconnect}
+      />
     );
   }
 
@@ -168,6 +208,11 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
               {managerBadge ? (
                 <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
                   {managerBadge}
+                </span>
+              ) : null}
+              {accountEmail ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-300" title={`Authorized Google/Provider Account: ${accountEmail}`}>
+                  ✉ {accountEmail}
                 </span>
               ) : null}
               <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
@@ -214,6 +259,16 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
                 Pause shown
               </button>
             </div>
+            <button
+              type="button"
+              onClick={refreshAccounts}
+              disabled={refreshing || isLoading}
+              title="Refresh account list from platform"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink hover:border-line/80 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
           </div>
         </div>
 
@@ -357,6 +412,16 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
                 className="text-xs font-medium text-ink-mute hover:text-ink transition-colors"
               >
                 Clear
+              </button>
+              <span className="text-line">|</span>
+              <button
+                type="button"
+                onClick={refreshAccounts}
+                disabled={refreshing || isLoading}
+                className="inline-flex items-center gap-1 text-xs font-medium text-ink-mute hover:text-ink transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} />
+                Refresh
               </button>
             </div>
           </div>

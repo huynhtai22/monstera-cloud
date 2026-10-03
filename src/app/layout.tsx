@@ -6,6 +6,7 @@ import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import { Providers } from "@/components/SWRProvider";
 import { LiveChatWidget } from "@/components/LiveChatWidget";
 import { MetaPixelAnalytics } from "@/components/MetaPixelAnalytics";
+import { shouldSuppressIntegrationsForIsolatedE2e } from "@/lib/e2e-env-guard";
 
 const GTM_ID = "GTM-KMLZHNVV";
 
@@ -19,6 +20,9 @@ const FBQ_INIT_OPTIONS =
     META_TEST_EVENT_CODE && META_TEST_EVENT_CODE.length > 0
         ? `, ${JSON.stringify({ test_event_code: META_TEST_EVENT_CODE })}`
         : "";
+// A supplied isolation flag is fail-closed: integrations are suppressed only
+// after the shared dual-flag, loopback, non-deployment, and commit-SHA checks.
+const isIsolatedE2e = shouldSuppressIntegrationsForIsolatedE2e(process.env);
 
 
 export const metadata: Metadata = {
@@ -71,8 +75,10 @@ export default function RootLayout({
     };
 
     return (
-        <html lang="en" className="antialiased dark">
+        <html lang="en" className="antialiased dark" suppressHydrationWarning>
             <head>
+                <style>{`:root{background:var(--color-canvas,#050505);color:var(--color-ink,#ededed)}`}</style>
+                <meta name="theme-color" content="#050505" />
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `(function(){try{var t=localStorage.getItem("monstera-theme");if(t==="light"){document.documentElement.classList.remove("dark");}else{document.documentElement.classList.add("dark");}}catch(e){document.documentElement.classList.add("dark");}})();`,
@@ -84,6 +90,7 @@ export default function RootLayout({
                 />
             </head>
             <body className="antialiased">
+                {!isIsolatedE2e && <>
                 {/* Google Tag Manager (noscript fallback for users with JS disabled) */}
                 <noscript>
                     <iframe
@@ -131,11 +138,12 @@ fbq('init', '${META_PIXEL_ID}'${FBQ_INIT_OPTIONS});
 fbq('track', 'PageView');`,
                     }}
                 />
+                </>}
 
                 <Providers>
                     {children}
-                    <MetaPixelAnalytics />
-                    <LiveChatWidget />
+                    {!isIsolatedE2e && <MetaPixelAnalytics />}
+                    {!isIsolatedE2e && <LiveChatWidget />}
                 </Providers>
             </body>
         </html>

@@ -13,6 +13,10 @@ import {
   type ConnectionLease,
 } from '@/lib/connection-sync-lease';
 import { recordPayloadSchemaDiscovery } from '@/lib/payload-schema-discovery';
+import {
+  flushGenericPayloadBatches,
+  isWarehouseBulkUpsertEnabled,
+} from '@/lib/warehouse-bulk-upsert';
 
 export interface CampaignMetricPayload {
   workspaceId: string;
@@ -40,6 +44,14 @@ export interface CampaignMetricPayload {
   roas?: number;
   currency?: string;
   rawData?: unknown;
+  /** Promoted Shopee Ads broad/direct/keyword display values. Null = unknown (legacy fallback applies). */
+  shopeeBroadOrders?: number | null;
+  shopeeBroadUnits?: number | null;
+  shopeeBroadGmv?: number | null;
+  shopeeDirectOrders?: number | null;
+  shopeeDirectUnits?: number | null;
+  shopeeDirectGmv?: number | null;
+  shopeeKeywordSettingsCount?: number | null;
   syncJobId?: string;
   /** When present, the row is stamped with lease evidence and ingestion is fenced. */
   lease?: ConnectionLease;
@@ -80,6 +92,13 @@ export async function upsertCampaignMetric(
     roas = 0,
     currency,
     rawData,
+    shopeeBroadOrders,
+    shopeeBroadUnits,
+    shopeeBroadGmv,
+    shopeeDirectOrders,
+    shopeeDirectUnits,
+    shopeeDirectGmv,
+    shopeeKeywordSettingsCount,
     syncJobId,
     lease,
   } = payload;
@@ -102,6 +121,26 @@ export async function upsertCampaignMetric(
   const safeRoas = Number.isFinite(roas) ? Math.max(0, roas) : 0;
   const safeCpc = Number.isFinite(cpc) ? Math.max(0, cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
   const safeCtr = Number.isFinite(ctr) ? Math.max(0, ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
+  // Promoted Shopee display values use the same finite/non-negative
+  // normalization as the normalized conversions/revenue fields. Zero is
+  // a valid value and must never be coerced to null — hence ??, never ||.
+  // Non-finite garbage becomes NULL so the legacy sanitized fallback applies
+  // instead of poisoning totals with NaN/Infinity.
+  const sanitizePromoted = (v: number | null | undefined): number | null => {
+    if (v == null) return null;
+    if (!Number.isFinite(v)) return null;
+    return Math.max(0, v);
+  };
+  const safeShopee = {
+    shopeeBroadOrders: sanitizePromoted(shopeeBroadOrders),
+    shopeeBroadUnits: sanitizePromoted(shopeeBroadUnits),
+    shopeeBroadGmv: sanitizePromoted(shopeeBroadGmv),
+    shopeeDirectOrders: sanitizePromoted(shopeeDirectOrders),
+    shopeeDirectUnits: sanitizePromoted(shopeeDirectUnits),
+    shopeeDirectGmv: sanitizePromoted(shopeeDirectGmv),
+    shopeeKeywordSettingsCount:
+      shopeeKeywordSettingsCount == null ? null : Math.max(0, Math.round(shopeeKeywordSettingsCount)),
+  };
 
   await (prisma as any).campaignMetric.upsert({
     where: {
@@ -140,6 +179,7 @@ export async function upsertCampaignMetric(
       roas: safeRoas,
       currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
+      ...safeShopee,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
       lockScope: lease?.scope ?? null,
@@ -163,6 +203,7 @@ export async function upsertCampaignMetric(
       roas: safeRoas,
       currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
+      ...safeShopee,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
       lockScope: lease?.scope ?? null,
@@ -242,6 +283,12 @@ export async function ingestGoogleAdsRows(
     });
   }
 
+  // Bulk path (disabled by default): same validation, batched UNNEST upsert
+  // with per-row fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    return ingestGoogleAdsRowsBulk(rows, opts);
+  }
+
   for (const row of rows) {
     if (!(await fencedHeartbeat(opts.lease, upserted + failed))) {
       failed += rows.length - upserted - failed;
@@ -297,6 +344,99 @@ export async function ingestGoogleAdsRows(
 }
 
 /**
+ * Bulk variant of the Google Ads loop. Validation mirrors the per-row loop
+ * exactly; validated payloads flush through the batched UNNEST path.
+ */
+async function ingestGoogleAdsRowsBulk(
+  rows: Array<{
+    campaign_id?: string;
+    campaign_name?: string;
+    ad_group_id?: string;
+    ad_group_name?: string;
+    date?: string;
+    impressions?: number;
+    clicks?: number;
+    cost?: number;
+    cpc?: number;
+    ctr?: number;
+    conversions?: number;
+    conversion_value?: number;
+    currency?: string;
+    raw?: unknown;
+  }>,
+  opts: {
+    workspaceId: string;
+    connectionId: string;
+    accountId: string;
+    accountName?: string;
+    syncJobId: string;
+    lease?: ConnectionLease;
+  },
+): Promise<{ upserted: number; failed: number }> {
+  if (opts.lease) {
+    try {
+      await heartbeatConnectionSyncLease(opts.lease);
+    } catch {
+      return { upserted: 0, failed: rows.length };
+    }
+  }
+  const payloads: CampaignMetricPayload[] = [];
+  let failed = 0;
+  for (const row of rows) {
+    if (!row.date || !row.campaign_id) {
+      failed++;
+      continue;
+    }
+    const date = new Date(row.date);
+    if (isNaN(date.getTime())) {
+      logger.warn('[GOOGLE_ADS_INGEST] Invalid date:', row.date);
+      failed++;
+      continue;
+    }
+    payloads.push({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      platform: 'google_ads',
+      accountId: opts.accountId,
+      accountName: opts.accountName,
+      level: 'campaign',
+      entityId: row.campaign_id,
+      campaignId: row.campaign_id,
+      campaignName: row.campaign_name ?? '',
+      adsetId: row.ad_group_id ?? '',
+      adsetName: row.ad_group_name ?? '',
+      date,
+      impressions: row.impressions ?? 0,
+      clicks: row.clicks ?? 0,
+      spend: row.cost ?? 0,
+      cpc: row.cpc ?? 0,
+      ctr: row.ctr ?? 0,
+      conversions: row.conversions ?? 0,
+      revenue: row.conversion_value ?? 0,
+      currency: row.currency,
+      rawData: row.raw,
+      syncJobId: opts.syncJobId,
+      lease: opts.lease,
+    });
+  }
+  const result = await flushGenericPayloadBatches(payloads, {
+    fallbackRow: (payload) => upsertCampaignMetric(payload),
+    onHeartbeat: opts.lease ? () => heartbeatConnectionSyncLease(opts.lease!) : undefined,
+  });
+  return { upserted: result.upserted, failed: failed + result.failed };
+}
+
+export interface TiktokProvenanceContext {
+  endpoint?: string;
+  grain?: string;
+  conversionAction?: string;
+  attributionWindow?: string;
+  revenueBasis?: string;
+  availability?: string;
+  origin?: "provider_response" | "provider_request" | "account_config" | "unverified";
+}
+
+/**
  * Ingest TikTok campaign rows to CampaignMetric.
  */
 export async function ingestTiktokRows(
@@ -310,8 +450,11 @@ export async function ingestTiktokRows(
     connectionId: string;
     accountId: string;
     accountName?: string;
+    /** Explicit currency returned by the authenticated advertiser-info API; not a default. */
+    providerCurrency?: string;
     syncJobId: string;
     lease?: ConnectionLease;
+    provenanceContext?: TiktokProvenanceContext;
   }
 ): Promise<{ upserted: number; failed: number }> {
   let upserted = 0;
@@ -332,6 +475,12 @@ export async function ingestTiktokRows(
       provider: "tiktok_business",
       sample: rows[0],
     });
+  }
+
+  // Bulk path (disabled by default): same validation, batched UNNEST upsert
+  // with per-row fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    return ingestTiktokRowsBulk(rows, opts);
   }
 
   for (const row of rows) {
@@ -372,7 +521,48 @@ export async function ingestTiktokRows(
       const conversions = parseFloat(String(metrics.conversion ?? metrics.conversions ?? 0));
       const revenue = parseFloat(String(metrics.revenue ?? metrics.conversion_value ?? 0));
       const roas = parseFloat(String(metrics.roas ?? 0));
-      const currency = typeof metrics.currency === 'string' ? metrics.currency : undefined;
+      const currency = typeof metrics.currency === 'string' ? metrics.currency : opts.providerCurrency;
+
+      const rawObj = (row.raw && typeof row.raw === 'object') ? (row.raw as Record<string, unknown>) : {};
+      const provContext = opts.provenanceContext ?? {};
+
+      const endpoint = typeof provContext.endpoint === 'string'
+        ? provContext.endpoint
+        : (typeof rawObj.endpoint === 'string' ? rawObj.endpoint : 'AUCTION_CAMPAIGN');
+      const grain = typeof provContext.grain === 'string'
+        ? provContext.grain
+        : (typeof rawObj.grain === 'string' ? rawObj.grain : 'campaign');
+      const conversionAction = typeof provContext.conversionAction === 'string'
+        ? provContext.conversionAction
+        : (typeof rawObj.conversionAction === 'string' ? rawObj.conversionAction : undefined);
+      const attributionWindow = typeof provContext.attributionWindow === 'string'
+        ? provContext.attributionWindow
+        : (typeof rawObj.attributionWindow === 'string' ? rawObj.attributionWindow : undefined);
+      const revenueBasis = typeof provContext.revenueBasis === 'string'
+        ? provContext.revenueBasis
+        : (typeof rawObj.revenueBasis === 'string' ? rawObj.revenueBasis : undefined);
+      const availability = typeof provContext.availability === 'string'
+        ? provContext.availability
+        : (typeof rawObj.availability === 'string' ? rawObj.availability : undefined);
+      const provenanceOrigin = provContext.origin ?? (
+        typeof rawObj.provenanceOrigin === 'string'
+          ? (rawObj.provenanceOrigin as "provider_response" | "provider_request" | "account_config" | "unverified")
+          : "unverified"
+      );
+
+      const normalizedProvenance: Record<string, unknown> = {
+        endpoint,
+        grain,
+        provenanceOrigin,
+        ...rawObj,
+        dimensions: dims,
+        metrics,
+      };
+
+      if (conversionAction !== undefined) normalizedProvenance.conversionAction = conversionAction;
+      if (attributionWindow !== undefined) normalizedProvenance.attributionWindow = attributionWindow;
+      if (revenueBasis !== undefined) normalizedProvenance.revenueBasis = revenueBasis;
+      if (availability !== undefined) normalizedProvenance.availability = availability;
 
       await upsertCampaignMetric({
         workspaceId: opts.workspaceId,
@@ -396,7 +586,7 @@ export async function ingestTiktokRows(
         revenue,
         roas,
         currency,
-        rawData: row.raw ?? { dimensions: dims, metrics },
+        rawData: normalizedProvenance,
         syncJobId: opts.syncJobId,
         lease: opts.lease,
       });
@@ -409,4 +599,136 @@ export async function ingestTiktokRows(
   }
 
   return { upserted, failed };
+}
+
+/**
+ * Bulk variant of the TikTok loop. Validation mirrors the per-row loop
+ * exactly; validated payloads flush through the batched UNNEST path.
+ */
+export async function ingestTiktokRowsBulk(
+  rows: Array<{
+    dimensions?: Record<string, string | number>;
+    metrics?: Record<string, string | number>;
+    raw?: unknown;
+  }>,
+  opts: {
+    workspaceId: string;
+    connectionId: string;
+    accountId: string;
+    accountName?: string;
+    providerCurrency?: string;
+    syncJobId: string;
+    lease?: ConnectionLease;
+    provenanceContext?: TiktokProvenanceContext;
+  },
+): Promise<{ upserted: number; failed: number }> {
+  if (opts.lease) {
+    try {
+      await heartbeatConnectionSyncLease(opts.lease);
+    } catch {
+      return { upserted: 0, failed: rows.length };
+    }
+  }
+  const payloads: CampaignMetricPayload[] = [];
+  let failed = 0;
+  for (const row of rows) {
+    const dims = row.dimensions || {};
+    const metrics = row.metrics || {};
+    const campaignId = String(dims.campaign_id ?? '');
+    const campaignName = String(dims.campaign_name ?? metrics.campaign_name ?? '');
+    const adgroupId = String(dims.adgroup_id ?? '');
+    const adgroupName = String(dims.adgroup_name ?? '');
+    const dateStr = String(dims.stat_time_day ?? dims.date ?? '');
+    if (!dateStr || !campaignId) {
+      failed++;
+      continue;
+    }
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      logger.warn('[TIKTOK_INGEST] Invalid date:', dateStr);
+      failed++;
+      continue;
+    }
+    const impressions = parseInt(String(metrics.impression ?? metrics.impressions ?? 0), 10);
+    const clicks = parseInt(String(metrics.click ?? metrics.clicks ?? 0), 10);
+    const spend = parseFloat(String(metrics.spend ?? metrics.cost ?? 0));
+    const cpc = parseFloat(String(metrics.cpc ?? 0));
+    const ctr = parseFloat(String(metrics.ctr ?? 0)) / 100;
+    const conversions = parseFloat(String(metrics.conversion ?? metrics.conversions ?? 0));
+    const revenue = parseFloat(String(metrics.revenue ?? metrics.conversion_value ?? 0));
+    const roas = parseFloat(String(metrics.roas ?? 0));
+    const currency = typeof metrics.currency === 'string' ? metrics.currency : opts.providerCurrency;
+    const rawObj = (row.raw && typeof row.raw === 'object') ? (row.raw as Record<string, unknown>) : {};
+    const provContext = opts.provenanceContext ?? {};
+
+    const endpoint = typeof provContext.endpoint === 'string'
+      ? provContext.endpoint
+      : (typeof rawObj.endpoint === 'string' ? rawObj.endpoint : 'AUCTION_CAMPAIGN');
+    const grain = typeof provContext.grain === 'string'
+      ? provContext.grain
+      : (typeof rawObj.grain === 'string' ? rawObj.grain : 'campaign');
+    const conversionAction = typeof provContext.conversionAction === 'string'
+      ? provContext.conversionAction
+      : (typeof rawObj.conversionAction === 'string' ? rawObj.conversionAction : undefined);
+    const attributionWindow = typeof provContext.attributionWindow === 'string'
+      ? provContext.attributionWindow
+      : (typeof rawObj.attributionWindow === 'string' ? rawObj.attributionWindow : undefined);
+    const revenueBasis = typeof provContext.revenueBasis === 'string'
+      ? provContext.revenueBasis
+      : (typeof rawObj.revenueBasis === 'string' ? rawObj.revenueBasis : undefined);
+    const availability = typeof provContext.availability === 'string'
+      ? provContext.availability
+      : (typeof rawObj.availability === 'string' ? rawObj.availability : undefined);
+    const provenanceOrigin = provContext.origin ?? (
+      typeof rawObj.provenanceOrigin === 'string'
+        ? (rawObj.provenanceOrigin as "provider_response" | "provider_request" | "account_config" | "unverified")
+        : "unverified"
+    );
+
+    const normalizedProvenance: Record<string, unknown> = {
+      endpoint,
+      grain,
+      provenanceOrigin,
+      ...rawObj,
+      dimensions: dims,
+      metrics,
+    };
+
+    if (conversionAction !== undefined) normalizedProvenance.conversionAction = conversionAction;
+    if (attributionWindow !== undefined) normalizedProvenance.attributionWindow = attributionWindow;
+    if (revenueBasis !== undefined) normalizedProvenance.revenueBasis = revenueBasis;
+    if (availability !== undefined) normalizedProvenance.availability = availability;
+
+    payloads.push({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      platform: 'tiktok_business',
+      accountId: opts.accountId,
+      accountName: opts.accountName,
+      level: 'campaign',
+      entityId: campaignId,
+      campaignId,
+      campaignName,
+      adsetId: adgroupId,
+      adsetName: adgroupName,
+      date,
+      impressions,
+      clicks,
+      spend,
+      cpc,
+      ctr,
+      conversions,
+      revenue,
+      roas,
+      currency,
+      rawData: normalizedProvenance,
+      syncJobId: opts.syncJobId,
+      lease: opts.lease,
+    });
+  }
+  const result = await flushGenericPayloadBatches(payloads, {
+    fallbackRow: (payload) => upsertCampaignMetric(payload),
+    onHeartbeat: opts.lease ? () => heartbeatConnectionSyncLease(opts.lease!) : undefined,
+  });
+  return { upserted: result.upserted, failed: failed + result.failed };
 }

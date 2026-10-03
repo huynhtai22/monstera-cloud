@@ -10,6 +10,10 @@ import {
     OAuthError,
 } from "../types";
 import { tiktokBusinessClient } from "@/lib/tiktok-business";
+import {
+    normalizeTikTokAdvertiserIds,
+    TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
+} from "@/lib/tiktok-advertiser-id";
 
 export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     readonly id = "tiktok_business";
@@ -37,6 +41,34 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     }): Promise<{ credentials: OAuthCredentials; metadata: ConnectionMetadata }> {
         // TikTok returns `auth_code` not `code`
         const tokenData = await tiktokBusinessClient.exchangeCode(code);
+        const tokenAdvertiserIds = normalizeTikTokAdvertiserIds(tokenData.advertiser_ids);
+        let discoveredAdvertiserIds: string[] = [];
+        let discoveryRequestId: string | undefined;
+        let discoveryStatus: "success" | "failed" = "success";
+        let discoveryError: string | undefined;
+
+        try {
+            const discovery = await tiktokBusinessClient.listAuthorizedAdvertisers(tokenData.access_token);
+            discoveredAdvertiserIds = normalizeTikTokAdvertiserIds(discovery.advertiser_ids);
+            discoveryRequestId = discovery.request_id;
+        } catch (error) {
+            discoveryStatus = "failed";
+            discoveryError = error instanceof Error
+                ? error.message.slice(0, 500)
+                : "TikTok advertiser discovery failed";
+            // A valid token response already carries usable accounts, so an
+            // auxiliary discovery outage must not erase that successful grant.
+            // When the token response has no accounts, discovery is required.
+            if (!tokenAdvertiserIds.length) throw error;
+        }
+
+        const advertiserIds = normalizeTikTokAdvertiserIds([
+            ...tokenAdvertiserIds,
+            ...discoveredAdvertiserIds,
+        ]);
+        if (!advertiserIds.length) {
+            throw new OAuthError("provider_error", TIKTOK_ADVERTISER_RECONNECT_MESSAGE, this.id);
+        }
 
         const isLongLivedAdvertiserToken = !tokenData.refresh_token && !tokenData.expires_in;
         const credentials: OAuthCredentials = isLongLivedAdvertiserToken
@@ -52,13 +84,18 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
               };
 
         const metadata: ConnectionMetadata = {
-            name: `TikTok Ads (${tokenData.advertiser_ids.length} advertiser${
-                tokenData.advertiser_ids.length === 1 ? "" : "s"
+            name: `TikTok Ads (${advertiserIds.length} advertiser${
+                advertiserIds.length === 1 ? "" : "s"
             })`,
-            accountIdentifiers: tokenData.advertiser_ids,
+            accountIdentifiers: advertiserIds,
             extraFields: {
-                advertiserIds: tokenData.advertiser_ids,
+                advertiserIds,
                 scope: tokenData.scope,
+                advertiserDiscoveryEndpoint: "/open_api/v1.3/oauth2/advertiser/get/",
+                advertiserDiscoveryRequestId: discoveryRequestId,
+                advertiserDiscoveryStatus: discoveryStatus,
+                advertiserDiscoveryCount: discoveredAdvertiserIds.length,
+                advertiserDiscoveryError: discoveryError,
             },
         };
 
@@ -74,10 +111,12 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     extractAccounts(credentials: unknown): ConnectedAccount[] {
         const creds = credentials as {
             advertiserIds?: string[];
+            extraFields?: { advertiserIds?: string[] };
         };
-        if (!creds?.advertiserIds?.length) return [];
+        const advertiserIds = normalizeTikTokAdvertiserIds(creds?.advertiserIds ?? creds?.extraFields?.advertiserIds);
+        if (!advertiserIds.length) return [];
 
-        return creds.advertiserIds.map((id) => ({
+        return advertiserIds.map((id) => ({
             id,
             name: `Advertiser ${id}`,
             type: "advertiser" as const,

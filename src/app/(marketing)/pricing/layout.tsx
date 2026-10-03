@@ -2,16 +2,13 @@ import type { Metadata } from "next";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 export const metadata: Metadata = {
-    title: "Pricing and workspace plans",
+    title: "Pricing",
     description:
-        "Compare Monstera Cloud workspace capacity, reporting limits, and pilot pricing in USD or VND.",
-    alternates: {
-        canonical: `${PRODUCT_SITE_URL}/pricing`,
-    },
+        "Agency Pro pricing for Monstera Cloud, with a seven-day pilot and a neutral Enterprise contact option.",
     openGraph: {
-        title: "Pricing and workspace plans",
+        title: "Pricing | Monstera Cloud",
         description:
-            "Compare connections, seats, pipelines, reporting limits, and operator-managed private-pilot plans.",
+            "Start a seven-day Agency Pro pilot, then continue monthly or annually through verified PayOS checkout.",
         url: `${PRODUCT_SITE_URL}/pricing`,
     },
 };

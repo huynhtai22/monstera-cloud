@@ -4,9 +4,21 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
-import { hashApiKey, resolveApiKey } from "@/lib/api-key-security";
-import { queryWarehouse } from "@/lib/warehouse-query";
+import { hashApiKey, resolveApiKeyForRequest } from "@/lib/api-key-security";
+import { touchApiKeyUsage } from "@/lib/login-telemetry";
+import { recordUsage } from "@/lib/usage-meter";
+import { isSupportedReportLevel, queryWarehouse } from "@/lib/warehouse-query";
 import { createNodeRedis } from "@/lib/node-redis";
+import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
+import { retrieveClientDelivery } from "@/lib/report-delivery";
+import { toRbacResponse } from "@/lib/rbac";
+import { clientContextCacheParams } from "@/lib/client-context";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 type RateLimitResult = {
   success: boolean;
@@ -61,7 +73,8 @@ function parseDateFilter(value: string): Date | null {
     const mo = Number(compact[2]);
     const d = Number(compact[3]);
     if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    return new Date(Date.UTC(y, mo - 1, d));
+    const date = new Date(Date.UTC(y, mo - 1, d));
+    return date.toISOString().slice(0,10).replaceAll("-", "") === value ? date : null;
   }
   const dashed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (dashed) {
@@ -69,7 +82,8 @@ function parseDateFilter(value: string): Date | null {
     const mo = Number(dashed[2]);
     const d = Number(dashed[3]);
     if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    return new Date(Date.UTC(y, mo - 1, d));
+    const date = new Date(Date.UTC(y, mo - 1, d));
+    return date.toISOString().slice(0,10) === value ? date : null;
   }
   return null;
 }
@@ -104,6 +118,8 @@ export async function GET(req: NextRequest) {
 
     let workspaceId: string;
     let workspacePlan: string;
+    let deliveryActor: string;
+    let deliveryDestination: "google_sheets" | "looker_studio" | null = null;
 
     if (isGoogleJwt(apiKey)) {
       // Google Sheets add-on: identity token auth
@@ -114,6 +130,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Invalid or expired Google token" }, { status: 401 });
       }
       const email = verification.email;
+      // Bind shared-route receipts to the verified OAuth application, not a browser destination parameter.
+      const addonAudience = process.env.GOOGLE_ADDON_CLIENT_ID?.trim();
+      const lookerAudience = process.env.LOOKER_OAUTH_CLIENT_ID?.trim();
+      if (addonAudience !== lookerAudience) {
+        if (addonAudience && verification.aud === addonAudience) deliveryDestination = "google_sheets";
+        if (lookerAudience && verification.aud === lookerAudience) deliveryDestination = "looker_studio";
+      }
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
@@ -144,28 +167,40 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "No workspace found", code: "NO_WORKSPACE" }, { status: 404 });
       }
       workspaceId = workspace.id;
+      deliveryActor = user.id;
       workspacePlan = workspace.plan;
+      await assertLookerAllowed({ plan: workspacePlan, auth: "jwt-sheets" });
 
       const ping = req.nextUrl.searchParams.get("ping");
       if (ping === "1") return NextResponse.json({ ok: true });
     }
     else {
       // Looker Studio connector: API key auth
-      const keyRecord = await resolveApiKey(apiKey);
-      if (!keyRecord) {
+      const keyResolution = await resolveApiKeyForRequest(apiKey, req);
+      if (!keyResolution.ok && keyResolution.reason === "invalid") {
         return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
       }
+      if (!keyResolution.ok) {
+        return NextResponse.json(
+          { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
+          { status: 403 },
+        );
+      }
+      const keyRecord = keyResolution.key;
+
+      workspaceId = keyRecord.workspaceId;
+      deliveryActor = `api-key:${keyRecord.id}`;
+      deliveryDestination = "looker_studio";
+      workspacePlan = keyRecord.workspace.plan;
+      await assertLookerAllowed({ plan: workspacePlan, auth: "api-key-looker" });
 
       const ping = req.nextUrl.searchParams.get("ping");
       if (ping === "1") return NextResponse.json({ ok: true });
 
-      await prisma.apiKey.update({
-        where: { id: keyRecord.id },
-        data: { lastUsedAt: new Date() },
-      });
-      workspaceId = keyRecord.workspaceId;
-      workspacePlan = keyRecord.workspace.plan;
+      await touchApiKeyUsage({ apiKeyId: keyRecord.id, request: req });
     }
+
+    void recordUsage(workspaceId, "keyHit");
 
     // Apply per-API-key rate limiting. For Google JWT we key by workspace id; for API keys we key by the key string.
     try {
@@ -203,20 +238,42 @@ export async function GET(req: NextRequest) {
       ? normalizeMetaAccountIds(accountIdParams)
       : accountIdParams;
 
+    const requestedReportLevel = req.nextUrl.searchParams.get("reportLevel")?.trim().toLowerCase();
+    const reportLevel = requestedReportLevel || "all";
+    if (reportLevel !== "all" && !isSupportedReportLevel(reportLevel)) {
+      return NextResponse.json({ error: "Unsupported reportLevel", supported: ["all", "account", "campaign", "adset", "ad"] }, { status: 400 });
+    }
+
     const limitParam = parseInt(req.nextUrl.searchParams.get("limit") || "0", 10) || 0;
     const limit = Math.min(limitParam > 0 ? limitParam : 10000, MAX_ROWS_PER_REQUEST);
     const cursorParam = req.nextUrl.searchParams.get("cursor");
     const includeCount = req.nextUrl.searchParams.get("includeCount") === "1";
+    const clientId = req.nextUrl.searchParams.get("clientId");
+    let resolution;
+    try {
+      resolution = await resolveClientContext({
+        workspaceId,
+        requestedClientId: clientId,
+        surface: "exports",
+      });
+      assertQueryableClientContext(resolution);
+    } catch (error) {
+      const clientCtx = toClientContextResponse(error);
+      if (clientCtx) return clientCtx;
+      throw error;
+    }
+    const scopedClientId = warehouseClientId(resolution);
 
     // Check cache early
     const cacheKey = generateCacheKey("looker-v2", {
       workspaceId,
       search: req.nextUrl.search,
+      ...clientContextCacheParams(clientId),
     });
     
     // Looker Studio dashboards change infrequently and trigger many concurrent queries.
-    // Cache for 15 minutes (900 seconds).
-    const cached = await getCachedQuery(cacheKey);
+    // Cache for 15 minutes (900 seconds). Never share a cache entry across client scopes.
+    const cached = resolution.status === "resolved" ? null : await getCachedQuery(cacheKey);
     if (cached) {
       return NextResponse.json(cached);
     }
@@ -246,16 +303,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const result = await queryWarehouse({
+    const query = {
       workspaceId,
+      clientId: scopedClientId,
       startDate,
       endDate,
       platforms: platform && platform !== "all" ? [platform] : undefined,
+      level: reportLevel === "all" ? undefined : reportLevel,
       accountIds: warehouseAccountIds.length ? warehouseAccountIds : undefined,
       cursor: cursorParam,
       limit,
       includeTotalCount: includeCount,
-    });
+    };
+    // Unknown OAuth app identity cannot mint evidence; keep the existing query compatible.
+    const result = resolution.status === "resolved"
+      ? await retrieveClientDelivery({ ...query, clientId: resolution.client.id }, deliveryDestination, deliveryActor)
+      : await queryWarehouse(query);
 
     const formattedData = result.rows.map((m) => ({
       date: m.date.toISOString().split("T")[0].replace(/-/g, ""),
@@ -266,10 +329,14 @@ export async function GET(req: NextRequest) {
       campaignName: m.campaignName,
       adsetId: m.adsetId,
       adsetName: m.adsetName,
+      level: m.level,
+      entityId: m.entityId,
+      adId: m.adId,
+      adName: m.adName,
       impressions: m.impressions,
       clicks: m.clicks,
       spend: m.spend,
-      reach: m.reach ?? 0,
+      reach: m.reach,
       cpc: m.cpc ?? 0,
       ctr: m.ctr ?? 0,
       cpm: m.impressions
@@ -285,6 +352,10 @@ export async function GET(req: NextRequest) {
       data: formattedData,
       asOf: result.asOf,
       freshness: result.freshness,
+      reportLevel,
+      aggregated: "aggregatedLevel" in result && result.aggregatedLevel != null,
+      truncated: "aggregatedLevel" in result && result.aggregatedLevel != null && result.pagination.hasMore,
+      receiptId: "receiptId" in result ? result.receiptId : null,
     };
     if (result.pagination.nextCursor) resObj.nextCursor = result.pagination.nextCursor;
     if (typeof result.totalCount === "number") resObj.totalRows = result.totalCount;
@@ -292,7 +363,7 @@ export async function GET(req: NextRequest) {
     const queryDiagnostics = {
       workspaceId,
       platform: platform ?? "all",
-      reportLevel: req.nextUrl.searchParams.get("reportLevel") ?? "adset",
+      reportLevel,
       startDate: startDateParam,
       endDate: endDateParam,
       accountIds: accountIdParams,
@@ -304,10 +375,14 @@ export async function GET(req: NextRequest) {
     // Empty responses are often transient immediately after a warehouse refresh.
     // Keep only useful pages in the server cache; the Sheets add-on has its own
     // 10-minute user-cache for the same non-empty response type.
-    if (formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
+    if (resolution.status !== "resolved" && formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
 
-    return NextResponse.json(resObj);
+    return NextResponse.json(resObj, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error: unknown) {
+    const clientCtx = toClientContextResponse(error); if (clientCtx) return clientCtx;
+    const rbac = toRbacResponse(error); if (rbac) return rbac;
+    const planLimit = toPlanLimitResponse(error);
+    if (planLimit) return planLimit;
     logger.error("Looker Studio API Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },

@@ -2,10 +2,9 @@
  * Google Ads API v23 client (REST / SearchStream)
  * Docs: https://developers.google.com/google-ads/api
  *
- * Auth requires THREE things:
- *   1. OAuth 2.0 access token (from user's Google account)
- *   2. Developer Token (from ads.google.com/aw/apicenter — review required for production)
- *   3. login-customer-id header = MCC (Manager Account) customer ID
+ * Auth requires an OAuth 2.0 access token from the user's Google account.
+ * MCC requests also set login-customer-id to the Manager Account customer ID.
+ * Google Ads developer-token headers were retired in September 2026.
  *
  * Query language: GAQL (SQL-like), sent as POST body to SearchStream.
  * Key gotcha: cost_micros must be divided by 1,000,000 to get real currency value.
@@ -15,6 +14,8 @@ const GOOGLE_ADS_API_VERSION = 'v23';
 const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
+import { GOOGLE_ADS_OAUTH_SCOPE } from '@/lib/google-ads-constants';
 
 export class GoogleAdsProviderError extends Error {
   constructor(message: string, readonly retryable: boolean, readonly status?: number, readonly code?: string) {
@@ -23,13 +24,25 @@ export class GoogleAdsProviderError extends Error {
   }
 }
 
-/** Application-level developer-token blocker (structured, not a leaf-account failure). */
+/** Legacy error code retained for persisted outcomes and older provider responses. */
 export const GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED = "DEVELOPER_TOKEN_NOT_APPROVED";
+/** Current application-level access blocker for the OAuth client's Cloud project. */
+export const GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED = "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION";
 
+export function isGoogleAdsAccessBlocked(error: unknown): boolean {
+  if (error instanceof GoogleAdsProviderError && [
+    GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED,
+    GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED,
+  ].includes(error.code ?? "")) return true;
+  // Older v23 responses and stored errors can still mention the retired token.
+  return /DEVELOPER_TOKEN_NOT_APPROVED|CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|Google Ads API access.*Cloud project/i.test(
+    error instanceof Error ? error.message : String(error ?? ""),
+  );
+}
+
+/** @deprecated Use isGoogleAdsAccessBlocked; retained for older call sites. */
 export function isGoogleAdsDeveloperTokenBlocked(error: unknown): boolean {
-  if (error instanceof GoogleAdsProviderError && error.code === GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED) return true;
-  // Fallback for legacy/wrapped errors carrying the provider constant.
-  return /DEVELOPER_TOKEN_NOT_APPROVED/i.test(error instanceof Error ? error.message : String(error ?? ""));
+  return isGoogleAdsAccessBlocked(error);
 }
 
 export function isGoogleAdsRetryableFailure(status: number, message: string): boolean {
@@ -46,34 +59,93 @@ export function isGoogleAdsCustomerUnavailable(error: unknown): boolean {
   return /CUSTOMER_NOT_ENABLED|customer account can't be accessed because it is not yet enabled or has been deactivated/i.test(message);
 }
 
-/** Strip the developer-token value from any provider-echoed text (defense in depth). */
-function scrubDevToken(text: string): string {
-  const t = developerToken();
-  return t ? text.split(t).join("[REDACTED_DEVELOPER_TOKEN]") : text;
+type RetrySleeper = (delayMs: number) => Promise<void>;
+const defaultRetrySleeper: RetrySleeper = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
+let retrySleeper: RetrySleeper = defaultRetrySleeper;
+
+/** Test-only seam; production retains the normal jittered timer. */
+export function setGoogleAdsRetrySleeperForTest(sleeper: RetrySleeper | null): void {
+  retrySleeper = sleeper ?? defaultRetrySleeper;
 }
 
 async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const startMs = Date.now();
     try {
       const response = await fetch(url, init);
-      if (response.ok) return response;
-      const detail = scrubDevToken((await response.clone().text()).slice(0, 1000));
+      const durationMs = Date.now() - startMs;
+      if (response.ok) {
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "google_ads",
+          operation: "search_stream",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "success",
+          httpStatus: response.status,
+          durationMs,
+        });
+        return response;
+      }
+      const detail = (await response.clone().text()).slice(0, 1000);
       const retryable = isGoogleAdsRetryableFailure(response.status, detail);
+      const isQuota = response.status === 429 || /resource[_ ]exhausted|rate[_ ]exceeded|quota/i.test(detail);
+      const isAccessBlocked = isGoogleAdsAccessBlocked(new Error(detail));
+
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "google_ads",
+        operation: "search_stream",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: isQuota ? "throttled" : retryable ? "retryable_failure" : "permanent_failure",
+        errorCategory: isQuota ? "quota_exhausted" : isAccessBlocked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
+        httpStatus: response.status,
+        durationMs,
+        retryDelayMs: retryable && attempt < maxAttempts - 1 ? 500 * 2 ** attempt : undefined,
+      });
+
       if (!retryable || attempt === maxAttempts - 1) {
-        const code = detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED)
-          ? GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED
-          : undefined;
+        const code = detail.includes(GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED)
+          ? GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED
+          : detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED)
+            ? GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED
+            : undefined;
         throw new GoogleAdsProviderError(`Google Ads request failed ${response.status}: ${detail}`, retryable, response.status, code);
       }
     } catch (error) {
+      const durationMs = Date.now() - startMs;
       if (error instanceof GoogleAdsProviderError && !error.retryable) throw error;
+      const isTransportFailure = !(error instanceof GoogleAdsProviderError);
+      const willRetry = attempt < maxAttempts - 1;
+      const retryDelayMs = willRetry ? 500 * 2 ** attempt + Math.floor(Math.random() * 200) : undefined;
+      // Response failures already emitted before throwing their retryable provider
+      // error. A rejected transport request reaches this catch directly, so emit
+      // its one event before a sleeper can fail.
+      if (isTransportFailure) {
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "google_ads",
+          operation: "search_stream",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "retryable_failure",
+          errorCategory: "network_error",
+          durationMs,
+          retryDelayMs,
+        });
+      }
       if (attempt === maxAttempts - 1) {
         if (error instanceof GoogleAdsProviderError) throw error;
         throw new GoogleAdsProviderError(error instanceof Error ? error.message : "Google Ads request failed", true);
       }
+      if (isTransportFailure) {
+        await retrySleeper(retryDelayMs!);
+        continue;
+      }
     }
-    await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt + Math.floor(Math.random() * 200)));
+    await retrySleeper(500 * 2 ** attempt + Math.floor(Math.random() * 200));
   }
   throw new GoogleAdsProviderError("Google Ads request failed", true);
 }
@@ -86,10 +158,6 @@ function clientSecret(): string {
   return (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim();
 }
 
-function developerToken(): string {
-  return (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim();
-}
-
 // ── OAuth types ──────────────────────────────────────────────────────────────
 
 export interface GoogleTokenResponse {
@@ -98,6 +166,13 @@ export interface GoogleTokenResponse {
   expires_in: number; // seconds (~3600)
   token_type: string;
   scope: string;
+  id_token?: string;
+}
+
+export interface GoogleUserInfo {
+  email?: string;
+  name?: string;
+  picture?: string;
 }
 
 // ── Report types ─────────────────────────────────────────────────────────────
@@ -140,7 +215,7 @@ export interface NormalizedGoogleAdsRow {
 export class GoogleAdsOAuthClient {
   /**
    * Build the Google OAuth consent URL.
-   * Single scope: https://www.googleapis.com/auth/adwords — must match “Google Ads API” on the same GCP project’s OAuth consent screen.
+   * Scopes: Google Ads API + openid / email / profile to identify the authenticating Google Account.
    */
   getAuthorizeUrl(state: string, redirectUri: string): string {
     const id = clientId();
@@ -150,7 +225,7 @@ export class GoogleAdsOAuthClient {
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', 'https://www.googleapis.com/auth/adwords');
+    url.searchParams.set('scope', `${GOOGLE_ADS_OAUTH_SCOPE} openid email profile`);
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'offline');   // get refresh_token
     url.searchParams.set('prompt', 'consent');         // force re-consent to always get refresh_token
@@ -211,18 +286,29 @@ export class GoogleAdsOAuthClient {
   }
 
   /**
+   * Fetch authenticated user profile (email and name) using the access token.
+   */
+  async getUserInfo(accessToken: string): Promise<GoogleUserInfo | null> {
+    try {
+      const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return null;
+      return await res.json() as GoogleUserInfo;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Fetch the list of accessible customer accounts (linked to the MCC or directly).
    */
   async listAccessibleCustomers(accessToken: string): Promise<string[]> {
-    const devToken = developerToken();
-    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
-
     const res = await fetchGoogleAds(
       `${GOOGLE_ADS_BASE}/customers:listAccessibleCustomers`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'developer-token': devToken,
         },
       }
     );
@@ -241,6 +327,14 @@ export class GoogleAdsOAuthClient {
 
 export const googleAdsOAuthClient = new GoogleAdsOAuthClient();
 
+/**
+ * Raw-response capture hooks for Connector Runtime shadow mode.
+ * All fields are plain strings; the observer must treat rawText as opaque.
+ */
+export interface GoogleAdsRawCaptureHooks {
+  onRawResponse?: (event: { customerId: string; rawText: string }) => void;
+}
+
 // ── Google Ads report client ─────────────────────────────────────────────────
 
 export class GoogleAdsReportClient {
@@ -258,15 +352,12 @@ export class GoogleAdsReportClient {
     customerId: string,
     gaql: string,
     mccId?: string,
+    hooks?: GoogleAdsRawCaptureHooks,
   ): Promise<NormalizedGoogleAdsRow[]> {
-    const devToken = developerToken();
-    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
-
     const cleanCustomerId = customerId.replace(/-/g, '');
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': devToken,
       'Content-Type': 'application/json',
     };
 
@@ -284,6 +375,18 @@ export class GoogleAdsReportClient {
     );
 
     const text = await res.text();
+
+    // Shadow-capture boundary: fan the raw provider response out to the
+    // runtime observer from this single extraction. Legacy callers pass no
+    // hooks, so their behavior is byte-identical. Hook failures must never
+    // break extraction; the observer records them as bounded capture errors.
+    if (hooks?.onRawResponse) {
+      try {
+        hooks.onRawResponse({ customerId: cleanCustomerId, rawText: text });
+      } catch {
+        // Intentionally ignored: extraction stays authoritative.
+      }
+    }
 
     // SearchStream returns a JSON array of batches
     let batches: GoogleAdsSearchStreamResult[];
@@ -312,10 +415,8 @@ export class GoogleAdsReportClient {
   async listCustomerClients(
     accessToken: string,
     rootCustomerId: string,
+    options: { includeManagers?: boolean } = {},
   ): Promise<Array<{ customerId: string; mccId: string; isManager: boolean; descriptiveName: string }>> {
-    const devToken = developerToken();
-    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
-
     const cleanId = rootCustomerId.replace(/-/g, '');
 
     // Query customer_client to get all accounts accessible under this root
@@ -332,7 +433,6 @@ export class GoogleAdsReportClient {
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': devToken,
       'Content-Type': 'application/json',
       'login-customer-id': cleanId,
     };
@@ -348,6 +448,11 @@ export class GoogleAdsReportClient {
       }
       );
     } catch (error) {
+      // Project-level API access denials are not the expected standalone
+      // account rejection. Preserve them so sync can report the configuration
+      // blocker without quarantining the customer's account for reconnect.
+      if (isGoogleAdsAccessBlocked(error)) throw error;
+
       // A disabled customer also rejects customer_client with a 4xx. Do not
       // fabricate a standalone leaf for it: reporting would fail later with
       // CUSTOMER_NOT_ENABLED and leave the customer with a confusing error.
@@ -355,7 +460,7 @@ export class GoogleAdsReportClient {
 
       // Non-manager (standalone) accounts reject customer_client; preserve the
       // intentional leaf fallback for those account shapes.
-      if (error instanceof GoogleAdsProviderError && error.status && error.status < 500 && !error.retryable) {
+      if (error instanceof GoogleAdsProviderError && error.status && error.status === 400 && !error.retryable && /not a manager|NOT_MANAGER|customer_client.*not.*support/i.test(error.message)) {
         return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
       }
       throw error;
@@ -380,9 +485,11 @@ export class GoogleAdsReportClient {
         const isManager = cc.manager === true || cc.manager === 'true';
         const name = cc.descriptiveName ?? cc.descriptive_name ?? `Customer ${clientId}`;
         const status = String(cc.status ?? "").toUpperCase();
-        if (clientId && !isManager && status === "ENABLED") {
-          // Leaf account — use root (MCC) as login-customer-id
-          clients.push({ customerId: clientId, mccId: cleanId, isManager: false, descriptiveName: name });
+        if (clientId && status === "ENABLED" && (!isManager || options.includeManagers)) {
+          // Leaf accounts use the root MCC as login-customer-id. Discovery can
+          // also request manager rows to eliminate nested MCCs covered by an
+          // ancestor manager; sync callers retain the leaf-only default.
+          clients.push({ customerId: clientId, mccId: cleanId, isManager, descriptiveName: name });
         }
       }
     }
@@ -396,24 +503,80 @@ export class GoogleAdsReportClient {
   }
 
   /**
-   * Validate the roots returned by listAccessibleCustomers before a connection
-   * is persisted. An MCC root stays selectable only when it has at least one
-   * enabled leaf; a disabled standalone root resolves to no leaves.
+   * Validate and classify the IDs returned by listAccessibleCustomers before a
+   * connection is persisted.
+   *
+   * Google returns a mixed list: manager accounts and their child customers.
+   * Persisting that raw list as one connection makes the first arbitrary ID
+   * look like an MCC and can collapse a separately authorised manager. Keep a
+   * real manager as a root, suppress children already covered by that manager,
+   * and retain standalone customers that are not covered by any manager.
    */
   async resolveEligibleCustomerRoots(
     accessToken: string,
     customerIds: string[],
-  ): Promise<{ eligibleCustomerIds: string[]; excludedCustomerIds: string[] }> {
-    const eligibleCustomerIds: string[] = [];
+  ): Promise<{
+    eligibleCustomerIds: string[];
+    excludedCustomerIds: string[];
+    roots: Array<{
+      rootCustomerId: string;
+      isManager: boolean;
+      customerIds: string[];
+    }>;
+  }> {
     const excludedCustomerIds: string[] = [];
+    const inspected: Array<{
+      rootCustomerId: string;
+      isManager: boolean;
+      customerIds: string[];
+      managerCustomerIds: string[];
+    }> = [];
 
     for (const customerId of customerIds) {
-      const clients = await this.listCustomerClients(accessToken, customerId);
-      if (clients.length > 0) eligibleCustomerIds.push(customerId.replace(/-/g, ""));
-      else excludedCustomerIds.push(customerId.replace(/-/g, ""));
+      const rootCustomerId = customerId.replace(/\D/g, "");
+      if (!rootCustomerId) continue;
+
+      const clients = await this.listCustomerClients(accessToken, rootCustomerId, { includeManagers: true });
+      const leafIds = [...new Set(
+        clients
+          .filter((client) => !client.isManager)
+          .map((client) => client.customerId.replace(/\D/g, ""))
+          .filter(Boolean),
+      )];
+      if (leafIds.length === 0) {
+        excludedCustomerIds.push(rootCustomerId);
+        continue;
+      }
+
+      // listCustomerClients uses a self-leaf only for a direct, non-manager
+      // customer. A successful manager query produces one or more different
+      // child account IDs.
+      const isManager = clients.some((client) => client.isManager) || leafIds.some((leafId) => leafId !== rootCustomerId);
+      const managerCustomerIds = clients
+        .filter((client) => client.isManager)
+        .map((client) => client.customerId.replace(/\D/g, ""))
+        // Google includes the queried manager itself at hierarchy level 0.
+        // Only descendant managers cover another candidate root; treating the
+        // self-row as a child suppresses every real MCC from discovery.
+        .filter((managerId) => Boolean(managerId) && managerId !== rootCustomerId);
+      inspected.push({ rootCustomerId, isManager, customerIds: leafIds, managerCustomerIds });
     }
 
-    return { eligibleCustomerIds, excludedCustomerIds };
+    const coveredChildIds = new Set(
+      inspected
+        .filter((root) => root.isManager)
+        .flatMap((root) => [...root.customerIds, ...root.managerCustomerIds]),
+    );
+
+    const roots = inspected.filter(
+      (root) => !coveredChildIds.has(root.rootCustomerId),
+    );
+
+    return {
+      eligibleCustomerIds: roots.map((root) => root.rootCustomerId),
+      excludedCustomerIds,
+      roots: roots.map(({ rootCustomerId, isManager, customerIds }) => ({ rootCustomerId, isManager, customerIds })),
+    };
   }
 
   /**
@@ -428,6 +591,7 @@ export class GoogleAdsReportClient {
     customerId: string,
     dateDuringOrBetween: string,
     mccId?: string,
+    hooks?: GoogleAdsRawCaptureHooks,
   ): Promise<NormalizedGoogleAdsRow[]> {
     const dateClause = dateDuringOrBetween.trim().startsWith("BETWEEN")
       ? `segments.date ${dateDuringOrBetween.trim()}`
@@ -439,6 +603,7 @@ export class GoogleAdsReportClient {
         campaign.status,
         campaign.advertising_channel_type,
         customer.currency_code,
+        customer.time_zone,
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,
@@ -455,7 +620,7 @@ export class GoogleAdsReportClient {
       ORDER BY metrics.cost_micros DESC
     `;
 
-    return this.searchStream(accessToken, customerId, gaql, mccId);
+    return this.searchStream(accessToken, customerId, gaql, mccId, hooks);
   }
 
   /**

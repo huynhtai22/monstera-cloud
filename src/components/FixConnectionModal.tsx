@@ -29,6 +29,8 @@ interface FixConnectionModalProps {
         status: string;
         errorMsg?: string;
         lastSync?: string;
+        managerBadge?: string | null;
+        accountEmail?: string | null;
     } | null;
     onReconnected: () => void;
 }
@@ -271,6 +273,27 @@ export function FixConnectionModal({
                         consecutive429s = 0;
                         if (!statusResponse.ok) throw new Error("status_unavailable");
                         const status = (await statusResponse.json()) as ReconnectStatusSnapshot;
+                        const providerError = typeof status.lastError === "string"
+                            ? status.lastError.trim()
+                            : "";
+                        const baselineTimestamp = new Date(baselineUpdatedAt).getTime();
+                        const statusTimestamp = new Date(status.updatedAt).getTime();
+                        const hasFreshProviderError = Boolean(
+                            providerError &&
+                            Number.isFinite(baselineTimestamp) &&
+                            Number.isFinite(statusTimestamp) &&
+                            statusTimestamp > baselineTimestamp,
+                        );
+
+                        if (hasFreshProviderError) {
+                            isTerminated = true;
+                            clearReconnectPolling(true);
+                            setStep("error");
+                            setError(providerError);
+                            setIsReconnecting(false);
+                            return;
+                        }
+
                         if (popup.closed && popupClosedAt === null) popupClosedAt = Date.now();
                         const popupCancellationConfirmed = Boolean(
                             popupClosedAt && Date.now() - popupClosedAt >= 2_000,
@@ -464,15 +487,43 @@ export function FixConnectionModal({
                             </div>
 
                             {/* Connection details */}
-                            <div className="rounded-md border border-line bg-canvas p-3">
-                                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">Connection</p>
+                            <div className="rounded-md border border-line bg-canvas p-3 space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">Connection</p>
+                                    {connection.managerBadge && (
+                                        <span className="rounded border border-line/80 bg-panel px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-mute">
+                                            {connection.managerBadge}
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="font-medium text-ink">{connection.name}</p>
+                                {connection.accountEmail && (
+                                    <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+                                        <span className="text-ink-mute">Authorized Account:</span>
+                                        <span className="font-mono font-medium">{connection.accountEmail}</span>
+                                    </div>
+                                )}
                                 {connection.lastSync && connection.lastSync !== "Never" && (
                                     <p className="text-xs text-ink-mute">
                                         Last successful sync: {connection.lastSync}
                                     </p>
                                 )}
                             </div>
+
+                            {/* Account Guidance Note */}
+                            {connection.provider === "google_ads" && (
+                                <div className="rounded-md border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs text-emerald-300">
+                                    {connection.accountEmail ? (
+                                        <span>
+                                            Please make sure you log into <strong className="font-semibold text-emerald-200">{connection.accountEmail}</strong> in the Google authorization popup to restore access.
+                                        </span>
+                                    ) : (
+                                        <span>
+                                            Please log into the Google Account with manager access to {connection.managerBadge || "this MCC"}. Reconnecting will permanently link your Gmail address to this source.
+                                        </span>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Action button */}
                             <PrimaryButton onClick={handleReconnect} disabled={isReconnecting} className="w-full py-3">

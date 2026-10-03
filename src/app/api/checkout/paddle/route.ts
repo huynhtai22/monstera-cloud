@@ -33,11 +33,20 @@ export async function POST(req: Request) {
     plan?: string;
     billingCycle?: string;
     workspaceId?: string;
+    invoiceCurrency?: string;
+    currency?: string;
   };
 
   const plan = body.plan;
   const workspaceId = body.workspaceId?.trim();
   const billingCycle = body.billingCycle === "annual" ? "annual" : "monthly";
+  const invoiceCurrency = (body.invoiceCurrency || body.currency || "USD").toUpperCase();
+  if (invoiceCurrency === "VND") {
+    return NextResponse.json(
+      { error: "Paddle is USD-only. VND uses PayOS/VietQR." },
+      { status: 400 },
+    );
+  }
 
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -62,6 +71,7 @@ export async function POST(req: Request) {
       billingCycle,
       workspaceId,
       session.user.id,
+      "USD",
     );
     return NextResponse.json({
       url,

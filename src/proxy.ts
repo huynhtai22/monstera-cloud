@@ -149,6 +149,14 @@ function createProxy(deps: ProxyDeps = {}) {
       ? stripAgencyPath(pathname)
       : pathname;
 
+    // Quick-start used to be a second onboarding implementation and could
+    // lose the selected workspace. Retire it at the edge so anonymous and
+    // authenticated visitors, including tenant-host traffic, share the same
+    // canonical /console entry point.
+    if (authCheckPath === "/quickstart") {
+      return NextResponse.redirect(new URL("/console", request.url));
+    }
+
     // Deny-by-default: any page not explicitly public needs a session JWT.
     if (classifyPageAccess(authCheckPath) === "authenticated") {
       const token = await verifySessionToken({ req: request });
@@ -189,8 +197,9 @@ export function __createProxyForTests(deps: ProxyDeps): (request: NextRequest) =
 // Matcher notes:
 // - `/api/*` except `/api/auth/*`: NextAuth internals (OAuth callbacks, session,
 //   CSRF) must NOT be intercepted — doing so breaks Google sign-in.
-// - The five credential endpoints under /api/auth/* ARE matched explicitly so
-//   they get the dedicated `credential` limiter class.
+// - Five credential endpoints plus four authenticated session self-service
+//   routes ARE matched explicitly. Password flows use the credential limiter;
+//   session self-service uses the verified-user internal-api limiter.
 // - Pages use a deny-by-default catch-all (minus _next assets and common
 //   top-level metadata files). Remaining static files are passed through in
 //   code via looksLikeStaticAsset(). New application routes therefore require
@@ -203,6 +212,10 @@ export const config = {
     "/api/auth/resend-otp",
     "/api/auth/reset-password",
     "/api/auth/verify",
+    "/api/auth/sessions",
+    "/api/auth/sessions/revoke",
+    "/api/auth/login-events",
+    "/api/auth/heartbeat",
     "/((?!api/|_next/|favicon.ico|robots.txt|sitemap.xml|manifest.json).*)",
   ],
 };

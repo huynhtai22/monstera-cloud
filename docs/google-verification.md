@@ -112,7 +112,7 @@ For each Apps Script project (Sheets add-on and Looker Studio connector), regist
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` → NextAuth Google sign-in.
 - `GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS_CLIENT_SECRET` → Google Ads OAuth code exchange.
 - `GOOGLE_ADS_REDIRECT_URI` (optional) → override Ads callback URI.
-- `GOOGLE_ADS_DEVELOPER_TOKEN` → Google Ads API access after OAuth.
+- Google Ads API access level is associated with the Google Cloud project that owns `GOOGLE_ADS_CLIENT_ID`; the connector does not use a developer-token environment variable.
 - `GOOGLE_ADS_MCC_ID` (optional) → manager account context used in reporting.
 
 ## Token audience validation (backend hardening)

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
-import { resolveApiKey } from "@/lib/api-key-security";
+import { resolveApiKeyForRequest } from "@/lib/api-key-security";
+import { touchApiKeyUsage } from "@/lib/login-telemetry";
 import { getCachedQuery, setCachedQuery } from "@/lib/redis-cache";
+import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 function isGoogleJwt(token: string): boolean {
   const parts = token.split('.');
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest) {
             id: requestedWorkspaceId,
             members: { some: { userId: user.id } },
           },
-          select: { id: true },
+          select: { id: true, plan: true },
         });
       } else {
         workspace = await prisma.workspace.findFirst({
@@ -53,7 +55,7 @@ export async function GET(req: NextRequest) {
               { members: { some: { userId: user.id } } },
             ],
           },
-          select: { id: true },
+          select: { id: true, plan: true },
           orderBy: { updatedAt: "desc" },
         });
       }
@@ -61,10 +63,22 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "No workspace found", code: "NO_WORKSPACE" }, { status: 404 });
       }
       workspaceId = workspace.id;
+      await assertLookerAllowed({ plan: workspace.plan, auth: "jwt-sheets" });
     } else {
-      const keyRecord = await resolveApiKey(apiKey);
-      if (!keyRecord) return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+      const keyResolution = await resolveApiKeyForRequest(apiKey, req);
+      if (!keyResolution.ok && keyResolution.reason === "invalid") {
+        return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+      }
+      if (!keyResolution.ok) {
+        return NextResponse.json(
+          { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
+          { status: 403 },
+        );
+      }
+      const keyRecord = keyResolution.key;
       workspaceId = keyRecord.workspaceId;
+      await assertLookerAllowed({ plan: keyRecord.workspace.plan, auth: "api-key-looker" });
+      await touchApiKeyUsage({ apiKeyId: keyRecord.id, request: req });
     }
     const startDateParam = req.nextUrl.searchParams.get("startDate");
     const endDateParam = req.nextUrl.searchParams.get("endDate");
@@ -114,6 +128,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(res);
   } catch (e) {
+    const planLimit = toPlanLimitResponse(e);
+    if (planLimit) return planLimit;
     logger.error('Looker Studio Meta API Error', e);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

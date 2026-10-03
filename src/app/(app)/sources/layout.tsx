@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function SourcesLayout({ children }: { children: React.ReactNode }) {
-    return children;
+    return <Suspense fallback={null}>{children}</Suspense>;
 }

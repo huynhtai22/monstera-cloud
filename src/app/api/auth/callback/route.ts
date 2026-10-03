@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { getAuthSession } from "@/lib/auth-session";
 import { buildCallbackUrl } from "@/lib/oauth-framework/session";
 import { getProvider, isProviderEnabled } from "@/lib/oauth-framework/registry";
 import { OAuthError } from "@/lib/oauth-framework/types";
@@ -13,6 +13,8 @@ import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { upsertSourceConnection } from "@/lib/connection-upsert";
+import { assertCanCreateSourceConnections, PlanLimitError } from "@/lib/plan-entitlements";
+import { buildGoogleAdsMccBindings } from "@/lib/google-ads-mcc-binding";
 import { consumeOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
 import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled, ProviderAccessError } from "@/lib/workspace-provider-access";
@@ -20,21 +22,70 @@ import { emitMonitor } from "@/lib/observability/monitors";
 import { enqueueOauthWarehouseBackfill } from "@/lib/oauth-warehouse-backfill";
 import { after } from "next/server";
 import { claimImportJob } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
+import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
+import { resetConnectionAccountHealth } from "@/lib/provider-account-health";
 
 export const dynamic = "force-dynamic";
+
+const TIKTOK_ADVERTISER_DISCOVERY_ENDPOINT = "/open_api/v1.3/oauth2/advertiser/get/";
+
+async function recordTikTokAdvertiserDiscovery({
+    workspaceId,
+    connectionId,
+    status,
+    advertiserCount = 0,
+    providerRequestId,
+    errorMessage,
+}: {
+    workspaceId: string;
+    connectionId: string;
+    status: "success" | "failed";
+    advertiserCount?: number;
+    providerRequestId?: string;
+    errorMessage?: string;
+}) {
+    try {
+        await (prisma as any).providerSyncRun.create({
+            data: {
+                workspaceId,
+                connectionId,
+                provider: "tiktok_business",
+                environment: "production",
+                endpoint: TIKTOK_ADVERTISER_DISCOVERY_ENDPOINT,
+                httpStatus: status === "success" ? 200 : null,
+                providerRequestId,
+                status,
+                rowsReceived: advertiserCount,
+                rowsWritten: 0,
+                errorCategory: status === "failed" ? "advertiser_discovery" : null,
+                errorMessage: status === "failed" ? errorMessage : null,
+                startedAt: new Date(),
+                completedAt: new Date(),
+            },
+        });
+    } catch (activityError) {
+        // OAuth must remain available while an older environment is waiting
+        // for the ProviderSyncRun migration.
+        logger.warn("[OAuth Callback] TikTok discovery activity could not be recorded", activityError);
+    }
+}
 
 export async function GET(request: NextRequest) {
     const origin = request.nextUrl.origin;
     const searchParams = request.nextUrl.searchParams;
     const providerId = searchParams.get("provider");
-    const code = searchParams.get("code");
+    const code = searchParams.get("code") || (providerId === "tiktok_business" ? searchParams.get("auth_code") : null);
     const state = searchParams.get("state");
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
+    let reconnectConnectionId: string | undefined;
+    let reconnectWorkspaceId: string | undefined;
     
-    // Handle provider errors
-    if (error) {
+    let agentCallback: { userId: string; workspaceId: string; taskId: string } | null = null;
+    // Ordinary Sources denial retains its existing recovery route. Task-linked
+    // denial is identified only after validating and consuming state.
+    if (error && !state && !request.cookies.get(oauthAttemptCookieName(providerId || ""))?.value) {
         const params = new URLSearchParams({
             error: "provider_error",
             provider: providerId || "unknown",
@@ -48,7 +99,7 @@ export async function GET(request: NextRequest) {
             throw new OAuthError("configuration_error", "Missing provider in callback");
         }
         
-        if (!code) {
+        if (!code && !error) {
             throw new OAuthError("provider_error", "Authorization code not received", providerId);
         }
 
@@ -56,7 +107,7 @@ export async function GET(request: NextRequest) {
             throw new OAuthError("configuration_error", "Provider not enabled", providerId);
         }
 
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession(authOptions);
         if (!session?.user?.id) {
             throw new OAuthError("unauthorized", "Sign in again before connecting a source", providerId);
         }
@@ -70,9 +121,16 @@ export async function GET(request: NextRequest) {
             provider: providerId,
             sessionUserId: session.user.id,
         });
+        if (attempt.agentTaskId) {
+            agentCallback = { userId: attempt.userId, workspaceId: attempt.workspaceId, taskId: attempt.agentTaskId };
+            const { validateAgentOAuthTask } = await import("@/lib/agent/execution");
+            await validateAgentOAuthTask({ userId: attempt.userId, workspaceId: attempt.workspaceId }, attempt.agentTaskId, providerId);
+        }
+        if (error) throw new OAuthError("user_denied", "Access was not approved. You can try again.", providerId);
         const workspaceId = attempt.workspaceId;
         const userId = attempt.userId;
-        const reconnectConnectionId = attempt.reconnectConnectionId ?? undefined;
+        reconnectConnectionId = attempt.reconnectConnectionId ?? undefined;
+        reconnectWorkspaceId = attempt.workspaceId;
 
         await requireWorkspaceAccess({
             userId,
@@ -80,6 +138,11 @@ export async function GET(request: NextRequest) {
             minimumRole: "member",
             operation: reconnectConnectionId ? "reconnect_source" : "connect_source",
         });
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { plan: true },
+        });
+        const workspacePlan = workspace?.plan ?? "pilot";
         try {
             await assertWorkspaceProviderEnabled({ workspaceId, provider: providerId });
         } catch (error) {
@@ -97,35 +160,148 @@ export async function GET(request: NextRequest) {
             searchParams.get("shop_id") ||
             searchParams.get("shopId") ||
             searchParams.get("main_account_id");
-        const exchangeCode = shopId ? `${code}|${shopId}` : code;
+        const exchangeCode = shopId ? `${code!}|${shopId}` : code!;
         
         // Exchange code for credentials
         const callbackUrl = buildCallbackUrl(request, providerId);
-        const { credentials, metadata } = await provider.exchangeCode({
-            code: exchangeCode,
-            redirectUri: callbackUrl,
-            metadata: { workspaceId, userId },
-        });
+        let exchangeResult;
+        try {
+            exchangeResult = await provider.exchangeCode({
+                code: exchangeCode,
+                redirectUri: callbackUrl,
+                metadata: { workspaceId, userId },
+            });
+        } catch (exchangeError) {
+            if (providerId === "tiktok_business" && reconnectConnectionId) {
+                await recordTikTokAdvertiserDiscovery({
+                    workspaceId,
+                    connectionId: reconnectConnectionId,
+                    status: "failed",
+                    errorMessage: exchangeError instanceof Error
+                        ? exchangeError.message
+                        : "TikTok advertiser discovery failed",
+                });
+            }
+            throw exchangeError;
+        }
+        const { credentials, metadata } = exchangeResult;
+
+        const googleAdsBindings = providerId === "google_ads"
+            ? buildGoogleAdsMccBindings({
+                roots: metadata.extraFields?.googleAdsRoots,
+                credentials,
+                extraFields: metadata.extraFields,
+            })
+            : [];
         
         // P1: Handle reconnection flow - preserve existing pipelines and warehouse rows
         if (reconnectConnectionId) {
             const existing = await prisma.connection.findFirst({
                 where: { id: reconnectConnectionId, workspaceId, provider: providerId },
-                select: { id: true, workspaceId: true, lastSyncAt: true },
+                select: { id: true, workspaceId: true, lastSyncAt: true, remoteAccountId: true },
             });
             if (!existing) {
                 throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
             }
+            const existingGoogleAdsIdentity = existing.remoteAccountId.replace(/\D/g, "");
+            const googleAdsBinding = providerId === "google_ads"
+                ? googleAdsBindings.find((binding) => {
+                    if (binding.remoteAccountId === existingGoogleAdsIdentity) return true;
+                    const discovered = binding.credentials.discoveredCustomerIds;
+                    return Array.isArray(discovered) && discovered.includes(existingGoogleAdsIdentity);
+                })
+                : undefined;
+            if (providerId === "google_ads" && !googleAdsBinding) {
+                throw new OAuthError(
+                    "provider_error",
+                    "The Google account you authorized does not have access to this MCC. Reconnect with a Google user that has access to the selected manager account.",
+                    providerId,
+                );
+            }
+
+            // Older versions persisted an arbitrary child from Google's mixed
+            // accessible-account list as the connection identity. Preserve the
+            // connection row (and its pipelines/warehouse history) but migrate
+            // that identity to the discovered MCC when it is unambiguous.
+            const migrateLegacyGoogleAdsIdentity = Boolean(
+                googleAdsBinding && googleAdsBinding.remoteAccountId !== existingGoogleAdsIdentity,
+            );
+            if (migrateLegacyGoogleAdsIdentity && googleAdsBinding) {
+                const managerConnection = await prisma.connection.findFirst({
+                    where: {
+                        workspaceId,
+                        provider: "google_ads",
+                        remoteAccountId: googleAdsBinding.remoteAccountId,
+                        NOT: { id: existing.id },
+                    },
+                    select: { id: true },
+                });
+                if (managerConnection) {
+                    throw new OAuthError(
+                        "provider_error",
+                        "This MCC already has a separate source connection. Reconnect that MCC source instead; the existing connection was not changed.",
+                        providerId,
+                    );
+                }
+            }
+
+            const tiktokAdvertiserIds = providerId === "tiktok_business"
+                ? metadata.accountIdentifiers ?? []
+                : [];
+            const existingTikTokIdentity = /^\d+$/.test(existing.remoteAccountId)
+                ? existing.remoteAccountId
+                : undefined;
+            if (
+                providerId === "tiktok_business" &&
+                existingTikTokIdentity &&
+                !tiktokAdvertiserIds.includes(existingTikTokIdentity)
+            ) {
+                throw new OAuthError(
+                    "provider_error",
+                    "The TikTok account you authorized does not have access to this advertiser. Reconnect with a TikTok Business user that has access to the selected source.",
+                    providerId,
+                );
+            }
+            const tiktokRemoteAccountId = existingTikTokIdentity ?? tiktokAdvertiserIds[0];
+            const migrateLegacyTikTokIdentity = Boolean(
+                !existingTikTokIdentity &&
+                tiktokRemoteAccountId &&
+                tiktokRemoteAccountId !== existing.remoteAccountId,
+            );
+            if (migrateLegacyTikTokIdentity && tiktokRemoteAccountId) {
+                const advertiserConnection = await prisma.connection.findFirst({
+                    where: {
+                        workspaceId,
+                        provider: "tiktok_business",
+                        remoteAccountId: tiktokRemoteAccountId,
+                        NOT: { id: existing.id },
+                    },
+                    select: { id: true },
+                });
+                if (advertiserConnection) {
+                    throw new OAuthError(
+                        "provider_error",
+                        "This TikTok advertiser already has a separate source connection. Reconnect that TikTok source instead; the existing connection was not changed.",
+                        providerId,
+                    );
+                }
+            }
+
             const updated = await prisma.connection.updateMany({
                 where: { id: reconnectConnectionId, workspaceId, provider: providerId },
                 data: {
                     credentials: encrypt(JSON.stringify({
-                        ...credentials,
-                        ...metadata.extraFields,
+                        ...(googleAdsBinding?.credentials ?? { ...credentials, ...metadata.extraFields }),
                     })),
                     status: "connected",
                     lastError: null,
-                    name: metadata.name, // Update name if account changed
+                    name: googleAdsBinding?.name ?? metadata.name,
+                    ...(migrateLegacyGoogleAdsIdentity && googleAdsBinding
+                        ? { remoteAccountId: googleAdsBinding.remoteAccountId }
+                        : {}),
+                    ...(migrateLegacyTikTokIdentity && tiktokRemoteAccountId
+                        ? { remoteAccountId: tiktokRemoteAccountId }
+                        : {}),
                     updatedAt: new Date(),
                 },
             });
@@ -133,26 +309,57 @@ export async function GET(request: NextRequest) {
                 throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
             }
             await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.reconnected", resource: "connection", resourceId: reconnectConnectionId, metadata: { provider: providerId } } });
+            await resetConnectionAccountHealth(reconnectConnectionId);
+
+            if (providerId === "tiktok_business") {
+                const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";
+                await recordTikTokAdvertiserDiscovery({
+                    workspaceId,
+                    connectionId: reconnectConnectionId,
+                    status: discoveryFailed ? "failed" : "success",
+                    advertiserCount: discoveryFailed
+                        ? 0
+                        : Number(metadata.extraFields?.advertiserDiscoveryCount ?? 0),
+                    providerRequestId: typeof metadata.extraFields?.advertiserDiscoveryRequestId === "string"
+                        ? metadata.extraFields.advertiserDiscoveryRequestId
+                        : undefined,
+                    errorMessage: discoveryFailed && typeof metadata.extraFields?.advertiserDiscoveryError === "string"
+                        ? metadata.extraFields.advertiserDiscoveryError
+                        : undefined,
+                });
+            }
 
             try {
-                const { job } = await enqueueOauthWarehouseBackfill({
+                const backfill = await enqueueOauthWarehouseBackfill({
                     workspaceId,
                     userId,
                     connectionId: existing.id,
                     connectionWorkspaceId: existing.workspaceId,
+                    provider: providerId,
                     kind: "catchup",
                     lastSyncAt: existing.lastSyncAt,
+                    plan: workspacePlan,
                 });
-                after(async () => {
-                    try {
-                        const claim = await claimImportJob(job.id);
-                        if (claim.claimed && claim.leaseId) {
-                            await runDurableImportWorker(job.id, claim.leaseId);
+                if (backfill.skipped || !backfill.job) {
+                    logger.info("[OAuth Callback] warehouse backfill skipped", {
+                        reason: "historical_ingestion_unavailable",
+                        provider: providerId,
+                        connectionId: existing.id,
+                        workspaceId,
+                    });
+                } else {
+                    const job = backfill.job;
+                    if (!warehouseUsesDedicatedWorker()) after(async () => {
+                        try {
+                            const claim = await claimImportJob(job.id);
+                            if (claim.claimed && claim.leaseId) {
+                                await runDurableImportWorker(job.id, claim.leaseId);
+                            }
+                        } catch (err) {
+                            logger.error("[OAuth Callback] catch-up worker error", err);
                         }
-                    } catch (err) {
-                        logger.error("[OAuth Callback] catch-up worker error", err);
-                    }
-                });
+                    });
+                }
             } catch (err) {
                 logger.warn("[OAuth Callback] catch-up enqueue failed", err);
             }
@@ -167,46 +374,142 @@ export async function GET(request: NextRequest) {
             return response;
         }
         
-        // Upsert connection by identity triple (workspaceId + provider + remoteAccountId)
-        const remoteAccountId =
-            metadata.accountIdentifiers?.[0] ??
-            (metadata.name ? metadata.name.replace(/\s+/g, "_").toLowerCase() : providerId);
+        // Google Ads authorization can reveal more than one unrelated MCC. A
+        // connection is created per root identity, never per child customer.
+        const connectionInputs = googleAdsBindings.length > 0
+            ? googleAdsBindings
+            : [{
+                remoteAccountId: metadata.accountIdentifiers?.[0] ??
+                    (metadata.name ? metadata.name.replace(/\s+/g, "_").toLowerCase() : providerId),
+                name: metadata.name,
+                credentials: { ...credentials, ...metadata.extraFields },
+                discoveredCustomerCount: metadata.accountIdentifiers?.length ?? 0,
+            }];
 
-        const connection = await upsertSourceConnection({
+        await assertCanCreateSourceConnections({
             workspaceId,
-            provider: providerId,
-            remoteAccountId,
-            name: metadata.name,
-            type: "source",
-            credentials: {
-                ...credentials,
-                ...metadata.extraFields,
-            },
-            status: "connected",
+            connections: connectionInputs.map((input) => ({
+                provider: providerId,
+                remoteAccountId: input.remoteAccountId,
+                credentials: input.credentials,
+            })),
         });
-        await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.connected", resource: "connection", resourceId: connection.id, metadata: { provider: providerId } } });
 
-        try {
-            const { job } = await enqueueOauthWarehouseBackfill({
+        const connections = [];
+        for (const input of connectionInputs) {
+            const connection = await upsertSourceConnection({
                 workspaceId,
-                userId,
-                connectionId: connection.id,
-                connectionWorkspaceId: connection.workspaceId,
-                kind: connection.created ? "initial" : "catchup",
-                lastSyncAt: connection.lastSyncAt,
+                provider: providerId,
+                remoteAccountId: input.remoteAccountId,
+                name: input.name,
+                type: "source",
+                credentials: input.credentials,
+                status: "connected",
             });
-            after(async () => {
+            connections.push(connection);
+            await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.connected", resource: "connection", resourceId: connection.id, metadata: { provider: providerId } } });
+        }
+
+        const connection = connections[0];
+
+        // Google Ads customer discovery happens during the OAuth exchange. Log
+        // the root-specific outcome against every resulting MCC connection so
+        // a second manager login is observable before its first import.
+        if (providerId === "google_ads") {
+            for (let index = 0; index < connections.length; index += 1) {
                 try {
-                    const claim = await claimImportJob(job.id);
-                    if (claim.claimed && claim.leaseId) {
-                        await runDurableImportWorker(job.id, claim.leaseId);
-                    }
-                } catch (err) {
-                    logger.error("[OAuth Callback] initial backfill worker error", err);
+                    await (prisma as any).providerSyncRun.create({
+                        data: {
+                            workspaceId,
+                            connectionId: connections[index].id,
+                            provider: "google_ads",
+                            environment: "production",
+                            endpoint: "customers:listAccessibleCustomers",
+                            httpStatus: 200,
+                            status: "success",
+                            rowsReceived: connectionInputs[index].discoveredCustomerCount,
+                            rowsWritten: 0,
+                            startedAt: new Date(),
+                            completedAt: new Date(),
+                        },
+                    });
+                } catch (activityError) {
+                    // Observability must never make a completed OAuth connection
+                    // look failed if an older environment lacks this table.
+                    logger.warn("[OAuth Callback] Google Ads discovery activity could not be recorded", activityError);
                 }
+            }
+        }
+
+        if (providerId === "tiktok_business") {
+            const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";
+            for (const createdConnection of connections) {
+                await recordTikTokAdvertiserDiscovery({
+                    workspaceId,
+                    connectionId: createdConnection.id,
+                    status: discoveryFailed ? "failed" : "success",
+                    advertiserCount: discoveryFailed
+                        ? 0
+                        : Number(metadata.extraFields?.advertiserDiscoveryCount ?? 0),
+                    providerRequestId: typeof metadata.extraFields?.advertiserDiscoveryRequestId === "string"
+                        ? metadata.extraFields.advertiserDiscoveryRequestId
+                        : undefined,
+                    errorMessage: discoveryFailed && typeof metadata.extraFields?.advertiserDiscoveryError === "string"
+                        ? metadata.extraFields.advertiserDiscoveryError
+                        : undefined,
+                });
+            }
+        }
+
+        if (attempt.agentTaskId) {
+            const { attachTaskConnections } = await import("@/lib/agent/tasks");
+            const { discoverTaskAccounts } = await import("@/lib/agent/execution");
+            const task = await prisma.agentTask.findFirstOrThrow({ where: { id: attempt.agentTaskId, workspaceId } });
+            const linked = await attachTaskConnections({ userId, workspaceId }, task.id, connections.map(c => c.id), task.version);
+            after(async () => {
+                try { await discoverTaskAccounts({ userId, workspaceId }, linked.id, linked.version); }
+                catch { logger.warn("[OAuth Callback] Account discovery needs a user retry", { taskId: linked.id }); }
             });
-        } catch (err) {
-            logger.warn("[OAuth Callback] warehouse backfill enqueue failed", err);
+            const response = NextResponse.redirect(new URL(`/onboarding?workspaceId=${encodeURIComponent(workspaceId)}`, origin));
+            response.cookies.delete(oauthAttemptCookieName(providerId));
+            return response;
+        }
+
+        for (const createdConnection of connections) {
+            try {
+                const backfill = await enqueueOauthWarehouseBackfill({
+                    workspaceId,
+                    userId,
+                    connectionId: createdConnection.id,
+                    connectionWorkspaceId: createdConnection.workspaceId,
+                    provider: createdConnection.provider,
+                    kind: createdConnection.created ? "initial" : "catchup",
+                    lastSyncAt: createdConnection.lastSyncAt,
+                    plan: workspacePlan,
+                });
+                if (backfill.skipped || !backfill.job) {
+                    logger.info("[OAuth Callback] warehouse backfill skipped", {
+                        reason: "historical_ingestion_unavailable",
+                        provider: createdConnection.provider,
+                        connectionId: createdConnection.id,
+                        workspaceId,
+                    });
+                    continue;
+                }
+                const job = backfill.job;
+                if (!warehouseUsesDedicatedWorker()) after(async () => {
+                    try {
+                        const claim = await claimImportJob(job.id);
+                        if (claim.claimed && claim.leaseId) {
+                            await runDurableImportWorker(job.id, claim.leaseId);
+                        }
+                    } catch (err) {
+                        logger.error("[OAuth Callback] initial backfill worker error", err);
+                    }
+                });
+            } catch (err) {
+                logger.warn("[OAuth Callback] warehouse backfill enqueue failed", err);
+            }
         }
 
         // Redirect to explicit setup flow (replaces auto-pipeline creation)
@@ -221,6 +524,33 @@ export async function GET(request: NextRequest) {
         return response;
         
     } catch (error) {
+        if (agentCallback) {
+            const { recordTaskAuthorizationFailure } = await import("@/lib/agent/execution");
+            const reason = error instanceof OAuthError && error.code === "user_denied" ? "authorization_denied" : "reconnect_required";
+            try { await recordTaskAuthorizationFailure({ userId: agentCallback.userId, workspaceId: agentCallback.workspaceId }, agentCallback.taskId, reason); }
+            catch { /* Paused/revoked tasks stay recoverable without new work. */ }
+            const response = NextResponse.redirect(new URL(`/onboarding?workspaceId=${encodeURIComponent(agentCallback.workspaceId)}`, origin));
+            if (providerId) response.cookies.delete(oauthAttemptCookieName(providerId));
+            return response;
+        }
+        if (reconnectConnectionId && reconnectWorkspaceId && providerId) {
+            const userFacingError = error instanceof OAuthError
+                ? error.message
+                : "The connection could not be restored. Please try again.";
+
+            try {
+                await prisma.connection.updateMany({
+                    where: {
+                        id: reconnectConnectionId,
+                        workspaceId: reconnectWorkspaceId,
+                        provider: providerId,
+                    },
+                    data: { lastError: userFacingError },
+                });
+            } catch (updateError) {
+                logger.error("[OAuth Callback] Could not save reconnect error:", updateError);
+            }
+        }
         emitMonitor("oauth_failure", {
             provider: providerId || "unknown",
             code: error instanceof OAuthError ? error.code : "oauth_failed",
@@ -228,11 +558,15 @@ export async function GET(request: NextRequest) {
         logger.error("[OAuth Callback] Error:", error);
         
         const errorParams = new URLSearchParams({
-            error: "oauth_failed",
+            error: error instanceof PlanLimitError ? "plan_limit" : "oauth_failed",
             provider: providerId || "unknown",
         });
         
-        if (error instanceof OAuthError) {
+        if (error instanceof PlanLimitError) {
+            errorParams.set("error_code", error.code);
+            errorParams.set("message", error.message);
+            errorParams.set("upgrade", error.upgradeHref);
+        } else if (error instanceof OAuthError) {
             errorParams.set("error_code", error.code);
             errorParams.set("message", error.message);
         } else if (error instanceof Error) {

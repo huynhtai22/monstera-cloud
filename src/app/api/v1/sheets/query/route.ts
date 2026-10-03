@@ -3,6 +3,14 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { queryWarehouse } from "@/lib/warehouse-query";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
+import { retrieveClientDelivery } from "@/lib/report-delivery";
+import { toRbacResponse } from "@/lib/rbac";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 const HEADERS = [
   "date",
@@ -44,7 +52,7 @@ const GMV_MAX_HEADERS = [
 function parseDate(value: unknown, endOfDay = false): Date | undefined {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
   const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0,10) !== value ? undefined : date;
 }
 
 export async function POST(req: Request) {
@@ -132,8 +140,18 @@ export async function POST(req: Request) {
       if (!connection) return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
-    const result = await queryWarehouse({
+    const resolution = await resolveClientContext({
       workspaceId,
+      requestedClientId: typeof body.clientId === "string" ? body.clientId : null,
+      surface: "exports",
+    });
+    assertQueryableClientContext(resolution);
+    const scopedClientId = warehouseClientId(resolution);
+
+    const query = {
+      workspaceId,
+      connectionId: typeof connectionId === "string" ? connectionId : undefined,
+      clientId: scopedClientId,
       startDate: parseDate(start_date),
       endDate: parseDate(end_date, true),
       platforms: platform ? [platform] : undefined,
@@ -141,7 +159,10 @@ export async function POST(req: Request) {
       cursor: typeof cursor === "string" ? cursor : undefined,
       limit: 100_000,
       includeTotalCount: true,
-    });
+    };
+    const result = resolution.status === "resolved"
+      ? await retrieveClientDelivery({ ...query, clientId: resolution.client.id }, "google_sheets", membership.userId)
+      : await queryWarehouse(query);
 
     const rows = result.rows.map((row) => [
       row.date.toISOString().slice(0, 10),
@@ -168,8 +189,11 @@ export async function POST(req: Request) {
       nextCursor: result.pagination.nextCursor,
       asOf: result.asOf,
       freshness: result.freshness,
+      receiptId: "receiptId" in result ? result.receiptId : null,
     });
   } catch (error) {
+    const clientCtx = toClientContextResponse(error); if (clientCtx) return clientCtx;
+    const rbac = toRbacResponse(error); if (rbac) return rbac;
     logger.error("[SHEETS_QUERY]", error);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }

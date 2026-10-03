@@ -33,6 +33,10 @@ function appPageFileToUrl(file: string): string {
 }
 
 describe("page access policy (deny-by-default)", () => {
+  it("protects full-screen onboarding and its agency wrapper", () => {
+    assert.equal(classifyPageAccess("/onboarding"), "authenticated");
+    assert.equal(classifyPageAccess("/agencies/acme/onboarding"), "authenticated");
+  });
   it("classifies required public routes as public", () => {
     const requiredPublic = [
       "/",
@@ -86,6 +90,7 @@ describe("page access policy (deny-by-default)", () => {
       "/synced-data",
       "/clients",
       "/exports",
+      "/operations",
       "/transformations",
       "/internal-templates",
       "/overview",

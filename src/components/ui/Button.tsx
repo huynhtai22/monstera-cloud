@@ -17,7 +17,7 @@ const Button = React.forwardRef<HTMLButtonElement, Props>(
     const base = [tokens.btn, variantClass, sizeClass].join(" ");
 
     return (
-      <button ref={ref} className={[base, className].join(" ")} {...rest}>
+      <button ref={ref} data-console-button={variant} className={[base, className].join(" ")} {...rest}>
         {loading ? <span aria-hidden>Loading…</span> : children}
       </button>
     );

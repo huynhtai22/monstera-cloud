@@ -59,7 +59,7 @@ const CONNECTOR_REGISTRY: Record<EtlProvider, ConnectorConfig> = {
         provider: "meta_ads",
         name: "Meta Ads (Facebook & Instagram)",
         authType: "oauth",
-        baseUrl: "https://graph.facebook.com/v21.0",
+        baseUrl: "https://graph.facebook.com/v23.0",
         pagination: "cursor",
         endpoints: [
             {

@@ -3,6 +3,10 @@
 ## Enforced repository controls
 
 - The `verify` workflow is required for changes proposed to `main`.
+- The Security policy workflow runs Gitleaks, npm dependency-integrity checks,
+  a CycloneDX SBOM/audit, and CodeQL. As checked on 2026-09-28, those four jobs
+  are passing on `main` but are **not** required branch checks; only `verify`
+  is required. Requiring them still needs a repository-administrator change.
 - Security-sensitive paths have a declared code owner in `.github/CODEOWNERS`.
 - A Prisma model with a required direct `workspaceId` must be tenant-guarded or
   carry a documented exception; the schema coverage test enforces this rule.

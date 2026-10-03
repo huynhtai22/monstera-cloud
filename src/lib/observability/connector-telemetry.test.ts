@@ -1,0 +1,540 @@
+import assert from "node:assert/strict";
+import { describe, it, beforeEach, afterEach } from "node:test";
+import {
+  emitConnectorTelemetry,
+  setTelemetrySink,
+  captureTelemetryForTest,
+  sanitizeTelemetryEvent,
+  toOpaqueAccountId,
+  toOpaqueConnectionId,
+  toOpaqueJobId,
+  toOpaqueWorkspaceId,
+  runWithConnectorContext,
+} from "./connector-telemetry";
+import { installNetworkDenialGuard, restoreNetworkGuard } from "@/lib/connector-resilience/network-denial-guard";
+import { ProviderSimulator } from "@/lib/connector-resilience/provider-simulator";
+import { setupSyntheticTestEnv } from "@/lib/connector-resilience/test-env";
+import { metaReportClient, MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { googleAdsReportClient } from "@/lib/google-ads";
+import { tiktokReportClient } from "@/lib/tiktok-business";
+import { logger } from "@/lib/logger";
+
+describe("Connector Telemetry Contract & Provider Instrumentation", () => {
+  let simulator: ProviderSimulator;
+
+  beforeEach(() => {
+    setupSyntheticTestEnv();
+    simulator = new ProviderSimulator();
+    installNetworkDenialGuard((url, init) => simulator.handleRequest(url, init));
+  });
+
+  afterEach(() => {
+    restoreNetworkGuard();
+    setTelemetrySink(null);
+  });
+
+  it("1. One successful provider request emits the correct bounded event", async () => {
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_tenant_1", connectionId: "conn_meta_1" },
+        async () => {
+          const rows = await metaReportClient.getInsights("valid-token", {
+            adAccountId: "act_healthy_123",
+            fields: ["impressions", "clicks", "spend"],
+            level: "campaign",
+          });
+          assert.ok(rows.length > 0);
+        }
+      );
+
+      const requestEvents = capture.events.filter(
+        (e) => e.provider === "meta_ads" && e.eventCategory === "provider_request"
+      );
+      assert.ok(requestEvents.length >= 1, "Expected at least 1 provider request event");
+      const ev = requestEvents[0];
+
+      assert.equal(ev.schemaVersion, "1.0.0");
+      assert.equal(ev.eventName, "connector_telemetry");
+      assert.equal(ev.provider, "meta_ads");
+      assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_1"));
+      assert.equal(ev.opaqueConnectionId, toOpaqueConnectionId("conn_meta_1"));
+      assert.equal(ev.outcome, "success");
+      assert.equal(ev.attempt, 1);
+      assert.equal(typeof ev.durationMs, "number");
+      assert.ok(ev.durationMs >= 0);
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("2. A retry sequence emits accurate attempts and one final outcome", async () => {
+    simulator.setFaults({
+      meta: {
+        rateLimitAccountIds: new Set(["act_rate_limit_seq"]),
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_tenant_retry", connectionId: "conn_retry_1" },
+        async () => {
+          await assert.rejects(async () => {
+            await metaReportClient.getInsights("valid-token", {
+              adAccountId: "act_rate_limit_seq",
+              fields: ["impressions", "clicks", "spend"],
+              level: "campaign",
+            });
+          });
+        }
+      );
+
+      const attempts = capture.events.filter(
+        (e) => e.provider === "meta_ads" && e.eventCategory === "provider_request"
+      );
+      assert.equal(attempts.length, 4, "Expected exactly 4 retry attempts recorded");
+      assert.equal(attempts[0].attempt, 1);
+      assert.equal(attempts[1].attempt, 2);
+      assert.equal(attempts[2].attempt, 3);
+      assert.equal(attempts[3].attempt, 4);
+
+      for (const ev of attempts) {
+        assert.equal(ev.outcome, "throttled");
+        assert.equal(ev.errorCategory, "rate_limited");
+        assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_retry"));
+      }
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("3. Permanent authorization failure is classified as auth_revoked (not throttled)", async () => {
+    simulator.setFaults({
+      meta: {
+        revokedAccountIds: new Set(["act_test_revoked", "test_revoked"]),
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_auth_test", connectionId: "conn_auth_1" },
+        async () => {
+          await assert.rejects(
+            async () => {
+              await metaReportClient.getInsights("revoked-meta-token", {
+                adAccountId: "act_test_revoked",
+                fields: ["impressions"],
+                level: "campaign",
+              });
+            },
+            (err) => err instanceof MetaOAuthRevokedError
+          );
+        }
+      );
+
+      assert.equal(capture.events.length, 1, "Expected exactly one telemetry event for revoked Meta token");
+      const authEvent = capture.events[0];
+      assert.equal(authEvent.outcome, "permanent_failure");
+      assert.equal(authEvent.errorCategory, "auth_revoked");
+      assert.equal(authEvent.httpStatus, 400);
+      assert.ok(authEvent.durationMs >= 0);
+      assert.notEqual(authEvent.outcome, "throttled");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("4. Meta throttle utilization is sanitized and bounded [0, 100]", () => {
+    const rawNegative = sanitizeTelemetryEvent({
+      workspaceId: "ws_1",
+      provider: "meta_ads",
+      throttleUtilizationPct: -15,
+    });
+    assert.ok(rawNegative);
+    assert.equal(rawNegative.throttleUtilizationPct, 0);
+
+    const rawOver100 = sanitizeTelemetryEvent({
+      workspaceId: "ws_1",
+      provider: "meta_ads",
+      throttleUtilizationPct: 185,
+    });
+    assert.ok(rawOver100);
+    assert.equal(rawOver100.throttleUtilizationPct, 100);
+
+    const rawFraction = sanitizeTelemetryEvent({
+      workspaceId: "ws_1",
+      provider: "meta_ads",
+      throttleUtilizationPct: 84.7,
+    });
+    assert.ok(rawFraction);
+    assert.equal(rawFraction.throttleUtilizationPct, 85);
+  });
+
+  it("5. TikTok Retry-After is recorded without changing retry behavior", async () => {
+    simulator.setFaults({
+      tiktok: {
+        rateLimitAdvertiserIds: new Set(["adv_tt_throttle"]),
+        retryAfterSeconds: 1,
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_tiktok_test", connectionId: "conn_tt_1" },
+        async () => {
+          await assert.rejects(async () => {
+            await tiktokReportClient.createTask("valid-tt-token", {
+              advertiser_id: "adv_tt_throttle",
+              report_type: "BASIC",
+              data_level: "AUCTION_CAMPAIGN",
+              dimensions: ["campaign_id"],
+              metrics: ["spend"],
+              start_date: "2026-09-01",
+              end_date: "2026-09-07",
+            });
+          });
+        }
+      );
+
+      const ttEvents = capture.events.filter((e) => e.provider === "tiktok_business");
+      assert.ok(ttEvents.length >= 1, "Expected tiktok telemetry events");
+      assert.equal(ttEvents[0].retryAfterSupplied, true);
+      assert.equal(ttEvents[0].retryAfterHonored, true);
+      assert.equal(ttEvents[0].outcome, "throttled");
+      assert.equal(ttEvents[0].errorCategory, "rate_limited");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("6. Google quota errors are classified consistently as quota_exhausted", async () => {
+    simulator.setFaults({
+      google: {
+        rateLimitCustomerIds: new Set(["cust_google_quota"]),
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_google_test", connectionId: "conn_google_1" },
+        async () => {
+          await assert.rejects(async () => {
+            await googleAdsReportClient.getCampaignPerformance("valid-tok", "cust_google_quota", "LAST_7_DAYS");
+          });
+        }
+      );
+
+      const googleEvents = capture.events.filter((e) => e.provider === "google_ads");
+      assert.ok(googleEvents.length >= 1);
+      assert.equal(googleEvents[0].outcome, "throttled");
+      assert.equal(googleEvents[0].errorCategory, "quota_exhausted");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("7. A failed telemetry sink cannot fail an otherwise successful sync", async () => {
+    // Install a broken sink that throws synchronously
+    setTelemetrySink(() => {
+      throw new Error("Telemetry database / network crashed!");
+    });
+
+    await assert.doesNotReject(async () => {
+      await runWithConnectorContext(
+        { workspaceId: "ws_safe_sink", connectionId: "conn_safe_1" },
+        async () => {
+          const rows = await metaReportClient.getInsights("valid-token", {
+            adAccountId: "act_healthy_safe",
+            fields: ["impressions"],
+            level: "campaign",
+          });
+          assert.ok(rows.length > 0);
+        }
+      );
+    });
+  });
+
+  it("8. Heavy jobs expose item count and duration without raw payloads or PII", () => {
+    const rawEvent = {
+      eventCategory: "job_lifecycle" as const,
+      provider: "warehouse_queue" as const,
+      operation: "job_completed",
+      workspaceId: "ws_heavy_tenant",
+      jobId: "wjob_123456",
+      itemCount: 50,
+      completedItemCount: 48,
+      durationMs: 4520,
+      // Forbidden fields that should be stripped
+      token: "secret_access_token_12345",
+      authorization: "Bearer secret",
+      requestBody: { query: "SELECT * FROM secrets" },
+      customerEmail: "client@example.com",
+      campaignName: "Black Friday Super Sale",
+    };
+
+    const sanitized = sanitizeTelemetryEvent(rawEvent as any);
+    assert.ok(sanitized);
+
+    assert.equal(sanitized.itemCount, 50);
+    assert.equal(sanitized.completedItemCount, 48);
+    assert.equal(sanitized.durationMs, 4520);
+    assert.equal(sanitized.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_heavy_tenant"));
+    assert.equal(sanitized.opaqueJobId, toOpaqueJobId("wjob_123456"));
+
+    // Ensure forbidden fields are strictly absent
+    assert.equal((sanitized as any).token, undefined);
+    assert.equal((sanitized as any).authorization, undefined);
+    assert.equal((sanitized as any).requestBody, undefined);
+    assert.equal((sanitized as any).customerEmail, undefined);
+    assert.equal((sanitized as any).campaignName, undefined);
+  });
+
+  it("9. Opaque account identifiers prevent raw PII/account leaks", () => {
+    const opaque1 = toOpaqueAccountId("act_9988776655");
+    const opaque2 = toOpaqueAccountId("act_9988776655");
+    const opaqueOther = toOpaqueAccountId("act_1122334455");
+
+    assert.ok(opaque1?.startsWith("acct_"));
+    assert.equal(opaque1, opaque2, "Hashing must be deterministic");
+    assert.notEqual(opaque1, opaqueOther, "Different accounts must have distinct hashes");
+    assert.ok(!opaque1?.includes("9988776655"), "Must not leak raw account number");
+  });
+
+  it("9b. Every custom and default sink receives only sink-safe identifiers", () => {
+    const raw = {
+      workspaceId: "workspace-private-001",
+      connectionId: "connection-private-002",
+      jobId: "job-private-003",
+      accountId: "account-private-004",
+      clientId: "client-private-005",
+      token: "token-private-006",
+      error: { authorization: "Bearer private-007", providerResponse: { id: "response-private-008" } },
+    };
+    const forbidden = Object.values(raw).flatMap((value) => typeof value === "string" ? [value] : JSON.stringify(value));
+
+    let customSerialized = "";
+    setTelemetrySink((event) => { customSerialized = JSON.stringify(event); });
+    emitConnectorTelemetry({ provider: "meta_ads", operation: "sink_safety", ...raw });
+    for (const value of forbidden) assert.equal(customSerialized.includes(value), false);
+    assert.ok(customSerialized.includes("opaqueWorkspaceId"));
+    setTelemetrySink(null);
+
+    const originalWarn = logger.warn;
+    let defaultSerialized = "";
+    (logger as any).warn = (...args: unknown[]) => { defaultSerialized = JSON.stringify(args); };
+    try {
+      emitConnectorTelemetry({ provider: "meta_ads", operation: "default_sink_safety", ...raw });
+    } finally {
+      (logger as any).warn = originalWarn;
+    }
+    for (const value of forbidden) assert.equal(defaultSerialized.includes(value), false);
+    assert.ok(defaultSerialized.includes("opaqueWorkspaceId"));
+  });
+
+  it("9c. Account values, including opaque-looking strings, are transformed only at the sink boundary", () => {
+    const accountIds = ["acct_deadbeefcafe", "acct_opaque_deadbeefcafe", "provider-account-12345"];
+    const expected = accountIds.map((accountId) => toOpaqueAccountId(accountId));
+    assert.equal(expected[0], toOpaqueAccountId(accountIds[0]), "Equal account IDs retain stable correlation");
+    assert.notEqual(expected[0], expected[1], "Distinct account IDs do not collapse");
+
+    const customEvents: string[] = [];
+    setTelemetrySink((event) => { customEvents.push(JSON.stringify(event)); });
+    for (const accountId of accountIds) {
+      emitConnectorTelemetry({ provider: "meta_ads", operation: "account_boundary", accountId, opaqueAccountId: accountId, nested: { accountId } });
+    }
+    const customSerialized = customEvents.join("\n");
+    for (const accountId of accountIds) assert.equal(customSerialized.includes(accountId), false);
+    for (const opaque of expected) assert.ok(customSerialized.includes(opaque!));
+    setTelemetrySink(null);
+
+    const originalWarn = logger.warn;
+    const defaultEvents: string[] = [];
+    (logger as any).warn = (...args: unknown[]) => { defaultEvents.push(JSON.stringify(args)); };
+    try {
+      for (const accountId of accountIds) {
+        emitConnectorTelemetry({ provider: "meta_ads", operation: "default_account_boundary", accountId, opaqueAccountId: accountId, nested: { accountId } });
+      }
+    } finally {
+      (logger as any).warn = originalWarn;
+    }
+    const defaultSerialized = defaultEvents.join("\n");
+    for (const accountId of accountIds) assert.equal(defaultSerialized.includes(accountId), false);
+    for (const opaque of expected) assert.ok(defaultSerialized.includes(opaque!));
+  });
+
+  it("10. Rival-workspace activity cannot be attached to another workspace's event", async () => {
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_tenant_A", connectionId: "conn_A" },
+        async () => {
+          emitConnectorTelemetry({
+            eventCategory: "provider_request",
+            provider: "meta_ads",
+            operation: "test_op_A",
+          });
+        }
+      );
+
+      await runWithConnectorContext(
+        { workspaceId: "ws_tenant_B", connectionId: "conn_B" },
+        async () => {
+          emitConnectorTelemetry({
+            eventCategory: "provider_request",
+            provider: "google_ads",
+            operation: "test_op_B",
+          });
+        }
+      );
+
+      const eventA = capture.events.find((e) => e.operation === "test_op_A");
+      const eventB = capture.events.find((e) => e.operation === "test_op_B");
+
+      assert.equal(eventA?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_A"));
+      assert.equal(eventA?.opaqueConnectionId, toOpaqueConnectionId("conn_A"));
+
+      assert.equal(eventB?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_B"));
+      assert.equal(eventB?.opaqueConnectionId, toOpaqueConnectionId("conn_B"));
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("11. Empty, whitespace, or invalid workspace ID is rejected; omitted workspace defaults to unbound with omitted workspaceId", () => {
+    // Explicitly empty -> rejected
+    const emptyEvent = sanitizeTelemetryEvent({
+      workspaceId: "",
+      provider: "meta_ads",
+      operation: "empty_test",
+    });
+    assert.equal(emptyEvent, null, "Explicitly empty workspaceId must be rejected");
+
+    // Explicitly whitespace -> rejected
+    const whitespaceEvent = sanitizeTelemetryEvent({
+      workspaceId: "   \t\n  ",
+      provider: "meta_ads",
+      operation: "whitespace_test",
+    });
+    assert.equal(whitespaceEvent, null, "Explicitly whitespace workspaceId must be rejected");
+
+    // Reserved sentinel -> rejected
+    const sentinelEvent = sanitizeTelemetryEvent({
+      workspaceId: "ws_unspecified",
+      provider: "meta_ads",
+      operation: "sentinel_test",
+    });
+    assert.equal(sentinelEvent, null, "Reserved sentinel workspaceId must be rejected");
+
+    // Omitted workspace outside ALS -> unbound, workspaceId omitted
+    const undefinedEvent = sanitizeTelemetryEvent({
+      provider: "google_ads",
+      operation: "undefined_test",
+    });
+    assert.ok(undefinedEvent !== null);
+    assert.equal(undefinedEvent.opaqueWorkspaceId, undefined);
+    assert.equal(undefinedEvent.contextStatus, "unbound");
+
+    // Valid workspace -> tenant_scoped, workspaceId trimmed
+    const validEvent = sanitizeTelemetryEvent({
+      workspaceId: "  ws_real_tenant  ",
+      provider: "tiktok_business",
+      operation: "valid_test",
+    });
+    assert.ok(validEvent !== null);
+    assert.equal(validEvent.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_real_tenant"));
+    assert.equal(validEvent.contextStatus, "tenant_scoped");
+  });
+
+  it("12. Work emitted outside any AsyncLocalStorage context is cleanly marked unbound with no workspaceId", () => {
+    const capture = captureTelemetryForTest();
+    try {
+      emitConnectorTelemetry({
+        provider: "warehouse_queue",
+        operation: "background_cleanup",
+        outcome: "success",
+      });
+
+      assert.equal(capture.events.length, 1);
+      assert.equal(capture.events[0].opaqueWorkspaceId, undefined);
+      assert.equal(capture.events[0].contextStatus, "unbound");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("13. Concurrent AsyncLocalStorage executions maintain strict tenant isolation without race conditions", async () => {
+    const capture = captureTelemetryForTest();
+    try {
+      const taskA = runWithConnectorContext(
+        { workspaceId: "ws_concurrent_A", connectionId: "conn_A" },
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          emitConnectorTelemetry({
+            provider: "meta_ads",
+            operation: "async_op_A",
+          });
+        }
+      );
+
+      const taskB = runWithConnectorContext(
+        { workspaceId: "ws_concurrent_B", connectionId: "conn_B" },
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          emitConnectorTelemetry({
+            provider: "google_ads",
+            operation: "async_op_B",
+          });
+        }
+      );
+
+      await Promise.all([taskA, taskB]);
+
+      const eventA = capture.events.find((e) => e.operation === "async_op_A");
+      const eventB = capture.events.find((e) => e.operation === "async_op_B");
+
+      assert.equal(eventA?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_concurrent_A"));
+      assert.equal(eventA?.contextStatus, "tenant_scoped");
+      assert.equal(eventB?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_concurrent_B"));
+      assert.equal(eventB?.contextStatus, "tenant_scoped");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("14. Provider retry callbacks retain the active workspace context across delays", async () => {
+    simulator.setFaults({
+      meta: {
+        rateLimitAccountIds: new Set(["act_retry_ctx"]),
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_retry_ctx_tenant", connectionId: "conn_retry_ctx" },
+        async () => {
+          await assert.rejects(async () => {
+            await metaReportClient.getInsights("valid-token", {
+              adAccountId: "act_retry_ctx",
+              fields: ["impressions"],
+              level: "campaign",
+            });
+          });
+        }
+      );
+
+      const retryEvents = capture.events.filter((e) => e.provider === "meta_ads");
+      assert.ok(retryEvents.length > 1, "Expected multiple attempts");
+      for (const ev of retryEvents) {
+        assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_retry_ctx_tenant"));
+        assert.equal(ev.contextStatus, "tenant_scoped");
+      }
+    } finally {
+      capture.restore();
+    }
+  });
+});

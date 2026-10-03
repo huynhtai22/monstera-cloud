@@ -4,7 +4,9 @@
  */
 
 import prisma from "@/lib/prisma";
+import { recordProviderReportingContext } from "@/lib/reporting-context-server";
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext, type ConnectorProvider } from "@/lib/observability/connector-telemetry";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
 import {
@@ -16,11 +18,12 @@ import {
   syncLazadaWarehouseMetrics,
 } from "@/lib/sync-marketplace-warehouse";
 import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
+import { syncShopeeCatalogWarehouse } from "@/lib/sync-shopee-catalog-warehouse";
 import { syncTikTokGmvMaxWarehouseMetrics } from "@/lib/sync-tiktok-gmv-max";
 
 // Meta imports
-import { ingestMetaRows } from "@/lib/meta-ingest";
-import { MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { ingestMetaRows, META_CANONICAL_METRIC_GRAIN } from "@/lib/meta-ingest";
+import { MetaOAuthRevokedError, MetaRateLimitError } from "@/lib/meta-ads";
 import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
@@ -35,8 +38,15 @@ import {
 } from "@/lib/connection-sync-lease";
 
 // Google imports
-import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
+import { googleAdsReportClient, isGoogleAdsAccessBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
+import {
+  assertGoogleRuntimeModeAllowed,
+  executeGoogleShadowRun,
+  isGoogleShadowEnabled,
+  type GoogleShadowCapture,
+  type GoogleShadowOptions,
+} from "@/lib/connector-runtime/google-shadow";
 
 // TikTok imports
 import {
@@ -45,15 +55,23 @@ import {
   TIKTOK_CAMPAIGN_REPORT_METRICS,
   type CreateReportTaskParams,
 } from "@/lib/tiktok-business";
+import {
+  normalizeTikTokAdvertiserIds,
+  TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
+} from "@/lib/tiktok-advertiser-id";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
+import { recordAccountOutcome, getSkippedAccountIds } from "@/lib/provider-account-health";
+import { computeStaleRowStats } from "@/lib/provider-row-reconciliation";
 import {
   type SyncChildResult,
   type SyncResult,
   isRetryableSyncError,
   makeFailedSyncResult,
+  type ProviderRetryState,
   summarizeSyncOutcome,
 } from "@/lib/sync-outcome";
 import { refreshConnectionLastDataThrough, shouldRefreshLastDataThrough } from "@/lib/connection-data-through";
+import { scopeConnectionWhere } from "@/lib/workspace-scope";
 
 export interface SyncOptions {
   connectionId: string;
@@ -68,11 +86,18 @@ export interface SyncOptions {
   until?: string;
   /** Used for marketplace defaults and any remaining plan-based behaviors. */
   userPlan?: string;
+  /** Internal durable-worker continuation state; never accepted from public input. */
+  providerState?: ProviderRetryState;
+  /**
+   * Connector Runtime shadow observation (Google only). When enabled, the
+   * legacy sync result stays authoritative while raw responses are captured
+   * for replay and comparison. Defaults from GOOGLE_CONNECTOR_RUNTIME_MODE.
+   */
+  shadow?: GoogleShadowOptions;
 }
 
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
-  const { connectionId, provider, credentials, workspaceId } = opts;
-  const plan = opts.userPlan ?? "free";
+  const { connectionId, provider, workspaceId } = opts;
 
   logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId} in workspace ${workspaceId}`);
 
@@ -103,6 +128,57 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
   }
 }
 
+/**
+ * Calculates inclusive calendar days between two dates using UTC calendar days.
+ * Returns undefined if either date is missing, invalid, or inverted (until < since).
+ *
+ * Requirements:
+ * - Same date -> 1 day
+ * - "2026-09-01" through "2026-09-07" -> 7 days
+ * - Multi-month and month/year boundaries remain correct
+ * - Invariant across local timezones and daylight-saving transitions
+ * - Invalid or inverted dates return undefined without throwing
+ */
+export function calculateInclusiveDataWindowDays(
+  since?: string | null,
+  until?: string | null
+): number | undefined {
+  if (!since || !until) return undefined;
+
+  const parseUtcDate = (dStr: string): Date | null => {
+    const trimmed = dStr.trim();
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+    if (dateMatch) {
+      const year = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+      const day = parseInt(dateMatch[3], 10);
+      const d = new Date(Date.UTC(year, month, day));
+      if (
+        d.getUTCFullYear() === year &&
+        d.getUTCMonth() === month &&
+        d.getUTCDate() === day
+      ) {
+        return d;
+      }
+      return null;
+    }
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  };
+
+  const sinceDate = parseUtcDate(since);
+  const untilDate = parseUtcDate(until);
+  if (!sinceDate || !untilDate) return undefined;
+
+  const diffMs = untilDate.getTime() - sinceDate.getTime();
+  if (diffMs < 0) {
+    return undefined;
+  }
+
+  return Math.round(diffMs / 86_400_000) + 1;
+}
+
 async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease): Promise<SyncResult> {
   const { connectionId, provider, credentials, workspaceId } = opts;
   const plan = opts.userPlan ?? "free";
@@ -114,106 +190,115 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
     until: opts.until ?? null,
   });
 
-  try {
-    if (provider === "meta_ads") {
-      return await syncMetaAds({
-        connectionId,
-        credentials,
-        workspaceId,
-        since: opts.since,
-        until: opts.until,
-        userPlan: plan,
-        lease,
-      });
-    } else if (provider === "google_ads") {
-      return await syncGoogleAds({
-        connectionId,
-        credentials,
-        workspaceId,
-        since: opts.since,
-        until: opts.until,
-        userPlan: plan,
-        lease,
-      });
-    } else if (provider === "tiktok_business") {
-      return await syncTikTok({
-        connectionId,
-        credentials,
-        workspaceId,
-        since: opts.since,
-        until: opts.until,
-        userPlan: plan,
-        lease,
-      });
-    } else if (provider === "shopee") {
-      const r = defaultRollingRange(plan);
-      const range = {
-        since: opts.since ?? r.since,
-        until: opts.until ?? r.until,
-      };
-      const orders = await syncShopeeWarehouseMetrics({
-        connectionId,
-        workspaceId,
-        userPlan: plan,
-        lease,
-        ...range,
-      });
-      if (!orders.success) {
-        const result = makeFailedSyncResult(orders.error ?? "Shopee orders sync failed");
+  const dataWindowDays = calculateInclusiveDataWindowDays(opts.since, opts.until);
+
+  return await runWithConnectorContext({
+    workspaceId,
+    connectionId,
+    provider: provider as ConnectorProvider,
+    jobId: lease.leaseId,
+    dataWindowDays,
+  }, async () => {
+    try {
+      if (provider === "meta_ads") {
+        return await syncMetaAds({
+          connectionId,
+          credentials,
+          workspaceId,
+          since: opts.since,
+          until: opts.until,
+          userPlan: plan,
+          lease,
+        });
+      } else if (provider === "google_ads") {
+        assertGoogleRuntimeModeAllowed();
+        return await syncGoogleAds({
+          connectionId,
+          credentials,
+          workspaceId,
+          since: opts.since,
+          until: opts.until,
+          userPlan: plan,
+          lease,
+          shadow: opts.shadow ?? defaultGoogleShadowOptions(connectionId),
+        });
+      } else if (provider === "tiktok_business") {
+        return await syncTikTok({
+          connectionId,
+          credentials,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          since: opts.since,
+          until: opts.until,
+          providerState: opts.providerState,
+        });
+      } else if (provider === "shopee") {
+        const r = defaultRollingRange(plan);
+        const range = {
+          since: opts.since ?? r.since,
+          until: opts.until ?? r.until,
+        };
+        const catalog = await syncShopeeCatalogWarehouse({ connectionId, workspaceId });
+        const orders = await syncShopeeWarehouseMetrics({
+          connectionId,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          ...range,
+        });
+        const ads = await syncShopeeAdsWarehouseMetrics({
+          connectionId,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          ...range,
+        });
+        if (!ads.success) {
+          logger.warn(
+            `[syncConnectionData] Shopee Ads warehouse failed (orders still ok): ${ads.error ?? ""}`
+          );
+        }
+        const children: SyncChildResult[] = [
+          { id: "campaign_catalog", kind: "connection", optional: true, ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
+          { id: "product_catalog", kind: "connection", optional: true, ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
+          { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error, retryable: !orders.success && isRetryableSyncError(orders.error) },
+          { id: "ads_performance", kind: "connection", optional: true, ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
+        ];
+        const summary = summarizeSyncOutcome(children);
+        await persistConnectionSyncOutcome(connectionId, summary, lease);
+        return { ...summary, children };
+      } else if (provider === "lazada") {
+        const r = defaultRollingRange(plan);
+        const result = await syncLazadaWarehouseMetrics({
+          connectionId,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          since: opts.since ?? r.since,
+          until: opts.until ?? r.until,
+        });
+        const children: SyncChildResult[] = [{ id: "orders", kind: "connection", ok: result.success, rowsIngested: result.rowsIngested, error: result.error, retryable: !result.success && isRetryableSyncError(result.error) }];
+        const summary = summarizeSyncOutcome(children);
+        await persistConnectionSyncOutcome(connectionId, summary, lease);
+        return { ...summary, children };
+      } else {
+        logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
+        const result = makeFailedSyncResult(`Unsupported provider: ${provider}`, false);
         await persistConnectionSyncOutcome(connectionId, result, lease);
         return result;
       }
-
-      const ads = await syncShopeeAdsWarehouseMetrics({
-        connectionId,
-        workspaceId,
-        userPlan: plan,
-        lease,
-        ...range,
-      });
-      if (!ads.success) {
-        logger.warn(
-          `[syncConnectionData] Shopee Ads warehouse failed (orders still ok): ${ads.error ?? ""}`
-        );
+    } catch (error: any) {
+      logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
+      const result = makeFailedSyncResult(error instanceof Error ? error.message : "Sync failed");
+      try {
+        await persistConnectionSyncOutcome(connectionId, result, lease);
+      } catch (persistError) {
+        logger.error("[syncConnectionData] Failed to persist failed sync outcome", persistError);
       }
-
-      const children: SyncChildResult[] = [
-        { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error },
-        { id: "ads", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error },
-      ];
-      const summary = summarizeSyncOutcome(children);
-      await persistConnectionSyncOutcome(connectionId, summary, lease);
-      return { ...summary, children };
-    } else if (provider === "lazada") {
-      const r = defaultRollingRange(plan);
-      const result = await syncLazadaWarehouseMetrics({
-        connectionId,
-        workspaceId,
-        userPlan: plan,
-        lease,
-        since: opts.since ?? r.since,
-        until: opts.until ?? r.until,
-      });
-      const children: SyncChildResult[] = [{ id: "orders", kind: "connection", ok: result.success, rowsIngested: result.rowsIngested, error: result.error, retryable: !result.success && isRetryableSyncError(result.error) }];
-      const summary = summarizeSyncOutcome(children);
-      await persistConnectionSyncOutcome(connectionId, summary, lease);
-      return { ...summary, children };
-    } else {
-      logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
-      const result = makeFailedSyncResult(`Unsupported provider: ${provider}`, false);
-      await persistConnectionSyncOutcome(connectionId, result, lease);
       return result;
     }
-  } catch (error: any) {
-    logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
-    const result = makeFailedSyncResult(error instanceof Error ? error.message : "Sync failed");
-    try {
-      await persistConnectionSyncOutcome(connectionId, result, lease);
-    } catch (persistError) {
-      logger.error("[syncConnectionData] Failed to persist failed sync outcome", persistError);
-    }
-    return result;
-  }
+  });
 }
 
 /**
@@ -226,6 +311,7 @@ export async function persistConnectionSyncOutcome(
   connectionId: string,
   outcome: Pick<SyncResult, "outcome" | "error">,
   lease?: ConnectionLease,
+  scope?: { workspaceId: string; expectedCredentials?: string },
 ): Promise<void> {
   if (lease) {
     try {
@@ -242,20 +328,78 @@ export async function persistConnectionSyncOutcome(
     : `[${outcome.outcome}] ${outcome.error ?? "One or more requested accounts did not sync"}`.slice(0, 1900);
   // Never resurrect a disconnected connection: a sync that raced with Disconnect
   // must not flip status back to "connected".
-  await prisma.connection.updateMany({
-    where: { id: connectionId, status: { not: "disconnected" } },
+  const where = scope
+    ? scopeConnectionWhere(scope.workspaceId, {
+        id: connectionId,
+        status: { not: "disconnected" },
+        ...(scope.expectedCredentials !== undefined ? { credentials: scope.expectedCredentials } : {}),
+      })
+    : { id: connectionId, status: { not: "disconnected" } };
+  const updated = await prisma.connection.updateMany({
+    where,
     data: outcome.outcome === "success"
       ? { lastSyncAt: new Date(), lastError, status: "connected" }
       : { lastError },
   });
+  if (updated.count === 0) return;
+
+  const conn = scope
+    ? await prisma.connection.findFirst({
+        where: scopeConnectionWhere(scope.workspaceId, { id: connectionId }),
+        select: { workspaceId: true, provider: true },
+      })
+    : await prisma.connection.findUnique({
+        where: { id: connectionId },
+        select: { workspaceId: true, provider: true },
+      });
+
   if (shouldRefreshLastDataThrough(outcome.outcome)) {
-    const conn = await prisma.connection.findUnique({
-      where: { id: connectionId },
-      select: { workspaceId: true },
-    });
     if (conn) {
       await refreshConnectionLastDataThrough(conn.workspaceId, connectionId);
     }
+  }
+}
+
+/**
+ * Persist a failure discovered before provider sync starts (for example,
+ * credential decryption or validation failure) without overwriting an outcome
+ * from another worker that currently owns this connection.
+ */
+export async function persistPreSyncConnectionFailure(params: {
+  connectionId: string;
+  workspaceId: string;
+  provider: string;
+  credentials: string;
+  error: string;
+}): Promise<void> {
+  const attempt = await acquireConnectionSyncLease(params);
+  if (!attempt.acquired) {
+    logger.warn(
+      `[syncConnectionData] Skipping pre-sync failure persistence for ${params.connectionId}; another worker owns the connection lease`,
+    );
+    return;
+  }
+
+  try {
+    const current = await prisma.connection.findFirst({
+      where: scopeConnectionWhere(params.workspaceId, { id: params.connectionId }),
+      select: { credentials: true, provider: true },
+    });
+    if (!current || current.credentials !== params.credentials || current.provider !== params.provider) {
+      logger.info(
+        `[syncConnectionData] Skipping stale pre-sync failure for ${params.connectionId}; source credentials or provider changed`,
+      );
+      return;
+    }
+
+    await persistConnectionSyncOutcome(
+      params.connectionId,
+      { outcome: "failed", error: params.error },
+      attempt.lease,
+      { workspaceId: params.workspaceId, expectedCredentials: params.credentials },
+    );
+  } finally {
+    await releaseConnectionSyncLease(attempt.lease, false);
   }
 }
 
@@ -331,10 +475,14 @@ async function syncMetaAds(opts: {
   // 3. Resolve currencies from Meta itself. Older connections were saved before
   // currency was included in OAuth metadata; never label their source amounts
   // as USD merely because the field is absent.
-  if ((!adAccounts || adAccounts.length === 0 || adAccounts.some((account: any) => !account.currency)) && accessToken) {
+  const freshMetaContexts = new Map<string, { timezone_name?: string; currency?: string }>();
+  if (accessToken) {
     try {
       logger.info(`[syncMetaAds] Querying Meta Graph API dynamically for accessible ad accounts`);
       const apiAccounts = await metaAdsClient.getAdAccounts(accessToken);
+      for (const account of apiAccounts) {
+        freshMetaContexts.set(String(account.id).replace(/^act_/, ""), account);
+      }
       if (apiAccounts && apiAccounts.length > 0) {
         const byId = new Map(
           apiAccounts.map((account) => [String(account.id).replace(/^act_/, ""), account]),
@@ -391,10 +539,23 @@ async function syncMetaAds(opts: {
   const children: SyncChildResult[] = [];
 
   logger.info(`[syncMetaAds] Starting sync for ${adAccounts.length} accounts`);
+  const skippedAccounts = await getSkippedAccountIds(connectionId, workspaceId);
 
   for (const account of adAccounts) {
     const accountId = account.id;
     const accountName = account.name;
+    const freshContext = freshMetaContexts.get(String(accountId).replace(/^act_/, ""));
+    if (freshContext) {
+      // Persist only selected accounts, using the same ID spelling as metric rows.
+      await recordProviderReportingContext({ workspaceId, connectionId, provider: "meta_ads", accountId: String(accountId), timezone: freshContext.timezone_name, currency: freshContext.currency });
+    }
+
+    if (skippedAccounts.has(String(accountId))) {
+      logger.info(`[syncMetaAds] Skipping quarantined/reconnect-required account ${accountId}`);
+      children.push({ id: String(accountId), kind: "ad_account", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
     logger.info(`[syncMetaAds] Processing account ${accountId}`);
 
     // Acquire sync lock
@@ -419,7 +580,7 @@ async function syncMetaAds(opts: {
       const insightsQuery: any = {
         adAccountId: accountId.replace("act_", ""),
         fields: META_DEFAULT_FIELDS,
-        level: "ad",
+        level: META_CANONICAL_METRIC_GRAIN,
         timeIncrement: 1,
       };
 
@@ -443,7 +604,7 @@ async function syncMetaAds(opts: {
           accountId,
           accountName,
           currency,
-          level: "ad",
+          level: META_CANONICAL_METRIC_GRAIN,
           rows,
           syncJobId: jobId,
           lockScope: lock.scope,
@@ -453,13 +614,47 @@ async function syncMetaAds(opts: {
 
         logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
         children.push({ id: String(accountId), kind: "ad_account", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "meta_ads",
+          accountId: String(accountId),
+          accountName,
+          ok: result.failed === 0,
+          retryable: result.failed > 0,
+          error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+        });
+
+        // Stale-row detection (observability only, rows always retained).
+        if (result.failed === 0 && since && until) {
+          try {
+            await computeStaleRowStats({
+              workspaceId,
+              connectionId,
+              accountId: String(accountId),
+              level: META_CANONICAL_METRIC_GRAIN,
+              since: new Date(`${since}T00:00:00.000Z`),
+              until: new Date(`${until}T23:59:59.999Z`),
+              providerEntityIds: rows.map((row: any) => String(row.ad_id ?? row.id ?? "")).filter(Boolean),
+              fetchComplete: true,
+            });
+          } catch (reconErr) {
+            logger.warn("[syncMetaAds] Stale-row detection failed (non-fatal):", reconErr);
+          }
+        }
 
         // Earlier warehouse refreshes stored Meta results at campaign level.
         // Once a complete ad-level replacement is written, remove only those
         // legacy aggregates in the refreshed window so totals are not doubled.
-        if (result.failed === 0 && since && until) {
-          const startDate = new Date(`${since}T00:00:00.000Z`);
-          const endDate = new Date(`${until}T23:59:59.999Z`);
+        if (result.failed === 0) {
+          const returnedDays = rows
+            .map((row: any) => String(row.date_start ?? row.date_stop ?? "").slice(0, 10))
+            .filter((day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day))
+            .sort();
+          const replacementSince = since ?? returnedDays[0];
+          const replacementUntil = until ?? returnedDays.at(-1);
+          const startDate = new Date(`${replacementSince}T00:00:00.000Z`);
+          const endDate = new Date(`${replacementUntil}T23:59:59.999Z`);
           if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
             await prisma.campaignMetric.deleteMany({
               where: {
@@ -476,13 +671,45 @@ async function syncMetaAds(opts: {
       } else {
         logger.info(`[syncMetaAds] No rows to ingest for ${accountId}`);
         children.push({ id: String(accountId), kind: "ad_account", ok: true, rowsIngested: 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "meta_ads",
+          accountId: String(accountId),
+          accountName,
+          ok: true,
+        });
       }
 
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: true });
     } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
       const msg = error instanceof Error ? error.message : String(error);
-      if (error instanceof MetaOAuthRevokedError) {
+      const isRevoked = error instanceof MetaOAuthRevokedError;
+      const isAuth = isRevoked || /error validating access token|token.*revoked|code 190|oauthexception/i.test(msg);
+      const metaRetryable = isRetryableSyncError(error) && !isAuth;
+      const childError = isRevoked ? `Meta authorization revoked — reconnect required. (${msg})` : msg;
+      children.push({
+        id: String(accountId),
+        kind: "ad_account",
+        ok: false,
+        error: childError,
+        retryable: metaRetryable,
+        ...(error instanceof MetaRateLimitError ? { retryAfterMs: error.retryAfterMs } : {}),
+      });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "meta_ads",
+        accountId: String(accountId),
+        accountName,
+        ok: false,
+        retryable: metaRetryable,
+        authFailure: isAuth,
+        error: childError,
+      });
+
+      if (isRevoked) {
         // OAuth revoked: a permanent connection-auth condition, not a per-account
         // failure. Route to the established revocation handler (disconnect +
         // ticket) so the connection does not look healthy and retrying stops.
@@ -491,12 +718,10 @@ async function syncMetaAds(opts: {
         } catch (revErr) {
           logger.error("[syncMetaAds] handleMetaRevocation failed:", revErr);
         }
-        children.push({ id: String(accountId), kind: "ad_account", ok: false, error: `Meta authorization revoked — reconnect required. (${msg})`, retryable: false });
         break; // token is revoked: remaining accounts share the same fate
       }
-      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
-      // Continue with next account
+      // Sibling isolation: continue with next account
     }
   }
 
@@ -514,8 +739,11 @@ async function syncGoogleAds(opts: {
   since?: string;
   until?: string;
   userPlan: string;
+  shadow?: GoogleShadowOptions;
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, userPlan, lease } = opts;
+  const shadowCaptures: GoogleShadowCapture[] = [];
+  let shadowExtractionMsTotal = 0;
 
   let accessToken: string;
   try {
@@ -558,15 +786,12 @@ async function syncGoogleAds(opts: {
 
   logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
 
-  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedCustomerIds)
-    ? extraFields.selectedCustomerIds
-    : Array.isArray(credentials.selectedCustomerIds)
-      ? credentials.selectedCustomerIds
+  const selectedIds: string[] | undefined = Array.isArray(credentials.selectedCustomerIds)
+    ? credentials.selectedCustomerIds
+    : Array.isArray(extraFields.selectedCustomerIds)
+      ? extraFields.selectedCustomerIds
       : undefined;
-  if (selectedIds !== undefined) {
-    customerIds = customerIds.filter((id: string) => selectedIds.includes(id));
-    logger.info(`[syncGoogleAds] Filtered to ${customerIds.length} selected customers`);
-  }
+
 
   if (!customerIds.length) {
     const result = makeFailedSyncResult("No customer accounts selected or found on connection", false);
@@ -592,6 +817,7 @@ async function syncGoogleAds(opts: {
   type LeafAccount = { customerId: string; mccId: string; descriptiveName: string };
   const leafAccounts: LeafAccount[] = [];
   const seenLeafIds = new Set<string>();
+  const targetedHierarchyFailures: { rootId: string; error: string; retryable: boolean }[] = [];
 
   for (const rootId of customerIds) {
     try {
@@ -606,12 +832,12 @@ async function syncGoogleAds(opts: {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (isGoogleAdsDeveloperTokenBlocked(err)) {
-        // Application-level blocker: the developer token is not approved for
-        // this account. Every leaf query would fail identically — never mask
-        // it as per-account errors via the leaf fallback below.
+      if (isGoogleAdsAccessBlocked(err)) {
+        // Application-level blocker: Google Ads API access is not enabled for
+        // the Cloud project that owns the OAuth client. Every leaf query would
+        // fail identically — never mask it as per-account errors below.
         const result = makeFailedSyncResult(
-          `Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED). Check the production deployment configuration and Google Ads API Center status — selecting a different customer account will not resolve this application-level rejection.`,
+          `Google Ads API access is not enabled for the Google Cloud project that owns this OAuth client. Check the project's Google Ads API access level in Google Cloud Console. Selecting a different customer account will not resolve this application-level rejection.`,
           false,
         );
         await persistConnectionSyncOutcome(connectionId, result, lease);
@@ -620,11 +846,19 @@ async function syncGoogleAds(opts: {
       if (isRetryableSyncError(err)) {
         // A quota/network failure while expanding an MCC means its child scope
         // is unknown; never substitute a zero-row root query for completion.
-        children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        if (selectedIds === undefined) {
+          children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        } else {
+          targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: true });
+        }
         logger.warn(`[syncGoogleAds] Deferring root=${rootId} after retryable hierarchy failure: ${msg}`);
         continue;
       }
       logger.warn(`[syncGoogleAds] Could not resolve hierarchy for root=${rootId}: ${msg} — trying direct query`);
+      if (selectedIds !== undefined) {
+        targetedHierarchyFailures.push({ rootId: String(rootId), error: msg, retryable: false });
+        continue;
+      }
       // Fallback: treat root as leaf with itself as login-customer-id
       if (!seenLeafIds.has(rootId)) {
         seenLeafIds.add(rootId);
@@ -640,23 +874,74 @@ async function syncGoogleAds(opts: {
   }
 
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
+  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId, {
+    // Old builds incorrectly quarantined accounts when project-level API access
+    // failed. Let Google retry those rows after the project configuration changes.
+    recoverableErrorPattern: /CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED|Google Ads API access is not enabled for the Google Cloud project/i,
+  });
+
+  // Selection refers to reportable leaves, not manager roots. Never expand consent.
+  const selectedLeaves = selectedIds === undefined ? leafAccounts : leafAccounts.filter(account => selectedIds.includes(account.customerId));
+  if (selectedIds !== undefined) {
+    for (const id of selectedIds) {
+      if (selectedLeaves.some(account => account.customerId === id)) continue;
+      // An unresolved hierarchy cannot prove revocation. Keep the approved leaf
+      // as the retry target; a manager ID must never become a report selection.
+      const transientFailure = targetedHierarchyFailures.find(failure => failure.retryable);
+      children.push({ id, kind: "customer", ok: false,
+        error: transientFailure ? `Could not resolve customer hierarchy: ${transientFailure.error}` : "Selected customer is no longer accessible under this connection",
+        retryable: Boolean(transientFailure) });
+    }
+  }
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────
-  for (const { customerId, mccId, descriptiveName } of leafAccounts) {
+  for (const { customerId, mccId, descriptiveName } of selectedLeaves) {
+    if (skippedCustomers.has(customerId) && selectedIds === undefined) {
+      logger.info(`[syncGoogleAds] Skipping quarantined/reconnect-required customer ${customerId}`);
+      children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
     try {
       logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
+      const shadowRawTexts: string[] = [];
+      const shadowExtractStart = opts.shadow?.enabled ? Date.now() : 0;
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
         dateSpec,
         mccId,
+        opts.shadow?.enabled
+          ? { onRawResponse: (event) => shadowRawTexts.push(event.rawText) }
+          : undefined,
       );
+      const shadowExtractionMs =
+        opts.shadow?.enabled && shadowExtractStart > 0 ? Date.now() - shadowExtractStart : null;
 
       logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
+      if (rows.length) await recordProviderReportingContext({ workspaceId, connectionId, provider: "google_ads", accountId: customerId, timezone: rows[0].customer_time_zone, currency: rows[0].customer_currency_code });
+      if (opts.shadow?.enabled) {
+        shadowExtractionMsTotal += shadowExtractionMs ?? 0;
+        shadowCaptures.push({
+          customerId,
+          rawTexts: shadowRawTexts,
+          normalizedRows: rows as unknown as Array<Record<string, unknown>>,
+          timezone: rows[0]?.customer_time_zone as string | undefined,
+          currency: rows[0]?.customer_currency_code as string | undefined,
+        });
+      }
 
       if (rows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "google_ads",
+          accountId: customerId,
+          accountName: descriptiveName,
+          ok: true,
+        });
         continue;
       }
 
@@ -665,17 +950,6 @@ async function syncGoogleAds(opts: {
       logger.info(`[syncGoogleAds] sample row: ${JSON.stringify(rows[0]).slice(0, 400)}`);
 
       const transformedRows = rows.map((r: any) => {
-        // The normalizer flattens nested objects using section_field naming:
-        //   campaign.id          → campaign_id  (Number)
-        //   campaign.name        → campaign_name
-        //   metrics.cost_micros  → metrics_cost  (divided by 1M — micros suffix stripped)
-        //   metrics.impressions  → metrics_impressions
-        //   metrics.clicks       → metrics_clicks
-        //   metrics.ctr          → metrics_ctr
-        //   metrics.average_cpc  → metrics_average_cpc
-        //   metrics.conversions  → metrics_conversions
-        //   segments.date        → segments_date
-        //   customer.currency_code → customer_currency_code
         const campaignId = String(r.campaign_id ?? r.campaign_name ?? "unknown");
         const date = r.segments_date ?? r.date ?? null;
 
@@ -705,6 +979,14 @@ async function syncGoogleAds(opts: {
 
       if (validRows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "google_ads",
+          accountId: customerId,
+          accountName: descriptiveName,
+          ok: true,
+        });
         continue;
       }
 
@@ -719,14 +1001,79 @@ async function syncGoogleAds(opts: {
 
       logger.info(`[syncGoogleAds] customerId=${customerId} upserted=${result.upserted} failed=${result.failed}`);
       children.push({ id: customerId, kind: "customer", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "google_ads",
+        accountId: customerId,
+        accountName: descriptiveName,
+        ok: result.failed === 0,
+        retryable: result.failed > 0,
+        error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+      });
+
+      // Stale row detection for Google Ads
+      if (result.failed === 0 && opts.since && opts.until) {
+        try {
+          await computeStaleRowStats({
+            workspaceId,
+            connectionId,
+            accountId: customerId,
+            level: "campaign",
+            since: new Date(`${opts.since}T00:00:00.000Z`),
+            until: new Date(`${opts.until}T23:59:59.999Z`),
+            providerEntityIds: validRows.map((r) => r.campaign_id),
+            fetchComplete: true,
+          });
+        } catch (reconErr) {
+          logger.warn("[syncGoogleAds] Stale-row detection failed (non-fatal):", reconErr);
+        }
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
-      if (isGoogleAdsDeveloperTokenBlocked(error)) {
-        children.push({ id: customerId, kind: "customer", ok: false, error: "Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED) — syncing is blocked at the application level.", retryable: false });
+      const isAccessBlocked = isGoogleAdsAccessBlocked(error);
+      const isAuth = isAccessBlocked || /unauthorized|permission.*denied/i.test(msg);
+      const gRetryable = isRetryableSyncError(error) && !isAuth;
+      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: gRetryable });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "google_ads",
+        accountId: customerId,
+        accountName: descriptiveName,
+        ok: false,
+        retryable: isAccessBlocked || gRetryable,
+        // Cloud-project access is application configuration, not a revoked
+        // customer authorization. Keep it retryable after project access is fixed.
+        authFailure: isAuth && !isAccessBlocked,
+        error: msg,
+      });
+
+      if (isAccessBlocked) {
         break; // every remaining customer fails identically
       }
-      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
+      // Sibling isolation: continue with next account
+    }
+  }
+
+  if (opts.shadow?.enabled && shadowCaptures.length > 0) {
+    try {
+      await executeGoogleShadowRun({
+        workspaceId,
+        connectionId,
+        runId: opts.shadow.runId ?? `${connectionId}-${Date.now()}`,
+        legacyVersion: opts.shadow.legacyVersion ?? "legacy-sync",
+        captures: shadowCaptures,
+        extractionMs: shadowExtractionMsTotal,
+        lease,
+      });
+    } catch (shadowError) {
+      // Shadow evidence must never affect the authoritative legacy result.
+      logger.warn(
+        "[syncGoogleAds] Shadow evaluation failed without affecting legacy result:",
+        shadowError instanceof Error ? shadowError.message : shadowError,
+      );
     }
   }
 
@@ -734,6 +1081,11 @@ async function syncGoogleAds(opts: {
   await persistConnectionSyncOutcome(connectionId, summary, lease);
   logger.info("[syncGoogleAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
   return { ...summary, children };
+}
+
+function defaultGoogleShadowOptions(connectionId: string): GoogleShadowOptions | undefined {
+  if (!isGoogleShadowEnabled()) return undefined;
+  return { enabled: true, runId: `${connectionId}-${Date.now()}`, legacyVersion: "legacy-sync" };
 }
 
 async function syncTikTok(opts: {
@@ -744,6 +1096,7 @@ async function syncTikTok(opts: {
   since?: string;
   until?: string;
   userPlan: string;
+  providerState?: ProviderRetryState;
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, lease } = opts;
 
@@ -766,26 +1119,36 @@ async function syncTikTok(opts: {
     return result;
   }
 
-  // TikTok stores advertiserIds in extraFields
+  // TikTok stores advertiserIds in extraFields. A legacy connection identity
+  // may be used only when it is itself a valid numeric advertiser ID; opaque
+  // UI/source labels must never reach TikTok as `advertiser_id`.
   const extraFields = credentials.extraFields || {};
-  let advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
+  let advertiserIds = normalizeTikTokAdvertiserIds(
+    extraFields.advertiserIds || credentials.advertiserIds,
+  );
 
-  if ((!advertiserIds || advertiserIds.length === 0) && connectionId) {
+  if (!advertiserIds.length) {
     try {
-      const conn = await prisma.connection.findUnique({
+      const connection = await prisma.connection.findUnique({
         where: { id: connectionId },
         select: { remoteAccountId: true },
       });
-      if (conn?.remoteAccountId && conn.remoteAccountId.trim().length > 0) {
-        advertiserIds = [conn.remoteAccountId.trim()];
-        logger.info(`[syncTikTok] Resolved advertiserId from DB remoteAccountId: ${conn.remoteAccountId}`);
+      const fallbackAdvertiserIds = normalizeTikTokAdvertiserIds([
+        connection?.remoteAccountId,
+      ]);
+      if (fallbackAdvertiserIds.length) {
+        advertiserIds = fallbackAdvertiserIds;
+        logger.info("[syncTikTok] Resolved validated advertiser ID from the connection identity", {
+          connectionId,
+        });
       }
-    } catch (dbErr) {
-      logger.warn(`[syncTikTok] DB connection query failed:`, dbErr);
+    } catch (error) {
+      logger.warn("[syncTikTok] Unable to read legacy advertiser identity", { connectionId, error });
     }
   }
 
   logger.info(`[syncTikTok] Total advertiser IDs:`, advertiserIds.length);
+  const skippedAdvertisers = await getSkippedAccountIds(connectionId, workspaceId);
 
   const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedAdvertiserIds)
     ? extraFields.selectedAdvertiserIds
@@ -793,12 +1156,13 @@ async function syncTikTok(opts: {
       ? credentials.selectedAdvertiserIds
       : undefined;
   if (selectedIds !== undefined) {
-    advertiserIds = advertiserIds.filter((id: string) => selectedIds.includes(id));
+    const selectedAdvertiserIds = new Set(normalizeTikTokAdvertiserIds(selectedIds));
+    advertiserIds = advertiserIds.filter((id: string) => selectedAdvertiserIds.has(id));
     logger.info(`[syncTikTok] Filtered to ${advertiserIds.length} selected advertisers`);
   }
 
   if (!advertiserIds.length) {
-    const result = makeFailedSyncResult("No advertisers selected or found on connection", false);
+    const result = makeFailedSyncResult(TIKTOK_ADVERTISER_RECONNECT_MESSAGE, false);
     await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
@@ -817,7 +1181,23 @@ async function syncTikTok(opts: {
   }
 
   for (const advertiserId of advertiserIds) {
+    if (skippedAdvertisers.has(String(advertiserId))) {
+      logger.info(`[syncTikTok] Skipping quarantined/reconnect-required advertiser ${advertiserId}`);
+      children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
+    let reportTaskIdForRetry: string | undefined;
+    let providerCurrency: string | undefined;
     try {
+      try {
+        const context = await tiktokReportClient.getAdvertiserReportingContext(accessToken, advertiserId, credentials.sandbox === true);
+        const stored = await recordProviderReportingContext({ workspaceId, connectionId, provider: "tiktok_business", accountId: advertiserId, ...context });
+        providerCurrency = stored.providerCurrency ?? undefined;
+      } catch {
+        // Do not stop import because a metadata permission is missing. Readiness remains independently conservative.
+        logger.warn("[syncTikTok] Reporting context could not be refreshed", { connectionId, advertiserId });
+      }
       const taskParams: CreateReportTaskParams = {
         advertiser_id: advertiserId,
         report_type: "BASIC",
@@ -832,28 +1212,63 @@ async function syncTikTok(opts: {
       if (credentials.sandbox === true) {
         const rows = await tiktokReportClient.getSyncReport(accessToken, taskParams);
         const result = rows.length > 0
-          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId, lease })
+          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, providerCurrency, syncJobId: jobId, lease })
           : { upserted: 0, failed: 0 };
         children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "tiktok_business",
+          accountId: String(advertiserId),
+          accountName: `Advertiser ${advertiserId}`,
+          ok: result.failed === 0,
+          retryable: result.failed > 0,
+          error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+        });
         continue;
       }
 
-      const taskId = await tiktokReportClient.createTask(accessToken, taskParams, false);
+      const resumableTaskId = opts.providerState?.provider === "tiktok_business" &&
+        opts.providerState.advertiserId === advertiserId &&
+        /^\d+$/.test(opts.providerState.reportTaskId)
+        ? opts.providerState.reportTaskId
+        : undefined;
+      const taskId = resumableTaskId ?? await tiktokReportClient.createTask(accessToken, taskParams, false);
+      reportTaskIdForRetry = taskId;
+      logger.info(resumableTaskId ? "[syncTikTok] Resuming report task" : "[syncTikTok] Created report task", {
+        connectionId,
+        advertiserId,
+        taskId,
+      });
 
       // Poll for completion
       let status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
       let attempts = 0;
       while (!isTikTokReportTerminal(status.status) && attempts < 10) {
+        logger.info("[syncTikTok] Report task remains non-terminal", {
+          connectionId,
+          advertiserId,
+          taskId,
+          status: status.status,
+          poll: attempts + 1,
+        });
         await new Promise((r) => setTimeout(r, 3000));
         status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
         attempts++;
       }
 
-      if (isTikTokReportSuccess(status.status) && status.url) {
-        const rows = await tiktokReportClient.downloadRows(status.url);
+      if (isTikTokReportSuccess(status.status)) {
+        const downloadUrl = await tiktokReportClient.getDownloadUrl(
+          accessToken,
+          advertiserId,
+          taskId,
+          credentials.sandbox === true,
+        );
+        const rows = await tiktokReportClient.downloadRows(downloadUrl);
 
         if (rows.length > 0) {
           const result = await ingestTiktokRows(rows, {
+            providerCurrency,
             workspaceId,
             connectionId,
             accountId: advertiserId,
@@ -863,20 +1278,95 @@ async function syncTikTok(opts: {
           });
 
           children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+          await recordAccountOutcome({
+            workspaceId,
+            connectionId,
+            provider: "tiktok_business",
+            accountId: String(advertiserId),
+            accountName: `Advertiser ${advertiserId}`,
+            ok: result.failed === 0,
+            retryable: result.failed > 0,
+            error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+          });
+
+          // Stale row detection for TikTok
+          if (result.failed === 0 && startDate && endDate) {
+            try {
+              await computeStaleRowStats({
+                workspaceId,
+                connectionId,
+                accountId: String(advertiserId),
+                level: "campaign",
+                since: new Date(`${startDate}T00:00:00.000Z`),
+                until: new Date(`${endDate}T23:59:59.999Z`),
+                providerEntityIds: rows.map((r: any) => String(r.campaign_id ?? r.id ?? "")).filter(Boolean),
+                fetchComplete: true,
+              });
+            } catch (reconErr) {
+              logger.warn("[syncTikTok] Stale-row detection failed (non-fatal):", reconErr);
+            }
+          }
         } else {
           children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0 });
+          await recordAccountOutcome({
+            workspaceId,
+            connectionId,
+            provider: "tiktok_business",
+            accountId: String(advertiserId),
+            accountName: `Advertiser ${advertiserId}`,
+            ok: true,
+          });
         }
-      } else if (isTikTokReportSuccess(status.status)) {
-        throw new Error(`TikTok report task ${taskId} completed without a download URL`);
       } else if (isTikTokReportTerminal(status.status)) {
         throw new Error(`TikTok report task ${taskId} ended with status ${status.status}`);
       } else {
-        throw new Error(`TikTok report task ${taskId} did not complete before the bounded polling window elapsed (status ${status.status})`);
+        const message = `TikTok report task ${taskId} is still ${status.status}; Monstera will resume this task automatically`;
+        children.push({
+          id: String(advertiserId),
+          kind: "advertiser",
+          ok: false,
+          error: message,
+          retryable: true,
+          retryState: {
+            provider: "tiktok_business",
+            advertiserId: String(advertiserId),
+            reportTaskId: taskId,
+          },
+        });
       }
     } catch (error) {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
       const message = error instanceof Error ? error.message : "TikTok sync failed";
-      children.push({ id: String(advertiserId), kind: "advertiser", ok: false, error: message, retryable: isRetryableSyncError(error) || /did not complete before/i.test(message) });
+      const isAuth = /token|auth|unauthorized|permission/i.test(message);
+      const retryable = (isRetryableSyncError(error) || /did not complete before/i.test(message)) && !isAuth;
+      children.push({
+        id: String(advertiserId),
+        kind: "advertiser",
+        ok: false,
+        error: message,
+        retryable,
+        ...(retryable && reportTaskIdForRetry
+          ? {
+              retryState: {
+                provider: "tiktok_business" as const,
+                advertiserId: String(advertiserId),
+                reportTaskId: reportTaskIdForRetry,
+              },
+            }
+          : {}),
+      });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "tiktok_business",
+        accountId: String(advertiserId),
+        accountName: `Advertiser ${advertiserId}`,
+        ok: false,
+        retryable,
+        authFailure: isAuth,
+        error: message,
+      });
+      // Sibling isolation: continue with next advertiser
     }
   }
 

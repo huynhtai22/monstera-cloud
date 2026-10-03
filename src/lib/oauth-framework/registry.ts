@@ -14,6 +14,8 @@ import { LazadaOAuthAdapter } from "./providers/lazada";
 import { ShopifyOAuthAdapter } from "./providers/shopify";
 import { AmazonOAuthAdapter } from "./providers/amazon";
 import { isConnectEnabled } from "@/lib/integration-flags";
+import { getShopeeActiveConfig } from "@/lib/shopee-env";
+import { isMetaAdsConfigured } from "@/lib/meta-ads-config";
 
 /** Lazy-loaded registry */
 let registry: OAuthProviderRegistry | null = null;
@@ -67,9 +69,16 @@ export function isProviderEnabled(id: string): boolean {
 /** Check if all required environment variables are present for a provider */
 export function isProviderConfigured(id: string): boolean {
     const configChecks: Record<string, () => boolean> = {
-        shopee: () => !!(process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY),
+        shopee: () => {
+            try {
+                getShopeeActiveConfig();
+                return true;
+            } catch {
+                return false;
+            }
+        },
         lazada: () => !!(process.env.LAZADA_APP_KEY && process.env.LAZADA_APP_SECRET),
-        meta_ads: () => !!((process.env.META_ADS_APP_ID || process.env.META_APP_ID) && (process.env.META_ADS_APP_SECRET || process.env.META_APP_SECRET)),
+        meta_ads: () => isMetaAdsConfigured(),
         google_ads: () => !!(process.env.GOOGLE_ADS_CLIENT_ID && process.env.GOOGLE_ADS_CLIENT_SECRET),
         tiktok_shop: () => !!((process.env.TIKTOK_SHOP_APP_KEY || process.env.TIKTOK_APP_ID) && (process.env.TIKTOK_SHOP_APP_SECRET || process.env.TIKTOK_APP_SECRET)),
         tiktok_business: () => !!(

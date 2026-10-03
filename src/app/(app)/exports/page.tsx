@@ -9,6 +9,7 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
 import { trackEvent } from "@/lib/analytics-events";
+import { PlanLimitCard } from "@/components/PlanLimitCard";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -24,21 +25,26 @@ export default function ExportsPage() {
         fetcher,
     );
 
+    const { data: workspaces } = useSWR("/api/workspaces", fetcher);
+    const activeWorkspace = Array.isArray(workspaces)
+        ? workspaces.find((workspace: { id: string }) => workspace.id === activeWorkspaceId)
+        : null;
+    const allowLooker = activeWorkspace?.entitlements?.allowLooker !== false && activeWorkspace?.plan !== "free";
     const firstKey = Array.isArray(apiKeys) ? apiKeys[0] as { keyMasked?: string } | undefined : undefined;
     const apiKeyMasked = firstKey?.keyMasked ?? "";
     const hasApiKey = Boolean(firstKey);
 
     return (
-        <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
+        <div data-console-page="true" data-console-section="exports" className="console-page relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
 
             {/* Header */}
-            <div className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
+            <div data-console-section-header="true" data-console-page-header="true" className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
                 <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-white shadow-xs">
                         <Send className="h-5 w-5" aria-hidden />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold tracking-tight text-ink">Exports & Connectors</h1>
+                        <h1 className="text-xl font-bold tracking-tight text-ink">Exports & API</h1>
                         <p className="text-xs text-ink-mute mt-1">
                             Pull data from your Monstera Cloud warehouse directly into your reporting tools.
                         </p>
@@ -46,31 +52,12 @@ export default function ExportsPage() {
                 </div>
             </div>
 
-            {/* Delivery Methods Banner */}
-            <div className="mb-8 rounded-lg border border-line bg-panel p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="rounded-md border border-line bg-canvas p-4 shadow-xs">
-                        <div className="flex items-center gap-2 font-bold text-white mb-1">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">✓</span>
-                            On-Demand Data Pull (Available in Pilot)
-                        </div>
-                        <p className="text-xs text-ink-mute">
-                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong> on demand using your Workspace API key.
-                        </p>
-                    </div>
-                    <div className="rounded-md border border-line bg-canvas p-4 shadow-xs">
-                        <div className="flex items-center gap-2 font-bold text-ink mb-1">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-line bg-panel text-ink-mute text-[10px]">⏱</span>
-                            Scheduled Spreadsheet Delivery (Coming Soon)
-                        </div>
-                        <p className="text-xs text-ink-mute">
-                            Automated background push to Google Sheets is not active during the pilot program. Use the Google Sheets Add-on or Looker Studio connector for live data pulls.
-                        </p>
-                    </div>
-                </div>
+            <div data-console-delivery-summary="true" className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-line px-4 py-3 text-xs text-ink-mute">
+                <p><span className="font-medium text-ink">Available:</span> Pull warehouse data into Sheets or Looker Studio.</p>
+                <p><span className="font-medium text-ink">Planned:</span> Scheduled spreadsheet delivery.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div data-console-destinations="true" className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Google Sheets Card */}
                 <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-white/30">
@@ -121,7 +108,7 @@ export default function ExportsPage() {
                             <div>
                                 <h2 className="text-base font-bold text-ink">Looker Studio Connector</h2>
                                 <p className="text-xs font-medium text-ink-mute flex items-center mt-0.5">
-                                    <FlaskConical className="w-3.5 h-3.5 mr-1" /> Private beta
+                                    <FlaskConical className="w-3.5 h-3.5 mr-1" /> {allowLooker ? "Included on this plan" : "Studio and Agency"}
                                 </p>
                             </div>
                         </div>
@@ -130,7 +117,18 @@ export default function ExportsPage() {
                             Connect Looker Studio to Monstera Cloud using your Workspace API Key to build powerful, automated marketing dashboards.
                         </p>
 
-                        <div className="rounded-lg border border-line bg-canvas p-4 mb-6">
+                        {!allowLooker ? (
+                            <div className="mb-6">
+                                <PlanLimitCard
+                                    title="Looker Studio is on Studio and Agency"
+                                    detail="Start is Sheets-only. Paid plans include warehouse, Sheets, and Looker Studio with no extra destination fee."
+                                    upgradeHref="/support?pilot=1&plan=starter"
+                                    actionLabel="Request Studio"
+                                />
+                            </div>
+                        ) : null}
+
+                        <div className={allowLooker ? "rounded-lg border border-line bg-canvas p-4 mb-6" : "rounded-lg border border-line bg-canvas p-4 mb-6 opacity-50 pointer-events-none"}>
                             <label className="mb-2 flex items-center text-xs font-semibold text-ink">
                                 <Lock className="mr-2 h-3.5 w-3.5 text-white" />
                                 Workspace API Key

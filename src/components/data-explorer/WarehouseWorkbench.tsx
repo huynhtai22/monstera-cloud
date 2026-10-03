@@ -1,6 +1,16 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  ALL_CLIENTS_TOKEN,
+  UNASSIGNED_CLIENT_TOKEN,
+} from "@/lib/client-context";
+import {
+  mergePendingUrlState,
+  switchPendingClient,
+} from "@/lib/pending-query";
+import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -26,7 +36,10 @@ import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { RefreshWarehouseModal } from "./RefreshWarehouseModal";
+import { ClientExportModal } from "./ClientExportModal";
+import { calculatePlatformRollups } from "@/lib/client-export";
 import { AnalystPane } from "./AnalystPane";
+import { SavedViews } from "@/components/ui/SavedViews";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -502,13 +515,72 @@ function ToggleChip({
 
 export function WarehouseWorkbench() {
   const { activeWorkspaceId } = useWorkspaceStore();
-
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedPlatform, setSelectedPlatform] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const selectedClientId = searchParams?.get("clientId") || "";
+  const isDateValue = (value: string | null): value is string =>
+    Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime()));
+  const startDateParam = searchParams?.get("startDate") ?? null;
+  const endDateParam = searchParams?.get("endDate") ?? null;
+  const startDate = isDateValue(startDateParam) ? startDateParam : "";
+  const endDate = isDateValue(endDateParam) ? endDateParam : "";
+  const platformParam = searchParams?.get("platform") ?? "";
+  const selectedPlatform = PLATFORM_OPTIONS.some((option) => option.value === platformParam) ? platformParam : "";
   const [accountFilterIds, setAccountFilterIds] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
+  const [isClientExportOpen, setIsClientExportOpen] = useState(false);
+  // Pending navigations are owned by the shared provider store so filter
+  // edits, the local client control, the global context bar and sidebar all
+  // observe the same pending query for this surface.
+  const pending = usePendingNavigation();
+  const observedSearchString = searchParams?.toString() ?? "";
+
+  const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
+    const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+    const { search } = mergePendingUrlState({
+      observedSearch: live,
+      pendingSearch: pending.pendingFor(pathname),
+      patch: changes,
+    });
+    pending.stage(pathname, live, search);
+    router.replace(search ? `${pathname}${search}` : pathname, { scroll: false });
+  }, [pathname, router, observedSearchString, pending]);
+
+  // Acknowledge by serialized query content: recreated param objects with
+  // identical content cannot clear pending state, while genuine external
+  // history navigation discards it so controls hydrate from the observed URL.
+  useEffect(() => {
+    pending.acknowledge(pathname, `?${observedSearchString}`);
+  }, [pathname, observedSearchString, pending]);
+
+  const setStartDate = (value: string) => replaceUrlFilters({ startDate: value });
+  const setEndDate = (value: string) => replaceUrlFilters({ endDate: value });
+  const setSelectedPlatform = (value: string) => {
+    setAccountFilterIds([]);
+    replaceUrlFilters({ platform: value });
+  };
+  const setDateRange = (start: string, end: string) => replaceUrlFilters({ startDate: start, endDate: end });
+
+  const updateClientId = (newClientId: string) => {
+    setAccountFilterIds([]);
+    const nextValue = newClientId === "" ? ALL_CLIENTS_TOKEN : newClientId;
+    const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+    const { search } = switchPendingClient({
+      observedSearch: live,
+      pendingSearch: pending.pendingFor(pathname),
+      nextClientId: nextValue,
+    });
+    pending.stage(pathname, live, search);
+    router.push(search ? `${pathname}${search}` : pathname);
+  };
+
+  const clientsUrl = useMemo(() => {
+    if (!activeWorkspaceId) return null;
+    return `/api/clients?workspaceId=${activeWorkspaceId}`;
+  }, [activeWorkspaceId]);
+  const { data: clientsData } = useSWR<Array<{ id: string; name: string }>>(clientsUrl, fetcher);
 
   const [allMetrics, setAllMetrics] = useState<MetricRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -526,12 +598,17 @@ export function WarehouseWorkbench() {
   const [rowSearch, setRowSearch] = useState("");
 
   useEffect(() => {
+    const invalidPlatform = Boolean(platformParam) && !PLATFORM_OPTIONS.some((option) => option.value === platformParam);
+    if (startDate && endDate && !invalidPlatform) return;
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 30);
-    setEndDate(end.toISOString().split("T")[0]);
-    setStartDate(start.toISOString().split("T")[0]);
-  }, []);
+    replaceUrlFilters({
+      ...(!endDate ? { endDate: end.toISOString().split("T")[0] } : {}),
+      ...(!startDate ? { startDate: start.toISOString().split("T")[0] } : {}),
+      ...(invalidPlatform ? { platform: null } : {}),
+    });
+  }, [endDate, platformParam, replaceUrlFilters, startDate]);
 
   useEffect(() => {
     try {
@@ -552,15 +629,27 @@ export function WarehouseWorkbench() {
 
   const platformsUrl = useMemo(() => {
     if (!activeWorkspaceId) return null;
-    return `/api/metrics/platforms?workspaceId=${activeWorkspaceId}`;
-  }, [activeWorkspaceId]);
+    const base = `/api/metrics/platforms?workspaceId=${activeWorkspaceId}`;
+    return selectedClientId ? `${base}&clientId=${encodeURIComponent(selectedClientId)}` : base;
+  }, [activeWorkspaceId, selectedClientId]);
 
   const accountsFilterUrl = useMemo(() => {
     if (!activeWorkspaceId) return null;
-    return `/api/metrics/accounts?workspaceId=${activeWorkspaceId}`;
-  }, [activeWorkspaceId]);
+    const base = `/api/metrics/accounts?workspaceId=${activeWorkspaceId}`;
+    return selectedClientId ? `${base}&clientId=${encodeURIComponent(selectedClientId)}` : base;
+  }, [activeWorkspaceId, selectedClientId]);
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
+  const catalogUrl = useMemo(
+    () => {
+      if (!activeWorkspaceId) return null;
+      const params = new URLSearchParams({ workspaceId: activeWorkspaceId });
+      if (selectedClientId) params.set("clientId", selectedClientId);
+      return `/api/data-explorer/shopee-catalog?${params}`;
+    },
+    [activeWorkspaceId, selectedClientId],
+  );
+  const { data: shopeeCatalog } = useSWR(catalogUrl, fetcher);
   const {
     data: accountsDimensions,
     isLoading: accountsDimensionsLoading,
@@ -582,23 +671,31 @@ export function WarehouseWorkbench() {
       startDate,
       endDate,
     });
+    if (selectedClientId) params.set("clientId", selectedClientId);
     if (selectedPlatform) params.set("platform", selectedPlatform);
     if (accountFilterIds.length === 1) params.set("accountId", accountFilterIds[0]);
     else if (accountFilterIds.length > 1) params.set("accountIds", accountFilterIds.join(","));
     return `/api/metrics/query?${params.toString()}`;
-  }, [activeWorkspaceId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError]);
+  }, [activeWorkspaceId, selectedClientId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError]);
 
   const { data, error, isLoading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 60000,
-    onSuccess: (newData) => {
-      setAllMetrics(newData?.metrics || []);
-      setCursor(newData?.pagination?.nextCursor || null);
-      setHasMore(newData?.pagination?.hasMore || false);
-    },
   });
 
+  // SWR may satisfy a remounted view from its cache without invoking the
+  // original request's onSuccess callback. Derive the table seed from `data`
+  // so returning to a preserved client/filter URL cannot leave the summary
+  // populated while the table is empty.
+  useEffect(() => {
+    setAllMetrics(data?.metrics || []);
+    setCursor(data?.pagination?.nextCursor || null);
+    setHasMore(data?.pagination?.hasMore || false);
+  }, [data]);
+
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+
   const loadMore = async () => {
-    if (!queryUrl || !cursor || isLoadingMore) return;
+    if (!queryUrl || !cursor || isLoadingMore || isLoadingAll) return;
     setIsLoadingMore(true);
     try {
       const url = new URL(queryUrl, window.location.origin);
@@ -614,6 +711,35 @@ export function WarehouseWorkbench() {
       console.error(e);
     } finally {
       setIsLoadingMore(false);
+    }
+  };
+
+  const fetchAllPages = async () => {
+    if (!queryUrl || !cursor || isLoadingMore || isLoadingAll) return;
+    setIsLoadingAll(true);
+    try {
+      let currentCursor = cursor;
+      let keepGoing = true;
+      while (keepGoing && currentCursor) {
+        const url = new URL(queryUrl, window.location.origin);
+        url.searchParams.set("cursor", currentCursor);
+        const res = await fetch(url.toString());
+        const newData = await res.json();
+        if (newData.metrics && newData.metrics.length > 0) {
+          setAllMetrics((prev) => [...prev, ...newData.metrics]);
+          currentCursor = newData.pagination?.nextCursor || null;
+          keepGoing = Boolean(newData.pagination?.hasMore && currentCursor);
+          setCursor(currentCursor);
+          setHasMore(keepGoing);
+        } else {
+          keepGoing = false;
+          setHasMore(false);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load all warehouse records", e);
+    } finally {
+      setIsLoadingAll(false);
     }
   };
 
@@ -720,8 +846,8 @@ export function WarehouseWorkbench() {
 
   const clearTableView = () => {
     setRowSearch("");
-    setSelectedPlatform("");
     setAccountFilterIds([]);
+    replaceUrlFilters({ platform: null });
   };
 
   useEffect(() => {
@@ -820,11 +946,37 @@ export function WarehouseWorkbench() {
     );
   }, [processedRows]);
 
+  const cpaKpiNode = useMemo(() => {
+    const totalSpend = processedRows.reduce((s, m) => s + (m.spend ?? 0), 0);
+    const totalConv = totals.conversions;
+    if (!totalConv || totalConv === 0 || !totalSpend) return <span className="text-ink-mute">—</span>;
+    const entries = [...moneyTotals.entries()].filter(([c]) => c !== "—");
+    const dominantCur = entries.length > 0 ? entries[0][0] : "USD";
+    const cpa = totalSpend / totalConv;
+    return (
+      <span className="font-semibold text-ink">
+        {formatMoney(cpa, dominantCur)}
+      </span>
+    );
+  }, [processedRows, totals.conversions, moneyTotals]);
+
+  const platformRollups = useMemo(() => calculatePlatformRollups(processedRows), [processedRows]);
+
+  const overallCurrency = useMemo(() => {
+    const entries = [...moneyTotals.entries()].filter(([c]) => c !== "—");
+    return entries.length > 0 ? entries[0][0] : "USD";
+  }, [moneyTotals]);
+
   const ctrLabel = (m: MetricRow) => {
     if (typeof m.ctr !== "number") return "-";
     const pct = m.ctr <= 1 ? m.ctr * 100 : m.ctr;
     return `${pct.toFixed(2)}%`;
   };
+
+  const selectedClientName = useMemo(() => {
+    if (!selectedClientId || selectedClientId === "unassigned") return undefined;
+    return clientsData?.find((c) => c.id === selectedClientId)?.name;
+  }, [selectedClientId, clientsData]);
 
   const handleExport = (format: "csv" | "excel" = "csv") => {
     if (!processedRows.length) return;
@@ -836,8 +988,11 @@ export function WarehouseWorkbench() {
       }
       return o;
     });
-    if (format === "excel") downloadExcel(rows, "warehouse-export");
-    else downloadCsv(rows, "warehouse-export");
+    const exportName = selectedClientName
+      ? `warehouse-export-${selectedClientName.toLowerCase().replace(/\s+/g, "-")}`
+      : "warehouse-export";
+    if (format === "excel") downloadExcel(rows, exportName);
+    else downloadCsv(rows, exportName);
   };
 
   const toggleRow = (id: string) => {
@@ -920,17 +1075,26 @@ export function WarehouseWorkbench() {
     if (dataThrough) {
       parts.push(`Data through ${formatDateDisplay(dataThrough)}`);
     } else if (endDate) {
-      parts.push("No warehouse data yet");
+      parts.push(selectedClientId ? "No scoped warehouse data" : "No warehouse data yet");
+    }
+    if (data?.freshness?.status === "refreshing") parts.push("Scoped import active");
+    else if (data?.freshness?.status === "stale") parts.push("Scoped data is stale");
+    if (data?.freshness?.jobAttribution === "unavailable") {
+      parts.push("Job activity unavailable for this account scope");
     }
     return parts.length > 0 ? parts.join(" · ") : "Ready";
-  }, [availablePlatforms.length, warehousedAccounts.length, endDate, summary?.dateRange?.latest]);
+  }, [availablePlatforms.length, data?.freshness, endDate, selectedClientId, summary?.dateRange?.latest, warehousedAccounts.length]);
+
+  const shopeeCampaigns = (shopeeCatalog?.campaigns ?? []) as Array<any>;
+  const shopeeProducts = (shopeeCatalog?.products ?? []) as Array<any>;
+  const showShopeeCatalog = selectedPlatform === "shopee" || shopeeCampaigns.length > 0 || shopeeProducts.length > 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-console-warehouse="true" className="flex flex-col gap-6">
       {/* ─── 1. HEADER ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div data-console-page-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Warehouse</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Data explorer</h1>
           <p className="mt-1 text-sm text-ink-mute">
             Unified performance data across connected sources.
           </p>
@@ -947,14 +1111,18 @@ export function WarehouseWorkbench() {
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsRefreshOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-white px-3.5 py-2 text-xs font-semibold text-neutral-900 shadow-xs transition-colors hover:bg-neutral-100"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh warehouse
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <SavedViews href={`${pathname}${observedSearchString ? `?${observedSearchString}` : ""}`} />
+          <button
+            type="button"
+            id="warehouse-refresh"
+            onClick={() => setIsRefreshOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3.5 py-2 text-xs font-semibold text-neutral-900 shadow-xs transition-colors hover:bg-neutral-100"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh warehouse
+          </button>
+        </div>
       </div>
 
       <Suspense fallback={null}>
@@ -962,7 +1130,7 @@ export function WarehouseWorkbench() {
       </Suspense>
 
       {/* ─── 2. FILTERS ─── */}
-      <div className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5">
+      <div data-console-warehouse-filters="true" className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5">
         {/* Quick Date Presets */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 pb-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -983,8 +1151,7 @@ export function WarehouseWorkbench() {
                   key={p.id}
                   type="button"
                   onClick={() => {
-                    setStartDate(range.start);
-                    setEndDate(range.end);
+                    setDateRange(range.start, range.end);
                   }}
                   className={cn(
                     "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
@@ -999,14 +1166,12 @@ export function WarehouseWorkbench() {
             })}
           </div>
 
-          {(startDate || endDate || selectedPlatform || accountFilterIds.length > 0) && (
+          {(startDate || endDate || selectedClientId || selectedPlatform || accountFilterIds.length > 0) && (
             <button
               type="button"
               onClick={() => {
                 const def = getPresetRange("30d");
-                setStartDate(def.start);
-                setEndDate(def.end);
-                setSelectedPlatform("");
+                replaceUrlFilters({ startDate: def.start, endDate: def.end, platform: null });
                 setAccountFilterIds([]);
               }}
               className="text-xs text-ink-mute hover:text-ink transition-colors cursor-pointer"
@@ -1034,6 +1199,23 @@ export function WarehouseWorkbench() {
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               className="h-8.5 w-36 text-xs"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-ink-mute">Client</label>
+            <Dropdown
+              value={selectedClientId === "" ? ALL_CLIENTS_TOKEN : selectedClientId}
+              onChange={updateClientId}
+              options={[
+                { value: ALL_CLIENTS_TOKEN, label: "All clients" },
+                ...(clientsData || []).map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                })),
+                { value: UNASSIGNED_CLIENT_TOKEN, label: "Unassigned accounts" },
+              ]}
+              placeholder="All clients"
+              className="w-[200px] min-w-[200px] max-w-full"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -1094,25 +1276,109 @@ export function WarehouseWorkbench() {
 
       {/* ─── 3. SUMMARY METRICS ─── */}
       {metrics.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-          {([
-            ["Spend", moneyKpiNode("spend")],
-            ["Impressions", `${(totals.impressions / 1000).toFixed(1)}K`],
-            ["Clicks", totals.clicks.toLocaleString()],
-            ["Conversions", totals.conversions.toFixed(0)],
-            ["Revenue", moneyKpiNode("revenue")],
-            ["ROAS", roasKpiNode],
-          ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
-            <div key={k} className="rounded-lg border border-line bg-panel px-4 py-3">
-              <p className="text-xs font-medium text-ink-mute">{k}</p>
-              <p className="mt-1 text-base font-semibold text-ink">{v}</p>
+        <div data-console-warehouse-summary="true" className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+            {([
+              ["Spend", moneyKpiNode("spend")],
+              ["Conversions", totals.conversions.toFixed(0)],
+              ["Blended CPA", cpaKpiNode],
+              ["Revenue", moneyKpiNode("revenue")],
+              ["Blended ROAS", roasKpiNode],
+              ["Traffic", `${totals.clicks.toLocaleString()} clicks · ${(totals.impressions / 1000).toFixed(1)}K imp`],
+            ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
+              <div key={k} className="console-scorecard rounded-lg border border-line bg-panel px-4 py-3">
+                <p className="text-xs font-medium text-ink-mute">{k}</p>
+                <p className="mt-1 text-base font-semibold text-ink">{v}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Platform Performance Split Bar */}
+          {platformRollups.length > 0 && (
+            <div className="rounded-lg border border-line bg-panel/60 p-3.5 text-xs">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="font-semibold text-ink">Platform Performance Breakdown</span>
+                <button
+                  type="button"
+                  onClick={() => setIsClientExportOpen(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Client Report & Brief →
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                {platformRollups.map((p) => (
+                  <div key={p.platform} className="rounded-md border border-line/60 bg-canvas/80 p-2.5">
+                    <div className="flex items-center justify-between font-medium text-ink">
+                      <span>{p.platformLabel}</span>
+                      <span className="text-ink-mute text-[11px]">{p.shareOfSpend.toFixed(0)}% spend</span>
+                    </div>
+                    <div className="mt-1.5 flex items-baseline justify-between text-[11px]">
+                      <span className="font-semibold text-ink">{formatMoney(p.spend, overallCurrency)}</span>
+                      <span className={p.roas >= 2 ? "text-emerald-400 font-semibold" : p.roas >= 1 ? "text-blue-400" : "text-ink-mute"}>
+                        {p.roas > 0 ? `${p.roas.toFixed(2)}x ROAS` : "—"}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-ink-mute">
+                      {p.conversions} conv {p.cpa > 0 ? `(${formatMoney(p.cpa, overallCurrency)} CPA)` : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
+      {/* Catalog identities are warehouse records, not zero-valued metrics. */}
+      {showShopeeCatalog && (
+        <section className="overflow-hidden rounded-lg border border-line bg-panel">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Shopee catalog</h2>
+              <p className="mt-0.5 text-xs text-ink-mute">Campaign and product identities stored separately from performance metrics.</p>
+            </div>
+            {shopeeCatalog?.lastRun ? <span className="text-xs text-ink-mute">Last catalog call: {shopeeCatalog.lastRun.status} · {new Date(shopeeCatalog.lastRun.startedAt).toLocaleString()}</span> : null}
+          </div>
+          {selectedPlatform === "shopee" && metrics.length === 0 ? (
+            <div className="border-b border-line bg-amber-950/20 px-4 py-2.5 text-xs text-amber-100">
+              No Shopee Ads performance was returned for the selected range. This is valid for a sandbox with zero activity and is different from catalog synchronization.
+            </div>
+          ) : null}
+          <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
+            <div className="p-4">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-mute">Campaigns ({shopeeCampaigns.length})</h3>
+              {shopeeCampaigns.length === 0 ? <p className="text-xs text-ink-mute">No campaign identities synchronized yet. Apply the catalog migration, then refresh the Shopee source.</p> : (
+                <div className="space-y-2">
+                  {shopeeCampaigns.slice(0, 8).map((campaign: any) => (
+                    <div key={campaign.id} className="rounded-md border border-line bg-canvas px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2"><span className="font-semibold text-ink">Campaign {campaign.externalCampaignId}</span><span className="text-amber-300">Shopee {campaign.environment === "sandbox" ? "Sandbox" : "Production"}</span></div>
+                      <p className="mt-1 text-ink-mute">{campaign.adType} · shop {campaign.shopId} · {campaign.region} · {campaign.campaignStatus || "status unavailable"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-mute">Products ({shopeeProducts.length})</h3>
+              {shopeeProducts.length === 0 ? <p className="text-xs text-ink-mute">No product identities synchronized yet. Apply the catalog migration, then refresh the Shopee source.</p> : (
+                <div className="space-y-2">
+                  {shopeeProducts.slice(0, 8).map((product: any) => (
+                    <div key={product.id} className="rounded-md border border-line bg-canvas px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2"><span className="font-semibold text-ink">Item {product.externalItemId}</span><span className="text-amber-300">Shopee {product.environment === "sandbox" ? "Sandbox" : "Production"}</span></div>
+                      <p className="mt-1 truncate text-ink-mute">{product.itemName || "Unnamed product"} · {product.itemStatus || "status unavailable"} · shop {product.shopId}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─── 4. WAREHOUSE DATA TABLE ─── */}
-      <div className="overflow-hidden rounded-lg border border-line bg-panel">
+      <div data-console-warehouse-table="true" className="overflow-hidden rounded-lg border border-line bg-panel">
         {/* Table toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">Warehouse data</h2>
@@ -1211,13 +1477,29 @@ export function WarehouseWorkbench() {
                 </div>
               </div>
             </details>
+            <button
+              type="button"
+              onClick={() => setIsClientExportOpen(true)}
+              disabled={!processedRows.length}
+              className="flex h-8 items-center gap-1.5 rounded-md bg-white/[0.08] px-2.5 text-xs font-semibold text-ink hover:bg-white/[0.12] transition-colors disabled:opacity-40"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-accent" /> Client Report
+            </button>
             <details className="group relative">
               <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink [&::-webkit-details-marker]:hidden">
                 <Download className="h-3.5 w-3.5" strokeWidth={1.5} /> Export <ChevronDown className="h-3 w-3" />
               </summary>
-              <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-36 rounded-md border border-line bg-panel p-1 shadow-xl">
-                <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">CSV</button>
-                <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Excel (.xlsx)</button>
+              <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-48 rounded-md border border-line bg-panel p-1 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setIsClientExportOpen(true)}
+                  disabled={!processedRows.length}
+                  className="w-full flex items-center gap-1.5 rounded px-2.5 py-2 text-left text-xs font-medium text-ink hover:bg-white/[0.05] disabled:opacity-50 border-b border-line/40 mb-1"
+                >
+                  <Sparkles className="h-3 w-3 text-accent" /> Client Brief & Summary…
+                </button>
+                <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Raw CSV</button>
+                <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Raw Excel (.xlsx)</button>
               </div>
             </details>
           </div>
@@ -1445,9 +1727,43 @@ export function WarehouseWorkbench() {
         isOpen={isRefreshOpen}
         onClose={() => setIsRefreshOpen(false)}
         workspaceId={activeWorkspaceId}
+        initialStartDate={startDate}
+        initialEndDate={endDate}
+        initialPlatform={selectedPlatform}
+        initialAccountId={accountFilterIds[0]}
+        onApplyViewFilters={({ startDate: newStart, endDate: newEnd, platform: newPlatform, accountId: newAccountId }) => {
+          const patch: Record<string, string | null> = {
+            startDate: newStart,
+            endDate: newEnd,
+          };
+          if (newPlatform !== undefined) {
+            patch.platform = newPlatform || null;
+          }
+          if (newAccountId) {
+            setAccountFilterIds([newAccountId]);
+          }
+          replaceUrlFilters(patch);
+          void mutate();
+        }}
         onRefreshStarted={() => {
           void mutate();
         }}
+        onRefreshCompleted={() => {
+          void mutate();
+        }}
+      />
+
+      {/* ─── 6. CLIENT EXPORT & BRIEF MODAL ─── */}
+      <ClientExportModal
+        isOpen={isClientExportOpen}
+        onClose={() => setIsClientExportOpen(false)}
+        clientName={selectedClientName}
+        rows={processedRows}
+        dateRange={{ start: startDate, end: endDate }}
+        dataThrough={resolveDataThrough(summary?.dateRange?.latest ?? null)}
+        hasMore={hasMore}
+        isLoadingAll={isLoadingAll}
+        onLoadAll={fetchAllPages}
       />
     </div>
   );

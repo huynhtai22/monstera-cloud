@@ -1,0 +1,134 @@
+.frame {
+  background: #0a0a0a;
+}
+.frame > aside {
+  background: #101010;
+  border-color: #282828;
+  color: #ededed;
+}
+.frame > aside :is(a, button):focus-visible {
+  outline-color: #c8c8c8;
+}
+.frame > aside > a {
+  color: #ebebeb;
+}
+.frame > aside > a > span:first-child {
+  color: #dedede;
+}
+.frame > aside > a strong > span,
+.frame > aside > a small {
+  color: #828282;
+}
+.frame > aside > div:nth-of-type(1) {
+  background: #171717;
+  border-color: #323232;
+}
+.frame > aside > div:nth-of-type(1) > span:first-child {
+  background: #363636;
+  color: #f0f0f0;
+}
+.frame > aside > div:nth-of-type(1) > span:last-child {
+  background: #9c9c9c;
+}
+.frame > aside > div:nth-of-type(1) div > span {
+  color: #8c8c8c;
+}
+.frame > aside nav p {
+  color: #777;
+}
+.frame > aside nav a {
+  color: #9b9b9b;
+  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.frame > aside nav a:hover {
+  color: #ededed;
+  background: rgb(255 255 255 / 4%);
+}
+.frame > aside nav a[aria-current="page"] {
+  color: #ededed;
+  background: #232323;
+  box-shadow: inset 0 0 0 1px #353535;
+}
+.frame > aside nav a[aria-current="page"] > span:last-child {
+  background: #c8c8c8;
+}
+.frame > aside button {
+  color: #919191;
+}
+.frame > aside > div:last-child > a {
+  border-color: #292929;
+}
+.frame > aside > div:last-child > a > span:first-child {
+  color: #d9d9d9;
+  background: #292929;
+}
+.frame > aside > div:last-child small,
+.frame > aside > div:last-child svg {
+  color: #838383;
+}
+.frame > div > div:first-child {
+  background: #101010ee;
+  border-color: #282828;
+}
+.frame > div > div:first-child :is(label, strong, span, svg) {
+  color: #a1a1a1;
+}
+.frame > div > div:first-child select {
+  background: #202020;
+  border-color: #3a3a3a;
+  color: #d4d4d4;
+}
+.frame > div > div:first-child :is(button, select):focus-visible {
+  outline-color: #ccc;
+}
+.motionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #414141;
+  border-radius: 6px;
+  color: #ccc;
+  background: linear-gradient(120deg, #292929, #191919);
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.motionButton:hover {
+  border-color: #666;
+  background: #2b2b2b;
+}
+.motionButton:disabled {
+  cursor: wait;
+  color: #aaa;
+}
+.frame dialog {
+  background: #171717;
+  border-color: #414141;
+  color: #ededed;
+}
+.frame dialog p {
+  color: #a1a1a1;
+}
+.frame dialog > div span {
+  color: #888;
+}
+.frame dialog > button {
+  background: #ededed;
+  color: #111;
+}
+@media (max-width: 650px) {
+  .motionButton {
+    font-size: 10px;
+    padding: 6px 7px;
+  }
+  .motionButton svg {
+    display: none;
+  }
+}
+@media (max-width: 420px) {
+  .frame > div > div:first-child {
+    flex-wrap: wrap;
+  }
+}

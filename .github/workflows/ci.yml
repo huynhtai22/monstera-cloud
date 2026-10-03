@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -25,15 +26,17 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_ci
       NEXTAUTH_SECRET: ci-nextauth-secret-at-least-32-characters
       NEXTAUTH_URL: http://localhost:3000
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       CRON_SECRET: ci-cron-secret-at-least-32-characters
       GOOGLE_ID_TOKEN_AUDIENCES: ci-google-client-id.apps.googleusercontent.com
       PILOT_MODE: "1"
+      CLIENT_ASSIGNMENT_TEST_DB: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -45,15 +48,47 @@ jobs:
           npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - run: npm run typecheck
       - run: npm run lint:ci
-      - run: npm test
-      - run: npm run build
+      - name: Run Node tests
+        env:
+          CONNECTOR_RESILIENCE_TEST_DB: "1"
+          REQUIRE_POSTGRES_TESTS: "1"
+        run: npm test
+      - name: Production build
+        env:
+          RELEASE_COMMIT_SHA: ${{ github.sha }}
+          # Inlined at build time into client component bundles ("use client")
+          # so governed analyst surfaces (AnalystPane) compile into the artifact
+          # exercised by Playwright browser QA journeys.
+          NEXT_PUBLIC_ENABLE_GOVERNED_ANALYST: "1"
+        run: npm run build
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Full browser QA journeys (isolated e2e database)
         run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE monstera_e2e'
-          npx prisma migrate deploy
-          npm run test:e2e
+          # Desktop and mobile projects run SEQUENTIALLY, each against a fully
+          # reset, freshly migrated and reseeded isolated E2E database. The
+          # seed runs inside Playwright's globalSetup (established path) after
+          # migrations, per invocation. Concurrent projects shared and mutated
+          # the same seeded state, cascading 401 CredentialsSignin failures.
+          reset_e2e_db () {
+            PGPASSWORD=postgres psql -h localhost -U postgres -c 'DROP DATABASE IF EXISTS monstera_e2e' -c 'CREATE DATABASE monstera_e2e'
+            npx prisma migrate deploy
+          }
+          reset_e2e_db
+          npx playwright test --project=desktop-chromium
+          reset_e2e_db
+          npx playwright test --project=mobile-chromium
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
+          MONSTERA_E2E_ISOLATED: "1"
+          CLIENT_ASSIGNMENT_TEST_DB: "1"
+          # Exercise guided setup only with the explicit disposable test cohort.
+          ENABLE_AGENT_ONBOARDING: "1"
+          # Enables server-side analyst routes during browser QA execution.
+          ENABLE_GOVERNED_ANALYST: "1"
+          # The application records the actually tested commit in report
+          # snapshots (generator_commit_sha). Playwright's webServer inherits
+          # the step environment, so the real GitHub SHA reaches next start.
+          GIT_COMMIT_SHA: ${{ github.sha }}
       - run: npm audit --omit=dev --audit-level=high

@@ -14,11 +14,11 @@ interface CheckoutButtonProps {
   children: React.ReactNode;
 }
 
-export function CheckoutButton({ plan, metaPixelEvent, metaPixelParams, className }: CheckoutButtonProps) {
+export function CheckoutButton({ plan, metaPixelEvent, metaPixelParams, className, children }: CheckoutButtonProps) {
   const router = useRouter();
   function requestPilotAccess() {
     if (metaPixelEvent) metaPixelCustom(metaPixelEvent, { plan, ...metaPixelParams });
     router.push(`/support?pilot=1&plan=${encodeURIComponent(plan)}`);
   }
-  return <button type="button" onClick={requestPilotAccess} className={cn("flex w-full items-center justify-center", className)}>Request pilot access</button>;
+  return <button type="button" onClick={requestPilotAccess} className={cn("flex w-full items-center justify-center", className)}>{children}</button>;
 }

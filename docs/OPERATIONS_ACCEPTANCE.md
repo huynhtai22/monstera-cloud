@@ -61,6 +61,11 @@ pass.
 Rollback remains deployment rollback first. Database restores require incident
 approval and must not be used as a routine migration rollback.
 
+The local disposable rehearsal in `scripts/rehearse-database-restore.sh`
+validates encryption, restore mechanics, canary integrity, and drift checks.
+Its result is engineering evidence only and cannot substitute for a
+production-derived backup, named authority, or independent approval.
+
 ## Retention policy ownership
 
 The current pilot data-handling document states formal self-service retention

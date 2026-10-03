@@ -95,8 +95,8 @@ describe("VietQR transfer amount validation", () => {
     assert.equal(isTransferAmountValid(1_190_000, NaN), false);
   });
 
-  it("allows the manual admin path (no transfer amount supplied)", () => {
-    assert.equal(isTransferAmountValid(1_190_000, undefined), true);
-    assert.equal(isTransferAmountValid(1_190_000, null), true);
+  it("rejects missing amounts; there is no manual activation exception", () => {
+    assert.equal(isTransferAmountValid(1_190_000, undefined), false);
+    assert.equal(isTransferAmountValid(1_190_000, null), false);
   });
 });

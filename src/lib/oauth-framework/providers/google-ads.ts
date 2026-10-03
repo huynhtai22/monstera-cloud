@@ -37,11 +37,19 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
     }): Promise<{ credentials: OAuthCredentials; metadata: ConnectionMetadata }> {
         const tokenData = await googleAdsOAuthClient.exchangeCode(code, redirectUri);
 
+        // Fetch user profile (Gmail address and display name)
+        let userInfo: { email?: string; name?: string } | null = null;
+        try {
+            userInfo = await googleAdsOAuthClient.getUserInfo(tokenData.access_token);
+        } catch {
+            // Non-fatal if userinfo is unavailable
+        }
+
         // Get customer IDs (MCC structure)
         const accessibleCustomerIds = await googleAdsOAuthClient.listAccessibleCustomers(
             tokenData.access_token
         );
-        const { eligibleCustomerIds: customerIds, excludedCustomerIds } = await googleAdsReportClient.resolveEligibleCustomerRoots(
+        const { eligibleCustomerIds: customerIds, excludedCustomerIds, roots } = await googleAdsReportClient.resolveEligibleCustomerRoots(
             tokenData.access_token,
             accessibleCustomerIds,
         );
@@ -58,6 +66,8 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
             accessToken: tokenData.access_token,
             refreshToken: tokenData.refresh_token,
             expiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
+            accountEmail: userInfo?.email,
+            accountName: userInfo?.name,
         };
 
         const metadata: ConnectionMetadata = {
@@ -65,7 +75,10 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
             accountIdentifiers: customerIds,
             extraFields: {
                 customerIds,
+                googleAdsRoots: roots,
                 unavailableCustomerCount: excludedCustomerIds.length,
+                accountEmail: userInfo?.email,
+                accountName: userInfo?.name,
                 // NOTE: the developer token is deliberately NOT stored here.
                 // It is an app-level secret consumed from the environment at
                 // call time (see google-ads.ts); persisting it would duplicate
@@ -113,7 +126,7 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
 
         return {
             accessToken: refreshed.access_token,
-            refreshToken: refreshed.refresh_token,
+            refreshToken: refreshed.refresh_token ?? creds.refreshToken,
             expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
         };
     }

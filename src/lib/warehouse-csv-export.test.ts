@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { warehouseAdsCsvRows, warehouseRetailOrdersCsvRows } from "./warehouse-csv-export";
+import { toCsvText, warehouseAdsCsvRows, warehouseRetailOrdersCsvRows } from "./warehouse-csv-export";
 
 describe("warehouse CSV delivery", () => {
   it("includes currency alongside persisted ad monetary values", () => {
@@ -14,5 +14,10 @@ describe("warehouse CSV delivery", () => {
     const rows = warehouseRetailOrdersCsvRows([{ orderId: "order-1", platform: "shopee", grossRevenue: 35000000, netRevenue: null, currency: "VND", createdAtIso: "2026-08-20T00:00:00.000Z" }]);
     assert.deepEqual(rows[0], ["Order ID", "Platform", "Gross Revenue", "Net Revenue", "Currency", "Created At"]);
     assert.equal(rows[1][4], "VND");
+  });
+
+  it("quotes CSV text and neutralizes spreadsheet formulas without altering numeric values", () => {
+    const csv = toCsvText([["=SUM(A1:A2)", "a\"b", "one\r\ntwo", -12.5]]);
+    assert.equal(csv, "'=SUM(A1:A2),\"a\"\"b\",\"one\r\ntwo\",-12.5");
   });
 });

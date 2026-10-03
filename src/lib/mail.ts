@@ -1,15 +1,34 @@
 import { Resend } from 'resend';
 import { logger } from "@/lib/logger";
+import { assertMailSimulationAllowed } from "@/lib/e2e-env-guard";
+import { classifyTransportFailure } from "@/lib/dispatch-outcome";
+import {
+  classifyApprovedEmailException,
+  classifyApprovedEmailResponse,
+  type ApprovedBlueprintEmailOutcome,
+} from "@/lib/report-email-outcome";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
-// Providing a fallback string "re_dummy" prevents this build crash.
-const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
-
+// Lazy instantiation prevents build crashes and ensures no provider client is created
+// before isolation checks pass.
+let _resend: Resend | null = null;
+function getResendClient(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
+  }
+  return _resend;
+}
 
 export const sendOtpEmail = async (email: string, otp: string) => {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating OTP delivery");
+    return { success: true, data: { simulated: true } };
+  }
+
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [email],
       subject: 'Verify your email - Monstera Cloud',
@@ -46,7 +65,7 @@ export const sendOtpEmail = async (email: string, otp: string) => {
 
 export const sendPasswordResetEmail = async (email: string, resetUrl: string) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [email],
       subject: 'Reset your password – Monstera Cloud',
@@ -87,7 +106,7 @@ export const sendPasswordResetEmail = async (email: string, resetUrl: string) =>
 export const sendSyncFailureEmail = async (to: string, pipelineName: string, errorMsg: string) => {
   try {
     const safeError = (errorMsg || "").slice(0, 2000);
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Sync failed: ${pipelineName}`,
@@ -124,7 +143,7 @@ ${safeError}
 
 export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: string, hoursStale: number) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Data is stale: ${workspaceName}`,
@@ -156,7 +175,7 @@ export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: str
 
 export const sendPaymentPastDueEmail = async (to: string, name: string) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: 'Action required: Your Monstera Cloud payment is past due',
@@ -225,7 +244,7 @@ export const sendClientWeeklyReport = async (
         ? `<span style="display:inline-block; background-color:#fef2f2; color:#991b1b; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600;">${summary.errors} error${summary.errors === 1 ? "" : "s"}</span>`
         : `<span style="display:inline-block; background-color:#ecfdf5; color:#047857; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600;">All green</span>`;
 
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Weekly recap: ${safeName} – ${summary.weekLabel}`,
@@ -276,9 +295,51 @@ export const sendClientWeeklyReport = async (
   }
 };
 
+export type ApprovedBlueprintEmail = {
+  to: string;
+  subject: string;
+  html: string;
+  idempotencyKey: string;
+};
+
+/**
+ * Send an already-rendered, approved snapshot email and preserve the
+ * provider's acceptance boundary. A Resend API rejection is definitive;
+ * transport exceptions are ambiguous unless the socket provably never
+ * connected. Raw provider errors and recipient details are never returned.
+ */
+export async function sendApprovedBlueprintEmail(
+  message: ApprovedBlueprintEmail,
+): Promise<ApprovedBlueprintEmailOutcome> {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating approved report email");
+    return { status: "ACCEPTED", providerMessageId: null };
+  }
+
+  try {
+    const response = await getResendClient().emails.send({
+      from: "Monstera Cloud <no-reply@monsteracloud.com>",
+      to: [message.to],
+      subject: message.subject,
+      html: message.html,
+    }, { idempotencyKey: message.idempotencyKey });
+    if (response.error) {
+      logger.warn("[MAIL] Approved report email rejected by provider");
+    }
+    return classifyApprovedEmailResponse(response);
+  } catch (error) {
+    const outcome = classifyApprovedEmailException(error);
+    logger.warn("[MAIL] Approved report email transport ended without a provider response", {
+      status: outcome.status,
+    });
+    return outcome;
+  }
+}
+
 export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Performance alert: Net ROAS ${netRoas.toFixed(2)} (${workspaceName})`,
@@ -308,6 +369,156 @@ export const sendPerformanceAlertEmail = async (to: string, workspaceName: strin
     return { success: true, data };
   } catch (err) {
     logger.error('[MAIL] Performance Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
+
+export const sendClientBriefEmail = async (
+  to: string,
+  clientName: string,
+  workspaceName: string,
+  markdownBrief: string,
+  options?: { signal?: AbortSignal; idempotencyKey?: string }
+): Promise<{ success: boolean; ambiguous?: boolean; data?: any; error?: any }> => {
+  try {
+    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "re_dummy") {
+      logger.warn('[MAIL] RESEND_API_KEY not configured, simulating delivery to:', to);
+      return { success: true, data: { simulated: true } };
+    }
+
+    const formattedHtml = markdownBrief
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/### (.*?)\n/g, '<h3 style="color:#0f172a; margin-top:16px; margin-bottom:8px;">$1</h3>')
+      .replace(/## (.*?)\n/g, '<h2 style="color:#0f172a; margin-top:20px; margin-bottom:8px;">$1</h2>')
+      .replace(/# (.*?)\n/g, '<h1 style="color:#0f172a; margin-top:24px; margin-bottom:12px;">$1</h1>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>');
+
+    const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; color: #1e293b;">
+          <h2 style="color: #0f172a; margin-bottom: 4px;">Marketing Brief: ${clientName}</h2>
+          <p style="color: #64748b; margin-top: 0; margin-bottom: 20px; font-size: 13px;">
+            Workspace: <strong>${workspaceName}</strong> · Automated Executive Summary
+          </p>
+          <div style="font-size: 14px; line-height: 1.6; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+            ${formattedHtml}
+          </div>
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `;
+
+    // The installed Resend SDK does not propagate AbortSignals, so callers that
+    // carry a delivery deadline (the report-schedule cron) use the equivalent
+    // direct, cancellable REST call; the payload is identical. Callers without
+    // a signal keep the SDK path.
+    if (options?.signal) {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
+        },
+        body: JSON.stringify({
+          from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+          to: [to],
+          subject: `Marketing Brief: ${clientName} – Monstera Cloud`,
+          reply_to: 'no-reply@monsteracloud.com',
+          html,
+        }),
+        signal: options.signal,
+      });
+      if (!response.ok) {
+        let apiError: unknown = `Resend API error ${response.status}`;
+        try {
+          apiError = await response.json();
+        } catch {
+          // keep the sanitized status-only error
+        }
+        logger.error('[MAIL] ClientBrief Resend Error:', apiError);
+        return { success: false, error: apiError };
+      }
+      const data = await response.json();
+      return { success: true, data };
+    }
+
+    const { data, error } = await getResendClient().emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Marketing Brief: ${clientName} – Monstera Cloud`,
+      html,
+    });
+
+    if (error) {
+      logger.error('[MAIL] ClientBrief Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    logger.error('[MAIL] ClientBrief Unexpected Error:', err);
+    // A transport failure after the request may have been sent is ambiguous:
+    // the provider acceptance cannot be disproved from the client side.
+    return { success: false, ambiguous: classifyTransportFailure(err) === "AMBIGUOUS", error: err };
+  }
+};
+
+/**
+ * P3 seat-sharing hardening: new-device sign-in nudge.
+ * Sent when a login arrives from a previously unseen network. Contains no
+ * IP address (raw values are never stored) — just time, method, and a
+ * pointer to Settings → Sessions. Fail-open: returns success:false on error.
+ */
+export const sendNewDeviceEmail = async (
+  email: string,
+  opts: { method: string; when?: Date },
+) => {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating new-device delivery");
+    return { success: true, data: { simulated: true } };
+  }
+
+  try {
+    const when = (opts.when ?? new Date()).toUTCString();
+    const sessionsUrl = new URL(
+      "/settings?tab=sessions",
+      process.env.NEXTAUTH_URL?.trim() || "https://monsteracloud.com",
+    ).toString();
+    const { data, error } = await getResendClient().emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [email],
+      subject: 'New sign-in to your Monstera Cloud account',
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">New sign-in</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 16px;">
+            Your Monstera Cloud account was just signed in from a new device or network
+            (<strong>${when}</strong>, via ${opts.method}).
+          </p>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 24px;">
+            If this was you, no action is needed. If you don't recognize it, change your
+            password and <a href="${sessionsUrl}" style="color: #059669;">review Settings → Sessions</a>
+            to sign out unknown devices.
+          </p>
+          <p style="color: #718096; font-size: 13px;">
+            You can use Monstera on several personal devices. Invite teammates so each
+            person has their own accountable access while sharing workspace connections.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      logger.error('[MAIL] NewDevice Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    logger.error('[MAIL] NewDevice Unexpected Error:', err);
     return { success: false, error: err };
   }
 };

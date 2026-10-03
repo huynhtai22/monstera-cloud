@@ -5,8 +5,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum WorkspaceRole {
@@ -25,6 +26,35 @@ enum WorkspaceStatus {
   PILOT
   ACTIVE
   SUSPENDED
+}
+
+enum WorkCategory {
+  BUSINESS_OWNER
+  GROWTH_MARKETER
+  AGENCY_CONSULTANT
+  ECOMMERCE_SELLER
+  OPERATIONS_ANALYST
+  OTHER
+}
+
+enum AgentRunStatus {
+  in_progress
+  waiting_user
+  ready_to_review
+  completed
+  paused
+}
+
+enum AgentTaskState {
+  waiting_authorization
+  discovering_accounts
+  waiting_selection
+  queued
+  importing
+  verifying
+  ready
+  needs_attention
+  deferred
 }
 
 model Account {
@@ -71,22 +101,94 @@ model PasswordResetToken {
 }
 
 model User {
-  id             String            @id @default(cuid())
-  name           String?
-  email          String?           @unique
-  hashedPassword String?
-  emailVerified  DateTime?
-  image          String?
-  otp            String?
-  otpExpires     DateTime?
-  otpAttempts    Int               @default(0)
-  otpLockedUntil DateTime?
-  plan           String            @default("free")
-  subscriptionId String?           @unique
-  platformRole   PlatformRole      @default(USER)
-  accounts       Account[]
-  sessions       Session[]
-  workspaces     WorkspaceMember[]
+  id                          String                       @id @default(cuid())
+  name                        String?
+  email                       String?                      @unique
+  hashedPassword              String?
+  emailVerified               DateTime?
+  image                       String?
+  otp                         String?
+  otpExpires                  DateTime?
+  otpAttempts                 Int                          @default(0)
+  otpLockedUntil              DateTime?
+  plan                        String                       @default("free")
+  subscriptionId              String?                      @unique
+  platformRole                PlatformRole                 @default(USER)
+  workCategory                WorkCategory?
+  workContext                 String?                      @db.VarChar(500)
+  workProfileAnsweredAt       DateTime?
+  consoleReminderHistory      Json?
+  agentRuns                   AgentRun[]
+  accounts                    Account[]
+  sessions                    Session[]
+  loginEvents                 LoginEvent[]
+  userSessions                UserSession[]
+  workspaceSessionEvidence    WorkspaceSessionEvidence[]
+  workspaces                  WorkspaceMember[]
+  paymentOrders               PaymentOrder[]
+  reportSnapshotApprovals     ReportSnapshotApproval[]
+  reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
+  ownedResponsibilities       AgentResponsibility[]        @relation("ResponsibilityOwner")
+  createdResponsibilities     AgentResponsibility[]        @relation("ResponsibilityCreator")
+  grantedAgentAuthorizations  AgentAuthorization[]         @relation("AuthorizationAuthorizer")
+  ownedCases                  AgentCase[]                  @relation("CaseOwner")
+  approvedAgentApprovals      AgentApproval[]              @relation("ApprovalApprover")
+  consoleEvents               AgentConsoleEvent[]          @relation("ConsoleEventActor")
+  notificationOutboxes        AgentNotificationOutbox[]    @relation("OutboxRecipient")
+}
+
+model LoginEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  method    String
+  ipHash    String?
+  uaHash    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// Global, sanitized control-plane events used for security SLO evaluation.
+/// No raw IP, user-agent, email, token, secret, or request body is allowed.
+model SecurityControlEvent {
+  id          String   @id @default(cuid())
+  eventType   String
+  outcome     String
+  scope       String
+  workspaceId String?
+  actorHash   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([scope, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([createdAt])
+}
+
+/// P1 seat-sharing hardening: one row per browser login (JWT `jti`).
+/// Revoking a row kills that browser session on its next request.
+/// Identity tables stay outside the tenant guard (no workspaceId).
+model UserSession {
+  id            String    @id @default(cuid())
+  userId        String
+  jti           String    @unique
+  ipHash        String?
+  uaHash        String?
+  /// Privacy-safe label derived from the browser user agent; the raw value is never stored.
+  deviceLabel   String?
+  /// One temporary session above the plan allowance may remain active until this time.
+  graceEndsAt   DateTime?
+  /// Durable, user-visible reason for a security or allowance revocation.
+  revokedReason String?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  revokedAt     DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lastSeenAt])
 }
 
 model Workspace {
@@ -94,10 +196,13 @@ model Workspace {
   name                 String
   slug                 String                @unique
   ownerId              String
-  plan                 String                @default("pilot")
+  plan                 String                @default("free")
   status               WorkspaceStatus       @default(PILOT)
   subscriptionProvider String?
   subscriptionId       String?               @unique
+  /// Expiry boundary for domestic-transfer terms and the free trial.
+  /// Null preserves legacy workspaces until they are explicitly renewed.
+  subscriptionEndsAt   DateTime?
   /// Optional Telegram chat ID for this workspace (sync failure alerts). Falls back to TELEGRAM_CHAT_ID env.
   telegramChatId       String?
   /// Product demo: overlay synthetic console data for screenshots / feature trials.
@@ -113,6 +218,9 @@ model Workspace {
   members              WorkspaceMember[]
   apiKeys              ApiKey[]
   campaignMetrics      CampaignMetric[]
+  shopeeCampaigns      ShopeeCampaign[]
+  shopeeProducts       ShopeeProduct[]
+  providerSyncRuns     ProviderSyncRun[]
   orders               RetailOrder[]
   utmRules             UtmMappingRule[]
   attributionSnapshots AttributionSnapshot[]
@@ -125,35 +233,348 @@ model Workspace {
   userDashboards UserDashboard[]
 
   // Looker Studio integration jobs
-  lookerJobs          LookerJob[]
-  warehouseImportJobs WarehouseImportJob[]
-  providerAccess      WorkspaceProviderAccess[]
-  invitations         WorkspaceInvitation[]
-  oauthAttempts       OAuthAttempt[]
-  auditEvents         AuditEvent[]
-  supportTickets      SupportTicket[]
-  aiPolicy            WorkspaceAiPolicy?
-  agentJobs           AgentJob[]
-  agentTraces         AgentTrace[]
-  evidencePacks       EvidencePackRecord[]
-  payloadDiscoveries  PayloadSchemaDiscovery[]
-  schemaProposals     SchemaPatchProposal[]
+  lookerJobs                  LookerJob[]
+  warehouseImportJobs         WarehouseImportJob[]
+  warehouseBackfillChunks     WarehouseBackfillChunk[]
+  providerAccess              WorkspaceProviderAccess[]
+  invitations                 WorkspaceInvitation[]
+  oauthAttempts               OAuthAttempt[]
+  auditEvents                 AuditEvent[]
+  supportTickets              SupportTicket[]
+  aiPolicy                    WorkspaceAiPolicy?
+  agentJobs                   AgentJob[]
+  agentRuns                   AgentRun[]
+  agentTraces                 AgentTrace[]
+  evidencePacks               EvidencePackRecord[]
+  connectorRunArtifacts       ConnectorRunArtifact[]
+  payloadDiscoveries          PayloadSchemaDiscovery[]
+  schemaProposals             SchemaPatchProposal[]
+  paymentOrders               PaymentOrder[]
+  providerAccountHealth       ProviderAccountHealth[]
+  reportSnapshots             ReportSnapshot[]
+  reportSnapshotApprovals     ReportSnapshotApproval[]
+  clientAccountAssignments    ClientProviderAccountAssignment[]
+  dailyUsage                  WorkspaceDailyUsage[]
+  sessionEvidence             WorkspaceSessionEvidence[]
+  apiKeyMutationReceipts      ApiKeyMutationReceipt[]
+  dispatchAttempts            ReportScheduleDispatchAttempt[]
+  reportEmailDeliveryAttempts ReportEmailDeliveryAttempt[]
+  clientFreshnessStates       ClientFreshnessState[]
+  agencyAlertDeliveries       AgencyAlertDelivery[]
+  agentResponsibilities       AgentResponsibility[]
+  agentResponsibilityScopes   AgentResponsibilityScope[]
+  agentAuthorizations         AgentAuthorization[]
+  agentEvaluations            AgentEvaluation[]
+  agentCases                  AgentCase[]
+  agentOperations             AgentOperation[]
+  agentApprovals              AgentApproval[]
+  agentEvidenceSnapshots      AgentEvidenceSnapshot[]
+  agentConsoleEvents          AgentConsoleEvent[]
+  agentNotificationOutboxes   AgentNotificationOutbox[]
+  agentEventSequence          AgentEventSequence?
+
+  @@index([subscriptionProvider, subscriptionEndsAt])
   tiktokGmvMaxMetrics TikTokGmvMaxMetric[]
 }
 
-model Client {
-  id          String       @id @default(cuid())
+/// UTC-day usage counters for the seat-sharing measurement framework.
+/// Writes are best-effort and must never affect the customer request path.
+model WorkspaceDailyUsage {
   workspaceId String
-  name        String
-  description String?
-  logoUrl     String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  pipelines   Pipeline[]
-  connections Connection[]
+  date        DateTime
+  queryCount  Int       @default(0)
+  importCount Int       @default(0)
+  keyHitCount Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  @@id([workspaceId, date])
+  @@index([date])
+}
+
+/// Workspace-authorized browser presence. Unlike LoginEvent/UserSession this
+/// evidence is safe for a workspace administrator to inspect because every
+/// write is preceded by a membership check for this exact workspace.
+model WorkspaceSessionEvidence {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  userId         String
+  sessionJti     String
+  ipHash         String?
+  uaHash         String?
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  heartbeatCount Int       @default(1)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sessionJti])
+  @@index([workspaceId, userId, lastSeenAt])
+  @@index([lastSeenAt])
+}
+
+/// Short-lived encrypted replay receipt for one-time API-key secrets. The
+/// idempotency tuple prevents a lost HTTP response from creating another key.
+model ApiKeyMutationReceipt {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  actorUserId        String
+  operation          String
+  idempotencyKeyHash String
+  requestHash        String
+  responseCiphertext String
+  statusCode         Int
+  apiKeyId           String?
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, actorUserId, operation, idempotencyKeyHash], map: "ApiKeyMutationReceipt_idempotency_key")
+  @@index([workspaceId, expiresAt])
+  @@index([expiresAt])
+}
+
+model Client {
+  id                             String                            @id @default(cuid())
+  workspaceId                    String
+  name                           String
+  description                    String?
+  logoUrl                        String?
+  createdAt                      DateTime                          @default(now())
+  updatedAt                      DateTime                          @updatedAt
+  workspace                      Workspace                         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pipelines                      Pipeline[]
+  connections                    Connection[]
+  requiredProviders              String[]                          @default([])
+  requiredDestinations           String[]                          @default([])
+  requirementsConfiguredAt       DateTime?
+  accountAssignmentsConfiguredAt DateTime?
+  deliveryReceipts               DestinationDeliveryReceipt[]
+  reportSnapshots                ReportSnapshot[]
+  reportSnapshotApprovals        ReportSnapshotApproval[]
+  reportEmailDeliveryAttempts    ReportEmailDeliveryAttempt[]
+  accountAssignments             ClientProviderAccountAssignment[]
+  freshnessState                 ClientFreshnessState?
+  agentRuns                      AgentRun[]
+  agentResponsibilities          AgentResponsibility[]
+  agentCases                     AgentCase[]
+
+  @@unique([workspaceId, id])
   @@index([workspaceId])
+}
+
+/// Latest monitor observation; not a reporting verification authority.
+model ClientFreshnessState {
+  workspaceId String
+  clientId String
+  status String
+  incidentKey String
+  checkedAt DateTime
+  changedAt DateTime
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, clientId])
+  @@index([workspaceId, checkedAt])
+}
+
+/// Immutable, reproducible snapshot of a verified report blueprint run.
+/// Generation is idempotent per (generationKey, dependencyHash); changed
+/// dependencies create a new sequence instead of overwriting history.
+/// The dependency hash binds PR #152's reportingDataset fingerprint, client
+/// requirements and current destination delivery receipts.
+model ReportSnapshot {
+  id                     String    @id @default(cuid())
+  workspaceId            String
+  clientId               String
+  blueprintId            String
+  blueprintVersion       Int
+  /// SHA-256 of the canonical generation input (workspace, client, blueprint,
+  /// reporting and comparison windows). Snapshots sharing a generationKey are
+  /// versions of the same logical report.
+  generationKey          String
+  sequence               Int
+  reportingWindowStart   DateTime
+  reportingWindowEnd     DateTime
+  comparisonWindowStart  DateTime?
+  comparisonWindowEnd    DateTime?
+  /// Verified single reporting timezone/currency, or null when unverified.
+  reportingTimezone      String?
+  reportingCurrency      String?
+  requiredProviders      String[]
+  requiredDestinations   String[]
+  includedProviders      String[]
+  includedAccountIds     String[]
+  dataThroughByProvider  Json
+  metricContractVersions Json
+  /// PR #152 reportingDataset fingerprint at generation time.
+  datasetFingerprint     String
+  readinessStatus        String
+  verificationStatus     String
+  verificationReasons    String[]
+  readinessEvidence      Json
+  /// Latest receipt per required destination, with currentness, at generation.
+  destinationReceipts    Json
+  generatorCommitSha     String?
+  schemaVersion          Int       @default(2)
+  /// SHA-256 of the canonical dependency state at generation time.
+  dependencyHash         String
+  result                 Json
+  generatedAt            DateTime  @default(now())
+
+  workspace             Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Composite FK mirrors PR #152's tenant pattern: the client MUST belong to
+  /// the same workspace, enforced by the database, not application code.
+  client                Client                       @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  approvals             ReportSnapshotApproval[]
+  emailDeliveryAttempts ReportEmailDeliveryAttempt[]
+
+  @@unique([generationKey, sequence])
+  @@unique([generationKey, dependencyHash])
+  @@unique([workspaceId, clientId, id])
+  @@index([workspaceId, clientId, generatedAt])
+}
+
+/// Durable human approval for an exact, immutable ReportSnapshot.
+/// Tenant-scoped, references the exact snapshot.
+/// A snapshot can only be approved once per workspace (idempotent); newer snapshots
+/// for the same generationKey leave historical approvals intact but non-current.
+model ReportSnapshotApproval {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  clientId         String
+  snapshotId       String
+  approvedByUserId String
+  approvedAt       DateTime @default(now())
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client         Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  snapshot       ReportSnapshot @relation(fields: [workspaceId, clientId, snapshotId], references: [workspaceId, clientId, id], onDelete: Cascade)
+  approvedByUser User           @relation(fields: [approvedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, snapshotId])
+  @@index([workspaceId, clientId, approvedAt])
+  @@index([workspaceId, approvedByUserId])
+}
+
+/// Explicit operator-initiated email sends for an exact approved snapshot.
+/// Provider acceptance is recorded separately from warehouse retrieval receipts.
+model ReportEmailDeliveryAttempt {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  clientId          String
+  snapshotId        String
+  actorUserId       String
+  idempotencyKey    String
+  /// Unique while the provider outcome is unresolved; retained for ambiguous sends until reconciliation.
+  activeClaimKey    String?   @unique
+  recipientDisplay  String
+  recipientHash     String?
+  status            String // PROVIDER_STARTED | ACCEPTED | DEFINITIVE_FAILED | AMBIGUOUS
+  providerMessageId String?
+  failureCode       String?
+  providerStartedAt DateTime  @default(now())
+  finishedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  snapshot  ReportSnapshot @relation(fields: [workspaceId, clientId, snapshotId], references: [workspaceId, clientId, id], onDelete: Cascade)
+  actor     User           @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, clientId, snapshotId, createdAt])
+}
+
+/// Durable at-least-once delivery queue for agency operations alerts.
+model AgencyAlertDelivery {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  idempotencyKey String
+  pipelineName   String
+  clientId       String?
+  errorMsg       String
+  actionHint     String?
+  status         String    @default("pending") // pending | sending | sent | dead
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  leaseId        String?
+  leaseExpiresAt DateTime?
+  deliveredAt    DateTime?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([workspaceId, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@index([status, deliveredAt])
+}
+
+/// Authoritative client assignment for a provider account discovered via a root connection.
+/// Composite FKs guarantee that workspace, client, and connection belong to the same tenant.
+/// Unique constraint on (workspaceId, provider, accountId) guarantees one active client owner
+/// and one authoritative connection, preventing duplicate counting across overlapping roots (e.g. MCCs).
+model ClientProviderAccountAssignment {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  clientId     String
+  provider     String
+  accountId    String
+  connectionId String
+  assignedAt   DateTime @default(now())
+  assignedBy   String? // actor userId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client     Client     @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  connection Connection @relation(fields: [workspaceId, connectionId, provider], references: [workspaceId, id, provider], onDelete: Cascade)
+
+  @@unique([workspaceId, provider, accountId], map: "ClientProviderAccountAssignment_ws_prov_acc_key")
+  @@index([workspaceId, clientId], map: "ClientProviderAccountAssignment_ws_client_idx")
+  @@index([workspaceId, connectionId], map: "ClientProviderAccountAssignment_ws_conn_idx")
+}
+
+/// Provider facts are retained independently of explicit, audited operator overrides.
+model AccountReportingContext {
+  id                 String     @id @default(cuid())
+  workspaceId        String
+  connectionId       String
+  accountId          String
+  providerTimezone   String?
+  providerCurrency   String?
+  providerObservedAt DateTime?
+  overrideTimezone   String?
+  overrideCurrency   String?
+  overrideReason     String?
+  overrideBy         String?
+  overrideAt         DateTime?
+  updatedAt          DateTime   @updatedAt
+  connection         Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, connectionId, accountId])
+}
+
+/// A successful authenticated, complete client/window warehouse retrieval, not a connection or UI assertion.
+model DestinationDeliveryReceipt {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  clientId           String
+  destination        String
+  windowStart        String
+  windowEnd          String
+  dataThroughDate    String
+  datasetFingerprint String
+  rowCount           Int
+  retrievedAt        DateTime @default(now())
+  actorId            String
+  client             Client   @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([workspaceId, clientId, windowStart, windowEnd, retrievedAt], map: "DestinationDeliveryReceipt_workspaceId_clientId_windowStart_idx")
 }
 
 model WorkspaceMember {
@@ -208,13 +629,16 @@ model OAuthAttempt {
   workspaceId           String
   provider              String
   reconnectConnectionId String?
+  agentTaskId           String?
   expiresAt             DateTime
   consumedAt            DateTime?
   createdAt             DateTime  @default(now())
   workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentTask             AgentTask? @relation(fields: [workspaceId, agentTaskId], references: [workspaceId, id], onDelete: Cascade)
 
   @@index([userId, provider, expiresAt])
   @@index([workspaceId, consumedAt])
+  @@index([workspaceId, agentTaskId])
 }
 
 model AuditEvent {
@@ -233,29 +657,41 @@ model AuditEvent {
 }
 
 model Connection {
-  id                   String           @id @default(cuid())
+  id                   String                  @id @default(cuid())
   workspaceId          String
   clientId             String? // Agency UX: Group by Client
   name                 String
   type                 String
   provider             String
   credentials          String
-  remoteAccountId      String           @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
-  status               String           @default("connected")
+  remoteAccountId      String                  @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
+  status               String                  @default("connected")
   lastError            String? // UX: Actionable Error Tracking
   lastSyncAt           DateTime? // UX: Freshness Tracking
   lastDataThrough      DateTime? // Latest CampaignMetric.date for this connection; not the sync clock
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
-  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client               Client?          @relation(fields: [clientId], references: [id])
-  destinationPipelines Pipeline[]       @relation("DestinationConnection")
-  sourcePipelines      Pipeline[]       @relation("SourceConnection")
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  workspace            Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client               Client?                 @relation(fields: [clientId], references: [id])
+  destinationPipelines Pipeline[]              @relation("DestinationConnection")
+  sourcePipelines      Pipeline[]              @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
   orders               RetailOrder[]
-  tiktokGmvMaxMetrics  TikTokGmvMaxMetric[]
+  shopeeCampaigns      ShopeeCampaign[]
+  shopeeProducts       ShopeeProduct[]
+  shopeeCatalogState   ShopeeCatalogSyncState?
+  providerSyncRuns     ProviderSyncRun[]
+  accountHealth        ProviderAccountHealth[]
 
+  reportingContexts  AccountReportingContext[]
+  accountAssignments ClientProviderAccountAssignment[]
+  agentTaskConnections AgentTaskConnection[]
+  agentResponsibilityScopes AgentResponsibilityScope[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, id, provider])
   @@unique([workspaceId, provider, remoteAccountId])
+  tiktokGmvMaxMetrics TikTokGmvMaxMetric[]
 }
 
 model Pipeline {
@@ -328,16 +764,27 @@ model TransformationRule {
 }
 
 model ApiKey {
-  id          String    @id @default(cuid())
-  legacyKey   String?   @unique @map("key")
-  keyHash     String?   @unique
-  keyPrefix   String?
-  keyLastFour String?
-  name        String    @default("Default Key")
-  workspaceId String
-  createdAt   DateTime  @default(now())
-  lastUsedAt  DateTime?
-  revokedAt   DateTime?
+  id              String    @id @default(cuid())
+  legacyKey       String?   @unique @map("key")
+  keyHash         String?   @unique
+  keyPrefix       String?
+  keyLastFour     String?
+  name            String    @default("Default Key")
+  workspaceId     String
+  createdAt       DateTime  @default(now())
+  lastUsedAt      DateTime?
+  /// P0 seat-sharing telemetry: hashed request identity + hit counter.
+  /// Raw IPs / user-agents are never stored; see src/lib/login-telemetry.ts.
+  useCount        Int       @default(0)
+  lastUsedIpHash  String?
+  lastUsedUaHash  String?
+  /// P2: workspace admin who created the key (seat attribution).
+  createdByUserId String?
+  /// P2: optional office-IP pin (salted hash). When set, key use from any
+  /// other IP is rejected. Default null = no pin (Looker refreshes fan out
+  /// across Google IPs, so never pin by default).
+  allowedIpHash   String?
+  revokedAt       DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
@@ -401,6 +848,18 @@ model CampaignMetric {
   currency    String?
   rawData     String?
 
+  // Raw-dependency promotion (dual-write foundation). Nullable so historical
+  // rows stay compatible and render through the legacy rawData fallback.
+  // adName is written by Meta ingestion only; shopee* by Shopee Ads ingestion.
+  adName                      String?
+  shopeeBroadOrders           Float?
+  shopeeBroadUnits            Float?
+  shopeeBroadGmv              Float?
+  shopeeDirectOrders          Float?
+  shopeeDirectUnits           Float?
+  shopeeDirectGmv             Float?
+  shopeeKeywordSettingsCount  Int?
+
   syncJobId    String? // which SyncJob wrote this row
   lockScope    String? // SyncLock.scope at write time
   fencingToken BigInt? // SyncLock.fencingToken at write time — stale writes are rejected
@@ -416,6 +875,99 @@ model CampaignMetric {
   @@index([connectionId, date])
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, platform, accountId, date])
+  @@index([workspaceId, date, id], map: "CampaignMetric_workspaceId_date_id_idx")
+  // Default explorer view: workspace-wide date-bounded recency paging with no
+  // platform/account equality. Measured 60ms/58k-buffer seq-scan+sort at 790k
+  // rows without it; narrow two-column shape keeps write amplification minimal.
+  @@index([workspaceId, date])
+}
+
+/// Provider-discovered Shopee campaign identity. This is intentionally separate
+/// from dated performance rows so an empty sandbox performance response cannot
+/// be mistaken for zero-valued metrics.
+model ShopeeCampaign {
+  id                 String     @id @default(cuid())
+  workspaceId        String
+  connectionId       String
+  environment        String
+  shopId             String
+  region             String
+  externalCampaignId String
+  adType             String
+  biddingStrategy    String?
+  campaignName       String?
+  campaignStatus     String?
+  sourceRequestId    String?
+  syncedAt           DateTime   @default(now())
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  workspace          Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, environment, shopId, externalCampaignId])
+  @@index([workspaceId, environment, shopId])
+  @@index([connectionId, syncedAt])
+}
+
+/// Provider-discovered Shopee product identity. Performance remains in
+/// CampaignMetric; catalog rows retain their own source timestamp and status.
+model ShopeeProduct {
+  id              String     @id @default(cuid())
+  workspaceId     String
+  connectionId    String
+  environment     String
+  shopId          String
+  region          String
+  externalItemId  String
+  itemName        String?
+  itemStatus      String?
+  sourceUpdatedAt DateTime?
+  sourceRequestId String?
+  syncedAt        DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection      Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, environment, shopId, externalItemId])
+  @@index([workspaceId, environment, shopId])
+  @@index([connectionId, syncedAt])
+}
+
+/// Per-connection catalog watermark. The first catalog run deliberately leaves
+/// this null and performs a full product scan; subsequent runs overlap it.
+model ShopeeCatalogSyncState {
+  id                 String     @id @default(cuid())
+  connectionId       String     @unique
+  productWatermarkAt DateTime?
+  updatedAt          DateTime   @updatedAt
+  connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+/// Sanitized per-endpoint provider call record. It intentionally has no URL,
+/// credential, token, request body, or signature fields.
+model ProviderSyncRun {
+  id                String     @id @default(cuid())
+  workspaceId       String
+  connectionId      String
+  provider          String
+  environment       String
+  shopId            String?
+  endpoint          String
+  httpStatus        Int?
+  providerRequestId String?
+  status            String
+  rowsReceived      Int        @default(0)
+  rowsWritten       Int        @default(0)
+  errorCategory     String?
+  errorMessage      String?
+  startedAt         DateTime   @default(now())
+  completedAt       DateTime?
+  workspace         Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection        Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, connectionId, startedAt])
+  @@index([connectionId, endpoint, startedAt])
 }
 
 model RetailOrder {
@@ -479,18 +1031,52 @@ model AttributionTouch {
 
 /// Per-client weekly report schedule. Agencies configure who receives the recap email.
 model ReportSchedule {
-  id          String    @id @default(cuid())
-  workspaceId String
-  clientId    String?
-  cron        String    @default("0 9 * * 1")
-  recipients  String // comma-separated email list
-  enabled     Boolean   @default(true)
-  lastSentAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                     String                          @id @default(cuid())
+  workspaceId            String
+  clientId               String?
+  cron                   String                          @default("0 9 * * 1")
+  recipients             String // comma-separated email list
+  enabled                Boolean                         @default(true)
+  lastSentAt             DateTime?
+  // Durable dispatch claim. Set atomically by the cron sweep before provider
+  // delivery; null (or expired) means unclaimed. Cleared by the lease owner on
+  // completion or handled failure; a crashed owner's lease simply expires, so
+  // no manual recovery is needed. TTL: 5 minutes.
+  dispatchLeaseToken     String?
+  dispatchLeaseExpiresAt DateTime?
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+  attempts               ReportScheduleDispatchAttempt[]
 
   @@index([workspaceId])
   @@index([clientId])
+}
+
+/// Durable per-occurrence dispatch state for one scheduled-report occurrence.
+/// occurrenceDate is the UTC calendar date of the sweep that evaluated the due
+/// slot (inheriting isScheduleDue's day-anchored semantics). State machine:
+/// CLAIMED -> PROVIDER_STARTED -> CONFIRMED | DEFINITIVE_FAILED | AMBIGUOUS.
+/// PROVIDER_STARTED is committed before any provider contact (crash boundary);
+/// AMBIGUOUS suppresses automatic retries for that occurrence and is surfaced
+/// for operator review.
+model ReportScheduleDispatchAttempt {
+  id                String         @id @default(cuid())
+  scheduleId        String
+  workspaceId       String
+  occurrenceDate    String
+  token             String
+  status            String
+  providerStartedAt DateTime?
+  finishedAt        DateTime?
+  channelOutcomes   Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  schedule          ReportSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, occurrenceDate])
+  @@index([workspaceId])
+  @@index([scheduleId, status])
 }
 
 model AttributionSnapshot {
@@ -738,49 +1324,203 @@ model SyncLock {
 
 // Durable execution for asynchronous warehouse batch imports
 model WarehouseImportJob {
-  id             String    @id @default(cuid())
-  workspaceId    String
-  userId         String
-  plan           String    @default("pilot")
-  since          String
-  until          String
-  items          Json      // BatchImportItem[]
-  status         String    @default("queued") // queued | running | completed | partial | failed
-  totalItems     Int       @default(0)
-  completedItems Int       @default(0)
-  approximateRows Int      @default(0)
-  results        Json?     // BatchImportJobResult[]
-  errorMsg       String?
-  priority       Int       @default(1)
-  retryCount     Int       @default(0)
-  maxRetries     Int       @default(3)
-  leaseId        String?
-  leaseExpiresAt DateTime?
-  heartbeatAt    DateTime?
-  scheduledAt    DateTime  @default(now())
-  startedAt      DateTime?
-  finishedAt     DateTime?
-  idempotencyKey String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  workspaceId     String
+  userId          String
+  plan            String    @default("pilot")
+  since           String
+  until           String
+  items           Json // BatchImportItem[]
+  status          String    @default("queued") // queued | running | completed | partial | failed
+  totalItems      Int       @default(0)
+  completedItems  Int       @default(0)
+  approximateRows Int       @default(0)
+  results         Json? // BatchImportJobResult[]
+  errorMsg        String?
+  priority        Int       @default(1)
+  retryCount      Int       @default(0)
+  maxRetries      Int       @default(3)
+  leaseId         String?
+  leaseExpiresAt  DateTime?
+  heartbeatAt     DateTime?
+  scheduledAt     DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  idempotencyKey  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks    WarehouseBackfillChunk[]
+  agentTasks AgentTask[]
 
+  @@unique([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])
 }
 
+/// Persistent goal/session. Each explicit onboarding continuation has its own stable resumeKey
+/// Reloading resumes the latest workflow; explicit continuation preserves completed runs.
+model AgentRun {
+  id                String         @id @default(cuid())
+  workspaceId       String
+  initiatorUserId   String
+  clientId          String?
+  kind              String         @default("onboarding")
+  status            AgentRunStatus @default(in_progress)
+  version           Int            @default(0)
+  resumeKey         String?
+  lastEventSequence Int            @default(0)
+  reviewedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  initiator         User           @relation(fields: [initiatorUserId], references: [id], onDelete: Cascade)
+  client            Client?        @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  tasks             AgentTask[]
+  messages          AgentRunMessage[]
+  events            AgentRunEvent[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, resumeKey])
+  @@index([workspaceId, initiatorUserId, status])
+}
+
+model AgentTask {
+  id                    String         @id @default(cuid())
+  workspaceId           String
+  runId                 String
+  taskKey               String
+  type                  String         @default("connect_provider")
+  provider              String
+  state                 AgentTaskState @default(waiting_authorization)
+  reasonCode            String?
+  version               Int            @default(0)
+  scopeRevision         Int            @default(0)
+  requestedScope        Json?
+  confirmedScope        Json?
+  confirmedAt           DateTime?
+  confirmedByUserId     String?
+  importJobId           String?
+  result                Json?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  run                   AgentRun       @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  importJob             WarehouseImportJob? @relation(fields: [workspaceId, importJobId], references: [workspaceId, id], onDelete: Restrict)
+  connections           AgentTaskConnection[]
+  events                AgentRunEvent[]
+  oAuthAttempts         OAuthAttempt[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, runId, id])
+  @@unique([runId, taskKey])
+  @@index([workspaceId, runId, state])
+}
+
+model AgentTaskConnection {
+  id                 String     @id @default(cuid())
+  workspaceId        String
+  taskId             String
+  connectionId       String
+  selectedAccountIds String[]   @default([])
+  task               AgentTask  @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  connection         Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([taskId, connectionId])
+  @@index([workspaceId, taskId])
+}
+
+model AgentRunMessage {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  runId              String
+  messageKey         String
+  role               String
+  content            String   @db.VarChar(4000)
+  structuredResponse Json?
+  createdAt          DateTime @default(now())
+  run                AgentRun @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([runId, messageKey])
+  @@index([workspaceId, runId, createdAt])
+}
+
+model AgentRunEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  runId       String
+  taskId      String?
+  sequence    Int
+  type        String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  run         AgentRun  @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  task        AgentTask? @relation(fields: [workspaceId, runId, taskId], references: [workspaceId, runId, id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@index([workspaceId, runId, sequence])
+}
+
+// Durable executable slice of a warehouse backfill job (checkpoint-worker
+// foundation). Each row is one provider request of at most 30 inclusive days,
+// persisted newest-first (`ordinal` 0 = newest slice). Chunks are the
+// execution source of truth; the parent job's JSON `items`/`results` are kept
+// synchronized only for API/UI compatibility.
+//
+// `connectionId` is an intentional scalar reference (no FK): connection rows
+// have workspace-scoped composite identities and reconnect/delete flows, so a
+// hard FK would couple chunk retention to connection lifecycle. Ownership is
+// enforced through `workspaceId` (cascade) and `jobId` (cascade) instead.
+// Provider account IDs are always strings (`accountId`, never numeric).
+model WarehouseBackfillChunk {
+  id             String    @id
+  workspaceId    String
+  jobId          String
+  connectionId   String
+  provider       String
+  accountId      String    @default("")
+  since          String
+  until          String
+  ordinal        Int
+  status         String    @default("queued") // queued | running | completed | failed | cancelled
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  persistedRows  Int       @default(0)
+  leaseId        String?
+  leaseExpiresAt DateTime?
+  fencingToken   BigInt    @default(0)
+  lastErrorCode  String?
+  lastError      String?
+  heartbeatAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  job       WarehouseImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, connectionId, accountId, since, until])
+  @@index([workspaceId, status, ordinal])
+  @@index([jobId, status])
+  @@index([jobId, ordinal])
+  @@index([status, leaseExpiresAt])
+  @@index([workspaceId, jobId])
+  // Provider-call budget aggregation per workspace/provider/day (pilot admission).
+  @@index([workspaceId, provider, completedAt])
+}
+
 model WorkspaceAiPolicy {
-  workspaceId                    String    @id
-  enabledFeatures                String[]
-  monthlyTokenBudget             Int       @default(2000000)
-  monthlyUsdBudget               Float     @default(25)
-  budgetWriteOptIn               Boolean   @default(false)
-  acknowledgeBestEffortDefault   Boolean   @default(false)
-  updatedAt                      DateTime  @updatedAt
-  workspace                      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId                  String    @id
+  enabledFeatures              String[]
+  monthlyTokenBudget           Int       @default(2000000)
+  monthlyUsdBudget             Float     @default(25)
+  budgetWriteOptIn             Boolean   @default(false)
+  acknowledgeBestEffortDefault Boolean   @default(false)
+  updatedAt                    DateTime  @updatedAt
+  workspace                    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model AgentJob {
@@ -817,7 +1557,7 @@ model AgentJob {
 }
 
 model AgentTrace {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   jobId       String
   step        Int
@@ -825,31 +1565,50 @@ model AgentTrace {
   toolArgs    Json?
   toolResult  Json?
   durationMs  Int
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
 }
 
 model EvidencePackRecord {
-  id          String   @id @default(cuid())
-  workspaceId String
-  jobId       String
-  pack        Json
-  createdAt   DateTime @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  workspaceId   String
+  jobId         String
+  pack          Json
+  certifiedPack Json? // Approved projection; immutable base evidence remains in pack.
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
 }
 
+model ConnectorRunArtifact {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  runId         String
+  provider      String
+  kind          String
+  payloadHash   String
+  payload       Json
+  retainedUntil DateTime  @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // One verdict artifact per run: repeat publication conflicts instead of duplicating.
+  @@unique([runId, kind])
+  @@index([workspaceId, connectionId])
+}
+
 model PayloadSchemaDiscovery {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   workspaceId  String
   connectionId String
   provider     String
   schemaHash   String
   fields       String
-  discoveredAt DateTime @default(now())
+  discoveredAt DateTime  @default(now())
   workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, schemaHash])
@@ -898,6 +1657,413 @@ model SupportTicket {
   @@index([workspaceId, status])
   @@index([workspaceId, fingerprint])
 }
+
+enum PaymentOrderStatus {
+  CREATING
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  FAILED
+}
+
+model PaymentOrder {
+  id                 String             @id @default(cuid())
+  orderCode          BigInt             @unique
+  workspaceId        String
+  userId             String?
+  plan               String
+  billingCycle       String
+  amount             Int
+  currency           String             @default("VND")
+  accessDurationDays Int                @default(30)
+  status             PaymentOrderStatus @default(CREATING)
+  paymentLinkId      String?            @unique
+  checkoutUrl        String?
+  qrCode             String?
+  transactionRef     String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  expiresAt          DateTime
+  paidAt             DateTime?
+  fulfilledAt        DateTime?
+  updatedAt          DateTime           @updatedAt
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user               User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([orderCode])
+  @@index([expiresAt])
+}
+
+model ProviderAccountHealth {
+  id                  String     @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  provider            String
+  accountId           String
+  accountName         String?
+  status              String     @default("healthy") // healthy | degraded | quarantined | reconnect_required
+  errorCategory       String? // AUTH_EXPIRED | PERMISSION_DENIED | RATE_LIMITED | SCHEMA_DRIFT | TRANSIENT_NETWORK | UNKNOWN
+  consecutiveFailures Int        @default(0)
+  lastError           String?
+  lastErrorAt         DateTime?
+  lastSuccessAt       DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  workspace           Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection          Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, accountId])
+  @@index([workspaceId, provider, status])
+  @@index([connectionId, status])
+}
+
+enum AgentResponsibilityStatus {
+  draft
+  active
+  paused
+  disabled
+}
+
+enum AgentCaseState {
+  detected
+  investigating
+  acting
+  verifying
+  needs_customer
+  blocked
+  failed
+  resolved
+}
+
+enum AgentCasePriority {
+  critical
+  high
+  medium
+  low
+}
+
+enum AgentOperationState {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum AgentApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+  consumed
+}
+
+enum AgentOutboxStatus {
+  pending
+  delivering
+  delivered
+  failed
+}
+
+model AgentResponsibility {
+  id                String                    @id @default(cuid())
+  workspaceId       String
+  clientId          String?
+  ownerId           String
+  createdByUserId   String
+  kind              String                    @default("monitoring")
+  status            AgentResponsibilityStatus @default(draft)
+  version           Int                       @default(0)
+  scopeRevision     Int                       @default(0)
+  policyRevision    Int                       @default(0)
+  configuration     Json
+  scopeHash         String?
+  cadence           String                    @default("daily")
+  timezone          String                    @default("UTC")
+  nextDueAt         DateTime?
+  lastAttemptedAt   DateTime?
+  lastSuccessfulAt  DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  workspace         Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client            Client?                   @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  owner             User                      @relation("ResponsibilityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  creator           User                      @relation("ResponsibilityCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  scopes            AgentResponsibilityScope[]
+  authorizations    AgentAuthorization[]
+  evaluations       AgentEvaluation[]
+  cases             AgentCase[]
+  events            AgentConsoleEvent[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, status, nextDueAt])
+  @@index([workspaceId, clientId, status])
+  @@index([status, nextDueAt])
+}
+
+model AgentResponsibilityScope {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  responsibilityId   String
+  scopeRevision      Int
+  connectionId       String
+  provider           String
+  providerAccountId  String
+  accountName        String?
+  currency           String?
+  timezone           String?
+  metadata           Json?
+  createdAt          DateTime            @default(now())
+  responsibility     AgentResponsibility @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  connection         Connection          @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([responsibilityId, scopeRevision, connectionId, providerAccountId])
+  @@index([workspaceId, responsibilityId, scopeRevision])
+  @@index([workspaceId, connectionId])
+}
+
+model AgentAuthorization {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  responsibilityId   String
+  policyRevision     Int
+  scopeRevision      Int
+  scopeHash          String
+  authorizingUserId  String
+  allowlistedTools   String[]            @default([])
+  allowedPairs       Json                @default("[]")
+  limits             Json?
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  revocationReason   String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  responsibility     AgentResponsibility @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  authorizingUser    User                @relation("AuthorizationAuthorizer", fields: [authorizingUserId], references: [id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  @@unique([responsibilityId, policyRevision])
+  @@index([workspaceId, responsibilityId, policyRevision])
+  @@index([responsibilityId, expiresAt])
+}
+
+model AgentEvaluation {
+  id                 String                 @id @default(cuid())
+  workspaceId        String
+  responsibilityId   String
+  configVersion      Int
+  scopeRevision      Int
+  policyRevision     Int
+  scheduledSlot      DateTime
+  attemptedAt        DateTime               @default(now())
+  completedAt        DateTime?
+  windowSince        DateTime?
+  windowUntil        DateTime?
+  status             String                 @default("no_finding")
+  qualityCode        String?
+  blockerCode        String?
+  evidenceId         String?
+  result             Json?
+  createdAt          DateTime               @default(now())
+  responsibility     AgentResponsibility    @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  evidence           AgentEvidenceSnapshot? @relation(fields: [workspaceId, evidenceId], references: [workspaceId, id], onDelete: Restrict)
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  cases              AgentCase[]
+  operations         AgentOperation[]
+
+  @@unique([workspaceId, id])
+  @@unique([responsibilityId, scopeRevision, scheduledSlot])
+  @@index([workspaceId, responsibilityId, attemptedAt])
+  @@index([responsibilityId, scheduledSlot])
+}
+
+model AgentCase {
+  id                    String                  @id @default(cuid())
+  workspaceId           String
+  clientId              String?
+  responsibilityId      String?
+  evaluationId          String?
+  fingerprint           String
+  episode               Int                     @default(1)
+  ownerUserId           String?
+  type                  String                  @default("metric_anomaly")
+  priority              AgentCasePriority       @default(medium)
+  state                 AgentCaseState          @default(detected)
+  version               Int                     @default(0)
+  title                 String
+  description           String?
+  requiredAction        String?
+  snoozedUntil          DateTime?
+  resolutionType        String?
+  resolutionReason      String?
+  resolutionEvidenceId  String?
+  firstObservedAt       DateTime                @default(now())
+  lastObservedAt        DateTime                @default(now())
+  resolvedAt            DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client                Client?                 @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  responsibility        AgentResponsibility?    @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  evaluation            AgentEvaluation?        @relation(fields: [workspaceId, evaluationId], references: [workspaceId, id], onDelete: Restrict)
+  ownerUser             User?                   @relation("CaseOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  operations            AgentOperation[]
+  events                AgentConsoleEvent[]
+  outboxes              AgentNotificationOutbox[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, fingerprint, episode])
+  @@index([workspaceId, state, priority])
+  @@index([workspaceId, clientId, state])
+  @@index([workspaceId, responsibilityId, state])
+  @@index([workspaceId, createdAt, id])
+}
+
+model AgentOperation {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  caseId             String?
+  evaluationId       String?
+  operationKey       String
+  toolName           String
+  arguments          Json
+  scopeHash          String
+  policyRevision     Int
+  state              AgentOperationState @default(queued)
+  attempts           Int                 @default(0)
+  maxAttempts        Int                 @default(3)
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  jobReference       String?
+  receipt            Json?
+  error              Json?
+  version            Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  case               AgentCase?          @relation(fields: [workspaceId, caseId], references: [workspaceId, id], onDelete: Cascade)
+  evaluation         AgentEvaluation?    @relation(fields: [workspaceId, evaluationId], references: [workspaceId, id], onDelete: Restrict)
+  approvals          AgentApproval[]
+  events             AgentConsoleEvent[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, operationKey])
+  @@index([workspaceId, state, leaseExpiresAt])
+  @@index([workspaceId, caseId, state])
+}
+
+model AgentApproval {
+  id                    String              @id @default(cuid())
+  workspaceId           String
+  operationId           String
+  proposalHash          String
+  approverUserId        String?
+  evidenceFingerprint   String
+  evidenceRevision      Int                 @default(1)
+  policyRevision        Int
+  scopeRevision         Int
+  status                AgentApprovalStatus @default(pending)
+  isSingleUseConsumed   Boolean             @default(false)
+  consumedAt            DateTime?
+  consumedByOperationId String?
+  expiresAt             DateTime
+  rejectedReason        String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  operation             AgentOperation      @relation(fields: [workspaceId, operationId], references: [workspaceId, id], onDelete: Cascade)
+  approverUser          User?               @relation("ApprovalApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  @@unique([operationId, proposalHash])
+  @@index([workspaceId, status, expiresAt])
+  @@index([workspaceId, operationId])
+}
+
+model AgentEvidenceSnapshot {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  datasetFingerprint String
+  grain              String            @default("campaign")
+  metrics            Json
+  inventory          Json
+  actualSince        DateTime
+  actualUntil        DateTime
+  currencies         String[]          @default([])
+  timezones          String[]          @default([])
+  calculationVersion Int               @default(1)
+  provenance         Json
+  citations          Json?
+  isExpired          Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  evaluations        AgentEvaluation[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, datasetFingerprint])
+  @@index([workspaceId, createdAt])
+}
+
+model AgentConsoleEvent {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  responsibilityId String?
+  caseId           String?
+  operationId      String?
+  actorType        String               @default("system")
+  actorUserId      String?
+  type             String
+  payload          Json
+  sequence         Int
+  createdAt        DateTime             @default(now())
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  responsibility   AgentResponsibility? @relation(fields: [workspaceId, responsibilityId], references: [workspaceId, id], onDelete: Cascade)
+  case             AgentCase?           @relation(fields: [workspaceId, caseId], references: [workspaceId, id], onDelete: Cascade)
+  operation        AgentOperation?      @relation(fields: [workspaceId, operationId], references: [workspaceId, id], onDelete: Cascade)
+  actorUser        User?                @relation("ConsoleEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, sequence])
+  @@index([workspaceId, responsibilityId, sequence])
+  @@index([workspaceId, caseId, sequence])
+  @@index([workspaceId, createdAt])
+}
+
+model AgentNotificationOutbox {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  caseId          String
+  channel         String            @default("in_app")
+  recipientUserId String
+  deliveryKey     String
+  status          AgentOutboxStatus @default(pending)
+  attempts        Int               @default(0)
+  lastAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  receipt         Json?
+  payload         Json
+  createdAt       DateTime          @default(now())
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  case            AgentCase         @relation(fields: [workspaceId, caseId], references: [workspaceId, id], onDelete: Cascade)
+  recipient       User              @relation("OutboxRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, deliveryKey])
+  @@index([workspaceId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model AgentEventSequence {
+  workspaceId  String    @id
+  lastSequence Int       @default(0)
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
 
 model TikTokGmvMaxMetric {
   id                 String     @id @default(cuid())

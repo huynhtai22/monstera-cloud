@@ -149,6 +149,41 @@ describe("connection upsert reconnect recovery and MCC deduplication", () => {
     assert.equal(rows.size, 1);
   });
 
+  it("keeps two distinct MCC identities separate and updates each in place on repeat connect", async () => {
+    process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "01".repeat(32);
+
+    const first = await upsertSourceConnection({
+      workspaceId: "ws-a",
+      provider: "google_ads",
+      remoteAccountId: "158-170-9190",
+      name: "Google Ads — MCC 158-170-9190",
+      type: "source",
+      credentials: { mccId: "1581709190", customerIds: ["1581709190"] },
+    });
+    const second = await upsertSourceConnection({
+      workspaceId: "ws-a",
+      provider: "google_ads",
+      remoteAccountId: "777-888-9999",
+      name: "Google Ads — MCC 777-888-9999",
+      type: "source",
+      credentials: { mccId: "7778889999", customerIds: ["7778889999"] },
+    });
+    const repeatedFirst = await upsertSourceConnection({
+      workspaceId: "ws-a",
+      provider: "google_ads",
+      remoteAccountId: "1581709190",
+      name: "Google Ads — MCC 158-170-9190",
+      type: "source",
+      credentials: { mccId: "158-170-9190", customerIds: ["1581709190"] },
+    });
+
+    assert.equal(first.remoteAccountId, "1581709190");
+    assert.equal(second.remoteAccountId, "7778889999");
+    assert.equal(repeatedFirst.id, first.id);
+    assert.equal(repeatedFirst.created, false);
+    assert.equal(rows.size, 2);
+  });
+
   it("canonicalizes remoteAccountId correctly across providers", () => {
     assert.equal(canonicalizeRemoteAccountId("google_ads", "158-170-9190"), "1581709190");
     assert.equal(canonicalizeRemoteAccountId("google_ads", "", { customerIds: ["999-888-7777"] }), "9998887777");

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import prisma from "@/lib/prisma";
-import { syncConnectionData } from "./sync-connection";
+import { syncConnectionData, calculateInclusiveDataWindowDays, persistPreSyncConnectionFailure } from "./sync-connection";
 
 const TEST_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+type ConnectionUpdate = { data: Record<string, unknown>; where?: Record<string, unknown> };
 
 async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
   const originalTimeout = globalThis.setTimeout;
@@ -20,22 +21,30 @@ async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
 
 async function withSyncHarness<T>(
   fetchImpl: typeof fetch,
-  run: (updates: Array<{ data: Record<string, unknown> }>) => Promise<T>,
+  run: (updates: ConnectionUpdate[]) => Promise<T>,
+  options: { leaseBusy?: boolean; storedCredentials?: string; storedProvider?: string; storedWorkspaceId?: string } = {},
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
   const originalConnection = (prisma as any).connection;
   const originalTransaction = (prisma as any).$transaction;
   const originalSyncLock = (prisma as any).syncLock;
   const originalKey = process.env.ENCRYPTION_KEY;
-  const updates: Array<{ data: Record<string, unknown> }> = [];
+  const updates: ConnectionUpdate[] = [];
   process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
   globalThis.fetch = fetchImpl;
   (prisma as any).connection = {
+    findUnique: async () => null,
+    findFirst: async ({ where }: any) => where.workspaceId === (options.storedWorkspaceId ?? "workspace-1")
+      ? {
+          credentials: options.storedCredentials ?? "stored-credentials",
+          provider: options.storedProvider ?? "google_ads",
+        }
+      : null,
     update: async (args: { data: Record<string, unknown> }) => {
       updates.push(args);
       return args;
     },
-    updateMany: async (args: { data: Record<string, unknown> }) => {
+    updateMany: async (args: ConnectionUpdate) => {
       updates.push(args);
       return { count: args.data && Object.keys(args.data).length >= 0 ? 1 : 0 };
     },
@@ -50,7 +59,7 @@ async function withSyncHarness<T>(
   };
   (prisma as any).$transaction = async (fn: any) =>
     fn({
-      $queryRawUnsafe: async () => [{ locked: true }],
+      $queryRawUnsafe: async () => [{ locked: !options.leaseBusy }],
       syncLock: {
         findUnique: async () => null,
         upsert: async (args: any) => ({ ...args.update, ...validLease }),
@@ -83,6 +92,129 @@ async function withSyncHarness<T>(
 const freshCredentials = { accessToken: "test-access-token", expiresAt: "2099-01-01T00:00:00.000Z" };
 
 describe("provider HTTP failures preserve sync correctness", () => {
+  it("persists pre-sync failures through the connection lease", async () => {
+    await withSyncHarness((async () => new Response("[]", { status: 200 })) as typeof fetch, async (updates) => {
+      await persistPreSyncConnectionFailure({
+        connectionId: "connection-with-invalid-credentials",
+        workspaceId: "workspace-1",
+        provider: "google_ads",
+        credentials: "stored-credentials",
+        error: "Credential decryption failed",
+      });
+
+      assert.equal(updates.length, 1);
+      assert.deepEqual(updates[0].data, { lastError: "[failed] Credential decryption failed" });
+      assert.deepEqual(updates[0].where, {
+        id: "connection-with-invalid-credentials",
+        status: { not: "disconnected" },
+        credentials: "stored-credentials",
+        workspaceId: "workspace-1",
+      });
+    });
+  });
+
+  it("does not persist a pre-sync failure while another worker owns the lease", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-owned-by-active-worker",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "stored-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { leaseBusy: true },
+    );
+  });
+
+  it("does not persist a stale credential failure after the source credentials are repaired", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-with-repaired-credentials",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "old-invalid-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { storedCredentials: "new-repaired-credentials" },
+    );
+  });
+
+  it("does not persist a failure for a connection from another workspace", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-from-another-workspace",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "stored-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { storedWorkspaceId: "workspace-2" },
+    );
+  });
+
+  it("resolves manager roots before filtering selected leaves and never queries unselected siblings", async () => {
+    const queried: string[] = [];
+    await withSyncHarness((async (input, init) => {
+      const root = String(input).match(/customers\/([^/]+)\//)?.[1];
+      const query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
+      if (query.includes("customer_client")) return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
+      queried.push(root!); return Response.json([]);
+    }) as typeof fetch, async () => {
+      const result = await syncConnectionData({ connectionId: "google-selected", provider: "google_ads", credentials: { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"], extraFields: { selectedCustomerIds: ["202"] } }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(result.success, true); assert.deepEqual(queried, ["101"]); assert.deepEqual(result.children.map(child => child.id), ["101"]);
+    });
+  });
+  it("retries transient manager discovery using only the originally selected leaf", async () => {
+    let hierarchyRecovered = false;
+    const queried: string[] = [];
+    await withFastRetries(() => withSyncHarness((async (input, init) => {
+      const query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
+      if (query.includes("customer_client")) {
+        if (!hierarchyRecovered) return Response.json({ error: { code: 429, message: "RESOURCE_EXHAUSTED quota" } }, { status: 429 });
+        return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
+      }
+      const customerId = String(input).match(/customers\/([^/]+)\//)?.[1];
+      assert.ok(customerId);
+      queried.push(customerId);
+      return Response.json([]);
+    }) as typeof fetch, async () => {
+      const credentials = { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] };
+      const first = await syncConnectionData({ connectionId: "google-transient-hierarchy", provider: "google_ads", credentials, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(first.success, false);
+      assert.deepEqual(first.children.map(child => ({ id: child.id, retryable: child.retryable })), [{ id: "101", retryable: true }]);
+      assert.deepEqual(queried, []);
+      hierarchyRecovered = true;
+      const retryIds = first.children.filter(child => !child.ok && child.retryable).map(child => child.id);
+      const recovered = await syncConnectionData({ connectionId: "google-transient-hierarchy", provider: "google_ads", credentials: { ...credentials, selectedCustomerIds: retryIds }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(recovered.success, true);
+      assert.deepEqual(queried, ["101"]);
+      assert.deepEqual(recovered.children.map(child => child.id), ["101"]);
+    }));
+  });
+  it("does not query a selected leaf that disappeared from its manager", async () => {
+    await withSyncHarness((async (_input, init) => {
+      assert.ok(JSON.parse(String(init?.body)).query.includes("customer_client"), "must not query metrics for missing leaf");
+      return Response.json([{ results: [{ customerClient: { id: "202", manager: false, status: "ENABLED" } }] }]);
+    }) as typeof fetch, async () => {
+      const result = await syncConnectionData({ connectionId: "google-revoked", provider: "google_ads", credentials: { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(result.success, false); assert.equal(result.children[0].id, "101");
+    });
+  });
   it("keeps mixed Google customer outcomes partial and does not advance lastSyncAt after a 429", async () => {
     let calls = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {
@@ -120,39 +252,154 @@ describe("provider HTTP failures preserve sync correctness", () => {
     let failedDownloadAttempts = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {
       const url = String(input);
+      if (url.includes("/advertiser/info/")) return Response.json({code:0,data:{list:[]}});
       if (url.includes("/report/task/create/")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as { advertiser_id: string };
         return new Response(JSON.stringify({ code: 0, data: { task_id: `${body.advertiser_id}-task` } }), { status: 200 });
       }
       if (url.includes("/report/task/check/")) {
-        const advertiserId = new URL(url).searchParams.get("advertiser_id");
-        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS", url: `https://download.test/${advertiserId}` } }), { status: 200 });
+        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS" } }), { status: 200 });
       }
-      if (url.endsWith("/advertiser-a")) return new Response("", { status: 200 });
+      if (url.includes("/report/task/download/")) {
+        const advertiserId = new URL(url).searchParams.get("advertiser_id");
+        return new Response(JSON.stringify({ code: 0, data: { download_url: `https://download.test/${advertiserId}` } }), { status: 200 });
+      }
+      if (url.endsWith("/712345678901234")) return new Response("", { status: 200 });
       failedDownloadAttempts++;
       return new Response(JSON.stringify({ code: 429, message: "rate limit" }), { status: 429 });
     }) as typeof fetch, async (updates) => {
       const result = await syncConnectionData({
         connectionId: "tiktok-connection",
         provider: "tiktok_business",
-        credentials: { ...freshCredentials, advertiserIds: ["advertiser-a", "advertiser-b"] },
+        credentials: { ...freshCredentials, advertiserIds: ["712345678901234", "712345678901235"] },
         workspaceId: "workspace-1",
         userPlan: "pilot",
       });
       assert.equal(result.outcome, "partial");
       assert.equal(result.success, false);
-      assert.deepEqual(result.children.map((child) => [child.id, child.ok]), [["advertiser-a", true], ["advertiser-b", false]]);
-      assert.equal(result.children.find((child) => child.id === "advertiser-b")?.retryable, true);
+      assert.deepEqual(result.children.map((child) => [child.id, child.ok]), [["712345678901234", true], ["712345678901235", false]]);
+      assert.equal(result.children.find((child) => child.id === "712345678901235")?.retryable, true);
+      assert.equal(result.children.find((child) => child.id === "712345678901235")?.retryState?.reportTaskId, "712345678901235-task");
       assert.equal(failedDownloadAttempts, 3);
       assert.equal("lastSyncAt" in updates[0].data, false);
       assert.match(String(updates[0].data.lastError), /^\[partial\]/);
     }));
   });
 
+  it("resumes a still-processing TikTok report task without creating a duplicate", async () => {
+    let phase: "pending" | "ready" = "pending";
+    let createCalls = 0;
+    let checkCalls = 0;
+    const reportTaskId = "7679241688576950293";
+    const advertiserId = "7677495922629787656";
+
+    await withFastRetries(() => withSyncHarness((async (input) => {
+      const url = String(input);
+      if (url.includes("/report/task/create/")) {
+        createCalls++;
+        return new Response(JSON.stringify({ code: 0, data: { task_id: reportTaskId } }));
+      }
+      if (url.includes("/report/task/check/")) {
+        checkCalls++;
+        const data = phase === "pending"
+          ? { status: "PROCESSING" }
+          : { status: "SUCCESS" };
+        return new Response(JSON.stringify({ code: 0, data }));
+      }
+      if (url.includes("/report/task/download/")) {
+        return new Response(JSON.stringify({ code: 0, data: { download_url: "https://download.test/resumed" } }));
+      }
+      if (url === "https://download.test/resumed") return new Response("");
+      return new Response(JSON.stringify({ code: 40000, message: "unexpected request" }), { status: 400 });
+    }) as typeof fetch, async () => {
+      const first = await syncConnectionData({
+        connectionId: "tiktok-resume-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials, advertiserIds: [advertiserId] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(first.outcome, "failed");
+      assert.equal(first.children[0].retryable, true);
+      assert.deepEqual(first.children[0].retryState, {
+        provider: "tiktok_business",
+        advertiserId,
+        reportTaskId,
+      });
+      assert.equal(createCalls, 1);
+      assert.equal(checkCalls, 11);
+
+      phase = "ready";
+      const resumed = await syncConnectionData({
+        connectionId: "tiktok-resume-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials, advertiserIds: [advertiserId] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+        providerState: first.children[0].retryState,
+      });
+      assert.equal(resumed.outcome, "success");
+      assert.equal(createCalls, 1, "resuming must not create another TikTok task");
+      assert.equal(checkCalls, 12);
+    }));
+  });
+
+  it("uses a numeric legacy connection identity when credentials do not yet contain advertiser IDs", async () => {
+    let reportRequests = 0;
+    await withSyncHarness((async (input, init) => {
+      const url = String(input);
+      if (url.includes("/report/task/create/")) {
+        reportRequests++;
+        const body = JSON.parse(String(init?.body ?? "{}")) as { advertiser_id: string };
+        assert.equal(body.advertiser_id, "712345678901234");
+        return new Response(JSON.stringify({ code: 0, data: { task_id: "legacy-task" } }));
+      }
+      if (url.includes("/report/task/check/")) {
+        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS" } }));
+      }
+      if (url.includes("/report/task/download/")) {
+        return new Response(JSON.stringify({ code: 0, data: { download_url: "https://download.test/legacy" } }));
+      }
+      return new Response("");
+    }) as typeof fetch, async () => {
+      (prisma as any).connection.findUnique = async () => ({ remoteAccountId: "712345678901234" });
+      const result = await syncConnectionData({
+        connectionId: "tiktok-numeric-legacy-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(reportRequests, 1);
+      assert.doesNotMatch(String(result.error), /reconnect required/i);
+    });
+  });
+
+  it("fails closed without calling TikTok when legacy credentials contain no numeric advertiser ID", async () => {
+    let reportRequests = 0;
+    await withSyncHarness((async (input) => {
+      if (String(input).includes("/report/task/")) reportRequests++;
+      return new Response("unexpected");
+    }) as typeof fetch, async (updates) => {
+      const result = await syncConnectionData({
+        connectionId: "tiktok-legacy-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials, advertiserIds: ["#un1v"] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(result.outcome, "failed");
+      assert.match(String(result.error), /reconnect required/i);
+      assert.equal(reportRequests, 0);
+      assert.match(String(updates[0].data.lastError), /reconnect required/i);
+    });
+  });
+
   it("Meta Error 190 revokes the connection via the established handler instead of retrying per account", async () => {
     await withFastRetries(() => withSyncHarness((async (input) => {
       const url = String(input);
       if (url.includes("/insights")) {
+        assert.match(url, /(?:\?|&)level=ad(?:&|$)/, "every active Meta sync requests the canonical ad grain");
         return new Response(JSON.stringify({ error: { message: "Error validating access token: session has been revoked", code: 190, type: "OAuthException" } }), { status: 400 });
       }
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -173,5 +420,123 @@ describe("provider HTTP failures preserve sync correctness", () => {
       const disconnect = updates.find((u) => u.data && (u.data as any).status === "disconnected");
       assert.ok(disconnect, "handleMetaRevocation must disconnect the connection");
     }));
+  });
+});
+
+describe("google runtime configuration fail-closed", () => {
+  for (const mode of ["shado", "SHADOW", ""]) {
+    it(`rejects invalid mode ${JSON.stringify(mode)} before any provider contact or writes`, async () => {
+      const previousMode = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+      const previousArtifact = (prisma as any).connectorRunArtifact;
+      const previousAudit = (prisma as any).auditEvent;
+      process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = mode;
+      let calls = 0;
+      let writes = 0;
+      (prisma as any).connectorRunArtifact = {
+        findMany: async () => { writes++; return []; },
+        create: async () => { writes++; return { id: "x" }; },
+        deleteMany: async () => { writes++; return { count: 0 }; },
+      };
+      (prisma as any).auditEvent = {
+        create: async () => { writes++; return {}; },
+        findFirst: async () => { writes++; return null; },
+      };
+      try {
+        await withFastRetries(() => withSyncHarness((async () => {
+          calls++;
+          throw new Error("provider must not be contacted");
+        }) as typeof fetch, async () => {
+          process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "test-token";
+          const result = await syncConnectionData({
+            connectionId: "google-connection",
+            provider: "google_ads",
+            credentials: { ...freshCredentials, customerIds: ["111"] },
+            workspaceId: "workspace-1",
+            userPlan: "pilot",
+          });
+          assert.equal(result.success, false);
+          assert.match(String(result.error ?? ""), /INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE/);
+          assert.equal(calls, 0);
+          assert.equal(writes, 0);
+        }));
+      } finally {
+        if (previousMode === undefined) delete process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+        else process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = previousMode;
+        (prisma as any).connectorRunArtifact = previousArtifact;
+        (prisma as any).auditEvent = previousAudit;
+      }
+    });
+  }
+});
+
+describe("google runtime authority fail-closed", () => {
+  it("rejects runtime mode before any provider contact or writes", async () => {
+    const previousMode = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+    process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = "runtime";
+    let calls = 0;
+    try {
+      await withFastRetries(() => withSyncHarness((async () => {
+        calls++;
+        throw new Error("provider must not be contacted");
+      }) as typeof fetch, async () => {
+        process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "test-token";
+        const result = await syncConnectionData({
+          connectionId: "google-connection",
+          provider: "google_ads",
+          credentials: { ...freshCredentials, customerIds: ["111"] },
+          workspaceId: "workspace-1",
+          userPlan: "pilot",
+        });
+        assert.equal(result.success, false);
+        assert.match(String(result.error ?? ""), /GOOGLE_RUNTIME_MODE_NOT_PROMOTED/);
+        assert.equal(calls, 0);
+      }));
+    } finally {
+      if (previousMode === undefined) delete process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+      else process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = previousMode;
+    }
+  });
+});
+
+describe("calculateInclusiveDataWindowDays", () => {
+  it("computes exact calendar day coverage for inclusive windows", () => {
+    // Same day is 1 day
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", "2026-09-01"), 1);
+
+    // 7-day range
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", "2026-09-07"), 7);
+
+    // Month boundary (non-leap year February)
+    assert.equal(calculateInclusiveDataWindowDays("2026-02-28", "2026-03-01"), 2);
+
+    // Leap year boundary (February 2024 has 29 days)
+    assert.equal(calculateInclusiveDataWindowDays("2024-02-28", "2024-03-01"), 3);
+
+    // Year boundary
+    assert.equal(calculateInclusiveDataWindowDays("2025-12-31", "2026-01-01"), 2);
+
+    // Multi-month window
+    assert.equal(calculateInclusiveDataWindowDays("2026-01-01", "2026-01-31"), 31);
+    assert.equal(calculateInclusiveDataWindowDays("2026-01-01", "2026-02-01"), 32);
+
+    // ISO timestamp strings with times
+    assert.equal(
+      calculateInclusiveDataWindowDays("2026-09-01T00:00:00.000Z", "2026-09-07T23:59:59.999Z"),
+      7
+    );
+
+    // Inverted range returns undefined
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-07", "2026-09-01"), undefined);
+
+    // Invalid dates return undefined without throwing
+    assert.equal(calculateInclusiveDataWindowDays("not-a-date", "2026-09-07"), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", "not-a-date"), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("2026-02-30", "2026-03-01"), undefined);
+
+    // Missing or nullish inputs return undefined
+    assert.equal(calculateInclusiveDataWindowDays(undefined, "2026-09-01"), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", undefined), undefined);
+    assert.equal(calculateInclusiveDataWindowDays(null, null), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("", ""), undefined);
   });
 });
