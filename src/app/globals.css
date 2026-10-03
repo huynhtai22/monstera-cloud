@@ -26,7 +26,12 @@
 
 /* Match native controls and every nested console scroller to the selected theme. */
 html[data-console-theme="dark"] { color-scheme: dark; --console-scroll-thumb: #505851; }
-html[data-console-theme="light"] { color-scheme: light; --console-scroll-thumb: #a2afa4; }
+html[data-console-theme="light"] {
+    color-scheme: light;
+    --console-scroll-thumb: #a2afa4;
+    --background: #f8faf8;
+    --foreground: #18231c;
+}
 html[data-console-theme], html[data-console-theme] * {
     scrollbar-width: thin;
     scrollbar-color: var(--console-scroll-thumb) transparent;
