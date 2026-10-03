@@ -16,9 +16,9 @@ try {
     await db.workspace.create({ data: { id: workspaceId, name: "Synthetic performance fixture", slug: workspaceId, ownerId: owner } });
     await db.connection.create({ data: { id: connections[index], workspaceId, remoteAccountId: connections[index], provider: "meta_ads", name: "Synthetic source", type: "source", credentials: "{}" } });
     await db.$executeRaw`
-      INSERT INTO "CampaignMetric" (id, "workspaceId", "connectionId", platform, "accountId", "entityId", date, currency, spend)
+      INSERT INTO "CampaignMetric" (id, "workspaceId", "connectionId", platform, "accountId", "entityId", "campaignId", date, currency, spend)
       SELECT ${workspaceId} || '-' || n, ${workspaceId}, ${connections[index]}, 'meta_ads',
-             'account-' || (n % 20), 'entity-' || n,
+             'account-' || (n % 20), 'entity-' || n, 'campaign-' || n,
              TIMESTAMP '2026-09-01' + (n % 30) * INTERVAL '1 day', 'USD', n % 100
       FROM generate_series(1, 50000) AS n`;
   }
@@ -42,7 +42,7 @@ try {
     const start = performance.now();
     const grouped = await queryWarehouse({ workspaceId: workspaces[0], level, limit: 1000, includeTotalCount: true });
     groupedTimings[level] = Math.round(performance.now() - start);
-    assert.ok(grouped.rows.length <= 1000);
+    assert.ok(grouped.rows.length > 0 && grouped.rows.length <= 1000);
     assert.ok(grouped.rows.every(row => row.workspaceId === workspaces[0]));
   }
   const concurrentStart = performance.now();
