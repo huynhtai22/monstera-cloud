@@ -49,7 +49,7 @@ async function handle(req: Request, write: boolean) {
         tx.providerAccountHealth.findMany({ where: { workspaceId, connection }, select: { connectionId: true, accountId: true }, take: 500, orderBy: { id: "asc" } }),
       ]);
       const accounts = [...new Map([...metrics, ...health, ...contexts].map(a => [JSON.stringify([a.connectionId, a.accountId]), a])).values()].map(a => ({ connectionId: a.connectionId, accountId: a.accountId, context: contexts.find(c => c.connectionId === a.connectionId && c.accountId === a.accountId) ?? null }));
-      return { ...client, canEdit, accounts };
+      return { ...client, canEdit, role: access.membership.role, accounts };
     });
     return Response.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return toRbacResponse(error) ?? Response.json({ error: "Reporting configuration unavailable" }, { status: 500 }); }

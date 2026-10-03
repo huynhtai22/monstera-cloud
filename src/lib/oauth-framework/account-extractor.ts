@@ -74,7 +74,10 @@ function legacyExtractAccounts(
             }));
         }
         case "tiktok_business": {
-            const ids = (creds.advertiserIds as string[]) ?? [];
+            const ids =
+                ((creds.advertiserIds as string[]) ??
+                ((creds.extraFields as Record<string, unknown>)?.advertiserIds as string[]) ??
+                []);
             return ids.map((id) => ({
                 id,
                 name: `Advertiser ${id}`,

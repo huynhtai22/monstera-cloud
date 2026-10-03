@@ -35,16 +35,16 @@ export default function ExportsPage() {
     const hasApiKey = Boolean(firstKey);
 
     return (
-        <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
+        <div data-console-page="true" data-console-section="exports" className="console-page relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
 
             {/* Header */}
-            <div className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
+            <div data-console-section-header="true" data-console-page-header="true" className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
                 <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-white shadow-xs">
                         <Send className="h-5 w-5" aria-hidden />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold tracking-tight text-ink">Exports & Connectors</h1>
+                        <h1 className="text-xl font-bold tracking-tight text-ink">Exports & API</h1>
                         <p className="text-xs text-ink-mute mt-1">
                             Pull data from your Monstera Cloud warehouse directly into your reporting tools.
                         </p>
@@ -52,31 +52,12 @@ export default function ExportsPage() {
                 </div>
             </div>
 
-            {/* Delivery Methods Banner */}
-            <div className="mb-8 rounded-lg border border-line bg-panel p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="rounded-md border border-line bg-canvas p-4 shadow-xs">
-                        <div className="flex items-center gap-2 font-bold text-white mb-1">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">✓</span>
-                            On-Demand Data Pull (Available in Pilot)
-                        </div>
-                        <p className="text-xs text-ink-mute">
-                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong>. Studio and Agency include both destinations — there is no second-destination charge.
-                        </p>
-                    </div>
-                    <div className="rounded-md border border-line bg-canvas p-4 shadow-xs">
-                        <div className="flex items-center gap-2 font-bold text-ink mb-1">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-line bg-panel text-ink-mute text-[10px]">⏱</span>
-                            Scheduled Spreadsheet Delivery (Coming Soon)
-                        </div>
-                        <p className="text-xs text-ink-mute">
-                            Automated background push to Google Sheets is not active during the pilot program. Use the Google Sheets Add-on or Looker Studio connector for live data pulls.
-                        </p>
-                    </div>
-                </div>
+            <div data-console-delivery-summary="true" className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-line px-4 py-3 text-xs text-ink-mute">
+                <p><span className="font-medium text-ink">Available:</span> Pull warehouse data into Sheets or Looker Studio.</p>
+                <p><span className="font-medium text-ink">Planned:</span> Scheduled spreadsheet delivery.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div data-console-destinations="true" className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Google Sheets Card */}
                 <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-white/30">

@@ -13,12 +13,15 @@ import {
   HelpCircle,
   Loader2,
   RefreshCw,
+  Send,
   ShieldAlert,
   Sparkles,
   SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ClientSetupChecklistContainer } from "@/components/reports/ClientSetupChecklist";
+import { clientSetupHref } from "@/lib/client-setup-checklist";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -68,6 +71,7 @@ type BlueprintReport = {
     verification: { status: "VERIFIED" | "NOT_VERIFIED"; reasons: string[] };
     readiness: {
       status: "READY" | "NOT_READY" | "WARNING" | "UNKNOWN";
+      dataStatus?: "READY" | "NOT_READY" | "WARNING" | "UNKNOWN";
       blockers: string[];
       warnings: string[];
       destinationState: "verified" | "unavailable" | "unverified" | "stale";
@@ -122,11 +126,52 @@ type SnapshotState = {
   verification: { status: "VERIFIED" | "NOT_VERIFIED"; reasons: string[] };
 } | null;
 
+export type ReportLifecycleState =
+  | "Not ready to review"
+  | "Ready to review"
+  | "Approved — ready to send"
+  | "Dataset retrieval verified"
+  | "Approval outdated"
+  | string;
+
+export type ReportLifecycle = {
+  dataStatus: "READY" | "WARNING" | "NOT_READY" | "UNKNOWN";
+  approvalStatus: "NOT_APPROVED" | "APPROVED" | "OUTDATED";
+  deliveryStatus: "NOT_DELIVERED" | "DELIVERED" | "FAILED" | "OUTDATED";
+  summaryLabel: string;
+};
+
+export type ReportApprovalState = {
+  id: string;
+  snapshotId: string;
+  generationKey: string;
+  sequence: number;
+  datasetFingerprint: string;
+  dependencyHash: string;
+  approvedByUserId: string;
+  approvedByUserName?: string | null;
+  approvedByUserEmail?: string | null;
+  approvedAt: string;
+};
+
 type BlueprintPayload = {
   client: ClientRequirement;
   snapshot: SnapshotState;
   report: BlueprintReport | null;
   defaultWindow: { start: string; end: string } | null;
+  approval?: ReportApprovalState | null;
+  lifecycle?: ReportLifecycle | null;
+  lifecycleState?: string;
+  canEmailApprovedReports?: boolean;
+  emailDelivery?: {
+    id: string;
+    status: "PROVIDER_STARTED" | "ACCEPTED" | "DEFINITIVE_FAILED" | "AMBIGUOUS";
+    recipient: string;
+    providerMessageId: string | null;
+    failureCode: string | null;
+    attemptedAt: string;
+    finishedAt: string | null;
+  } | null;
   error?: string;
 };
 
@@ -152,6 +197,50 @@ function deltaLabel(delta: PercentDelta | undefined): string {
   if (!delta || delta.deltaPercent === null || !Number.isFinite(delta.deltaPercent)) return "—";
   const rounded = Math.round(delta.deltaPercent * 10) / 10;
   return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+function LifecycleBadge({ state }: { state: ReportLifecycleState }) {
+  const configs: Record<ReportLifecycleState, { tone: string; icon: React.ElementType }> = {
+    "Not ready to review": {
+      tone: "border-red-500/40 bg-red-950/30 text-red-300",
+      icon: AlertCircle,
+    },
+    "Ready to review": {
+      tone: "border-blue-500/40 bg-blue-950/30 text-blue-300",
+      icon: Clock,
+    },
+    "Approved — ready to send": {
+      tone: "border-emerald-500/40 bg-emerald-950/30 text-emerald-300",
+      icon: CheckCircle2,
+    },
+    "Dataset retrieval verified": {
+      tone: "border-purple-500/40 bg-purple-950/30 text-purple-300",
+      icon: BadgeCheck,
+    },
+    "Dataset retrieval verified (unapproved)": {
+      tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
+      icon: ShieldAlert,
+    },
+    "Dataset evidence outdated": {
+      tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
+      icon: ShieldAlert,
+    },
+    "Approval outdated": {
+      tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
+      icon: ShieldAlert,
+    },
+  };
+  const config = configs[state] ?? {
+    tone: "border-line bg-canvas text-ink-mute",
+    icon: HelpCircle,
+  };
+  const Icon = config.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide", config.tone)}>
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {state}
+    </span>
+  );
 }
 
 function VerificationBadge({ status }: { status: string }) {
@@ -203,6 +292,15 @@ export function WeeklyPerformanceBlueprint({
   const [windowStart, setWindowStart] = React.useState("");
   const [windowEnd, setWindowEnd] = React.useState("");
   const [generating, setGenerating] = React.useState(false);
+  const [approving, setApproving] = React.useState(false);
+  const [sendingEmail, setSendingEmail] = React.useState(false);
+  const [emailRecipient, setEmailRecipient] = React.useState("");
+  const emailIdempotencyKey = React.useRef<string | null>(null);
+  const [generateError, setGenerateError] = React.useState<{ message: string; code?: string } | null>(null);
+
+  React.useEffect(() => {
+    setGenerateError(null);
+  }, [selectedClientId, workspaceId]);
 
   const query = new URLSearchParams({ workspaceId, clientId: selectedClientId });
   if (windowStart && windowEnd) {
@@ -215,6 +313,10 @@ export function WeeklyPerformanceBlueprint({
     enabled ? `/api/reports/blueprint?${query.toString()}` : null,
     fetcher,
   );
+
+  React.useEffect(() => {
+    emailIdempotencyKey.current = null;
+  }, [workspaceId, selectedClientId, data?.snapshot?.id]);
 
   const clientRequirement = data?.client ?? null;
   const requirementsConfigured = Boolean(
@@ -231,6 +333,7 @@ export function WeeklyPerformanceBlueprint({
   const generate = async () => {
     if (!workspaceId || !selectedClientId) return;
     setGenerating(true);
+    setGenerateError(null);
     try {
       const res = await fetch("/api/reports/blueprint", {
         method: "POST",
@@ -242,7 +345,10 @@ export function WeeklyPerformanceBlueprint({
         }),
       });
       const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "Failed to generate report");
+      if (!res.ok) {
+        setGenerateError({ message: payload.error || "Failed to generate report", code: payload.code });
+        throw new Error(payload.error || "Failed to generate report");
+      }
       await revalidate();
     } catch (generateError) {
       toast.error(generateError instanceof Error ? generateError.message : "Failed to generate report");
@@ -251,10 +357,78 @@ export function WeeklyPerformanceBlueprint({
     }
   };
 
+  const approve = async () => {
+    if (!data?.snapshot?.id) return;
+    setApproving(true);
+    try {
+      const res = await fetch("/api/reports/approval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          snapshotId: data.snapshot.id,
+          workspaceId,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "Failed to approve report");
+      toast.success(payload.created ? "Report approved successfully" : "Report is already approved");
+      await revalidate();
+    } catch (approveError) {
+      toast.error(approveError instanceof Error ? approveError.message : "Failed to approve report");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const sendApprovedEmail = async () => {
+    if (!data?.snapshot?.id || !emailRecipient.trim()) return;
+    setSendingEmail(true);
+    if (
+      data.emailDelivery?.status === "PROVIDER_STARTED" &&
+      Date.now() - new Date(data.emailDelivery.attemptedAt).getTime() >= 10 * 60 * 1000
+    ) {
+      // A fresh click after the recovery window is an explicit operator retry.
+      emailIdempotencyKey.current = null;
+    }
+    emailIdempotencyKey.current ??= crypto.randomUUID();
+    try {
+      const res = await fetch("/api/reports/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          snapshotId: data.snapshot.id,
+          recipient: emailRecipient.trim(),
+          idempotencyKey: emailIdempotencyKey.current,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (payload.attempt?.status === "ACCEPTED") {
+        toast.success("Email provider accepted the report. Inbox delivery is not confirmed.");
+      } else if (payload.attempt?.status === "DEFINITIVE_FAILED") {
+        toast.error("The email provider rejected the report send.");
+      } else if (payload.attempt?.status === "AMBIGUOUS" || res.status === 202) {
+        toast.error(payload.attempt?.status === "PROVIDER_STARTED"
+          ? "The send is still in progress. Wait for its outcome before trying again."
+          : "The email outcome is unknown. Check the delivery record before sending again.");
+      } else if (!res.ok) {
+        throw new Error(payload.error || "Could not email this report");
+      }
+      if (payload.attempt?.status !== "PROVIDER_STARTED" && payload.attempt?.status !== "AMBIGUOUS") {
+        emailIdempotencyKey.current = null;
+      }
+      await revalidate();
+    } catch (sendError) {
+      toast.error(sendError instanceof Error ? sendError.message : "Could not email this report");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   if (!enabled) {
     return (
       <section className={cn(CARD, "relative z-10")} aria-label="Verified Weekly Performance Blueprint">
-        <BlueprintHeader status={null} />
+        <BlueprintHeader status={null} lifecycleState={null} />
         {clients.length === 0 ? (
           <EmptyState
             icon={<Sparkles className="h-12 w-12" />}
@@ -283,16 +457,47 @@ export function WeeklyPerformanceBlueprint({
   const report = data?.report ?? null;
   const snapshot = data?.snapshot ?? null;
   const isStale = snapshot?.freshness.freshness === "STALE";
+  const canSendEmail = Boolean(
+    snapshot?.freshness.freshness === "CURRENT"
+    && data?.lifecycle?.dataStatus === "READY"
+    && data.lifecycle.approvalStatus === "APPROVED"
+    && data?.canEmailApprovedReports === true,
+  );
+  const latestEmailAttempt = data?.emailDelivery ?? null;
+  const emailSendInProgress = Boolean(
+    latestEmailAttempt?.status === "PROVIDER_STARTED"
+    && Date.now() - new Date(latestEmailAttempt.attemptedAt).getTime() < 10 * 60 * 1000,
+  );
+  const emailOutcomeAmbiguous = latestEmailAttempt?.status === "AMBIGUOUS";
   const displayedWindow = report?.overview.reportingWindow
     ?? data?.defaultWindow
     ?? null;
   const effectiveStatus = snapshot?.verification.status
     ?? report?.overview.readiness.status
     ?? null;
+  const workflowSteps = [
+    { id: "report-setup", label: "Setup", complete: requirementsConfigured, current: !requirementsConfigured, detail: requirementsConfigured ? "Configured" : "Requirements" },
+    { id: "report-generate", label: "Generate", complete: Boolean(snapshot), current: requirementsConfigured && !snapshot, detail: snapshot ? `Snapshot v${snapshot.sequence}` : "Create snapshot" },
+    { id: "report-review", label: "Review", complete: Boolean(snapshot && snapshot.freshness.freshness === "CURRENT" && snapshot.verification.status === "VERIFIED"), current: Boolean(snapshot && snapshot.freshness.freshness === "CURRENT" && snapshot.verification.status !== "VERIFIED"), detail: snapshot?.verification.status === "VERIFIED" ? "All checks passed" : snapshot ? "Check evidence" : "Await snapshot" },
+    { id: "report-approve", label: "Approve", complete: data?.lifecycle?.approvalStatus === "APPROVED", current: Boolean(snapshot && data?.lifecycle?.approvalStatus !== "APPROVED"), detail: data?.lifecycle?.approvalStatus === "APPROVED" ? "Approved" : "Human review" },
+    { id: "report-deliver", label: "Deliver", complete: latestEmailAttempt?.status === "ACCEPTED", current: data?.lifecycle?.approvalStatus === "APPROVED" && latestEmailAttempt?.status !== "ACCEPTED", detail: latestEmailAttempt?.status === "ACCEPTED" ? "Provider accepted" : "Send approved report" },
+  ];
 
   return (
     <section className={cn(CARD, "relative z-10")} aria-label="Verified Weekly Performance Blueprint">
-      <BlueprintHeader status={effectiveStatus} />
+      <BlueprintHeader status={effectiveStatus} lifecycleState={data?.lifecycleState ?? null} />
+
+      <nav aria-label="Report workflow" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {workflowSteps.map((step, index) => (
+          <a key={step.id} href={`#${step.id}`} className={cn(
+            "group rounded-lg border px-3 py-2 transition-colors hover:border-white/20 hover:bg-white/[0.03]",
+            step.complete ? "border-emerald-500/25 bg-emerald-500/[0.04]" : step.current ? "border-line bg-panel" : "border-line/70 bg-canvas/60",
+          )}>
+            <span className="flex items-center gap-2 text-xs font-semibold text-ink"><span className={cn("flex h-5 w-5 items-center justify-center rounded-full border font-mono text-[10px]", step.complete ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-line bg-canvas text-ink-mute")}>{step.complete ? "✓" : index + 1}</span>{step.label}</span>
+            <span className="mt-1 block pl-7 text-[10px] text-ink-mute">{step.detail}</span>
+          </a>
+        ))}
+      </nav>
 
       {/* Client selector (chips, consistent with the Reports page) */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -316,7 +521,7 @@ export function WeeklyPerformanceBlueprint({
 
       {/* Reporting context shown BEFORE generation. Requirements come from the
           client's explicit configuration (Clients page), never from sources. */}
-      <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-line bg-canvas p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+      <div id="report-setup" className="mt-4 scroll-mt-24 grid grid-cols-1 gap-3 rounded-lg border border-line bg-canvas p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
         <ContextItem label="Reporting timezone" value={report?.overview.reportingTimezone ?? "Unverified"} />
         <ContextItem label="Currency" value={report?.overview.currency ?? "Unverified"} />
         <ContextItem
@@ -334,7 +539,7 @@ export function WeeklyPerformanceBlueprint({
       </div>
 
       {/* Window controls */}
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+      <div id="report-generate" className="mt-4 scroll-mt-24 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="flex items-center gap-1.5 text-xs font-medium text-ink-mute">
           From
           <input
@@ -363,7 +568,7 @@ export function WeeklyPerformanceBlueprint({
         </button>
         <div className="flex items-center gap-2 sm:ml-auto">
           <Link
-            href={`/clients?clientId=${encodeURIComponent(selectedClientId)}`}
+            href={clientSetupHref(selectedClientId)}
             className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-3 py-2 text-xs font-medium text-ink hover:bg-white/[0.04]"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
@@ -386,9 +591,33 @@ export function WeeklyPerformanceBlueprint({
       {!requirementsConfigured ? (
         <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3 text-xs text-amber-200">
           Reporting requirements are not configured for this client yet. An owner or admin must choose required
-          providers and destinations (Clients page) before a verified report can be generated.
+          providers and destinations before a verified report can be generated.{" "}
+          <Link className="font-semibold underline" href={clientSetupHref(selectedClientId)}>
+            Open this client&apos;s reporting setup
+          </Link>
         </p>
       ) : null}
+
+      {generateError?.code === "requirements_not_configured" ? (
+        <p role="alert" className="mt-4 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3 text-xs text-amber-200">
+          {generateError.message}{" "}
+          <Link className="font-semibold underline" href={clientSetupHref(selectedClientId)}>
+            Open this client&apos;s reporting setup
+          </Link>
+        </p>
+      ) : null}
+
+      <details className="mt-4 rounded-lg border border-line bg-canvas p-3 text-xs">
+        <summary className="cursor-pointer font-medium text-ink">Check prerequisites for this client</summary>
+        <ClientSetupChecklistContainer
+          key={`${workspaceId}:${selectedClientId}:${windowStart}-${windowEnd}`}
+          workspaceId={workspaceId}
+          clientId={selectedClientId}
+          clientName={clients.find((client) => client.id === selectedClientId)?.name}
+          windowStart={windowStart || undefined}
+          windowEnd={windowEnd || undefined}
+        />
+      </details>
 
       {/* Loading / error states */}
       {isLoading ? <BlueprintSkeleton /> : null}
@@ -409,6 +638,150 @@ export function WeeklyPerformanceBlueprint({
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             Try again
           </button>
+        </div>
+      ) : null}
+
+      {/* Lifecycle & Human Approval Section */}
+      {!isLoading && !error && snapshot ? (
+        <div id="report-approve" className="mt-4 scroll-mt-24 rounded-lg border border-line bg-canvas p-4 text-xs">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Report Status</span>
+              <LifecycleBadge state={(data?.lifecycle?.summaryLabel ?? data?.lifecycleState ?? "Not ready to review") as ReportLifecycleState} />
+            </div>
+
+            {/* Authenticated approval action */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void approve()}
+                disabled={
+                  approving ||
+                  !snapshot ||
+                  (data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) !== "READY" ||
+                  data?.lifecycle?.approvalStatus === "APPROVED"
+                }
+                title={
+                  (data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) !== "READY"
+                    ? "Data readiness must be READY before approval"
+                    : data?.lifecycle?.approvalStatus === "APPROVED"
+                      ? "Report is already approved"
+                      : "Approve this report snapshot"
+                }
+                className={cn(
+                  "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                  data?.lifecycle?.approvalStatus !== "APPROVED" && (data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) === "READY"
+                    ? "bg-emerald-600 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    : "border border-line bg-panel text-ink-mute disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                {approving ? (
+                  <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {approving
+                  ? "Approving…"
+                  : data?.lifecycle?.approvalStatus === "APPROVED"
+                    ? "Approved"
+                    : "Approve this report"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-line/60 pt-3 sm:grid-cols-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">1. Data Readiness</p>
+              <p className="mt-0.5 font-medium text-ink">
+                {(data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) === "READY" ? (
+                  <span className="text-emerald-400">Ready to review (data complete)</span>
+                ) : (
+                  <span className="text-amber-400">
+                    Not ready (status: {data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status})
+                  </span>
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">2. Human Approval</p>
+              <p className="mt-0.5 font-medium text-ink">
+                {data?.lifecycle?.approvalStatus === "APPROVED" && data?.approval ? (
+                  <span className="text-emerald-400">
+                    Approved by {data.approval.approvedByUserName || data.approval.approvedByUserEmail || data.approval.approvedByUserId} on{" "}
+                    {new Date(data.approval.approvedAt).toLocaleDateString()}
+                  </span>
+                ) : data?.lifecycle?.approvalStatus === "OUTDATED" ? (
+                  <span className="text-amber-400">
+                    Approval outdated {data?.approval ? `(prior approval: ${new Date(data.approval.approvedAt).toLocaleDateString()})` : ""} — re-approval required
+                  </span>
+                ) : (
+                  <span className="text-ink-mute">Not approved</span>
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">3. Dataset Retrieval Evidence</p>
+              <p className="mt-0.5 font-medium text-ink">
+                {data?.lifecycle?.deliveryStatus === "DELIVERED" ? (
+                  <span className="text-emerald-400">Current retrieval proof · report email not confirmed</span>
+                ) : data?.lifecycle?.deliveryStatus === "OUTDATED" ? (
+                  <span className="text-amber-400">Retrieval evidence is outdated</span>
+                ) : data?.lifecycle?.deliveryStatus === "FAILED" ? (
+                  <span className="text-red-400">Destination retrieval failed</span>
+                ) : (
+                  <span className="text-ink-mute">No current dataset retrieval proof</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div id="report-deliver" className="mt-4 scroll-mt-24 border-t border-line/60 pt-4">
+            <h3 className="text-xs font-semibold text-ink">Email this approved snapshot</h3>
+            <p className="mt-1 text-[11px] text-ink-mute">
+              Sends the saved snapshot shown below. The email provider’s acceptance does not confirm inbox delivery.
+            </p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="flex-1 text-[11px] font-medium text-ink-mute">
+                Recipient email
+                <input
+                  type="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  value={emailRecipient}
+                  onChange={(event) => setEmailRecipient(event.target.value)}
+                  placeholder="name@example.com"
+                  className="mt-1 w-full rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void sendApprovedEmail()}
+                disabled={sendingEmail || emailSendInProgress || emailOutcomeAmbiguous || !canSendEmail || !emailRecipient.trim()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                title={emailOutcomeAmbiguous
+                  ? "Reconcile the existing provider outcome before retrying"
+                  : !canSendEmail ? "A current snapshot with READY data and an active approval is required" : undefined}
+              >
+                {sendingEmail ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" /> : <Send className="h-3.5 w-3.5" aria-hidden="true" />}
+                {sendingEmail ? "Sending…" : "Send approved report"}
+              </button>
+            </div>
+            {latestEmailAttempt ? (
+              <p role="status" className={cn(
+                "mt-2 text-[11px]",
+                latestEmailAttempt.status === "ACCEPTED" ? "text-emerald-400"
+                  : latestEmailAttempt.status === "DEFINITIVE_FAILED" ? "text-red-400"
+                    : "text-amber-300",
+              )}>
+                {latestEmailAttempt.status === "ACCEPTED"
+                  ? `Accepted by email provider for ${latestEmailAttempt.recipient}; inbox delivery is not confirmed.`
+                  : latestEmailAttempt.status === "DEFINITIVE_FAILED"
+                    ? `Email provider rejected the send to ${latestEmailAttempt.recipient}.`
+                    : latestEmailAttempt.status === "AMBIGUOUS"
+                      ? `Outcome is unknown for ${latestEmailAttempt.recipient}; reconcile provider records before any retry.`
+                      : `A send to ${latestEmailAttempt.recipient} is still processing or has an unknown outcome.`}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -435,7 +808,7 @@ export function WeeklyPerformanceBlueprint({
 
       {/* Report content */}
       {!isLoading && !error && report ? (
-        <div className="mt-5 space-y-5">
+        <div id="report-review" className="mt-5 scroll-mt-24 space-y-5">
           <details className="rounded-lg border border-line bg-canvas p-3 text-xs text-ink-mute">
             <summary className="cursor-pointer font-semibold text-ink">Evidence &amp; blockers</summary>
             <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
@@ -610,7 +983,13 @@ export function WeeklyPerformanceBlueprint({
   );
 }
 
-function BlueprintHeader({ status }: { status: string | null }) {
+function BlueprintHeader({
+  status,
+  lifecycleState,
+}: {
+  status: string | null;
+  lifecycleState?: ReportLifecycleState | null;
+}) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -625,7 +1004,10 @@ function BlueprintHeader({ status }: { status: string | null }) {
           directly and never converts currency; marketplace providers are out of scope for this blueprint.
         </p>
       </div>
-      <VerificationBadge status={status ?? "UNKNOWN"} />
+      <div className="flex flex-wrap items-center gap-2">
+        {lifecycleState ? <LifecycleBadge state={lifecycleState} /> : null}
+        <VerificationBadge status={status ?? "UNKNOWN"} />
+      </div>
     </div>
   );
 }

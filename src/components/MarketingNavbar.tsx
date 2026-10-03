@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import "./marketing-navbar.css";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ArrowRight, Menu, X } from "lucide-react";
@@ -89,8 +90,11 @@ export function MarketingNavbar() {
     <nav
       className={cn(
         "fixed top-0 z-50 h-14 w-full border-b backdrop-blur-md transition-colors duration-200",
+        (pathname === "/" || pathname === "/pricing" || pathname.startsWith("/integrations")) && "marketing-nav-glass",
         isScrolled ? "border-line/90 bg-canvas/95 shadow-xs" : "border-line/70 bg-canvas/80",
       )}
+      data-scrolled={isScrolled}
+      data-menu-open={mobileMenuOpen}
       aria-label="Primary navigation"
     >
       <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">

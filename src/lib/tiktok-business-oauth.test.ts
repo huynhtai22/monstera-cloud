@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { TikTokBusinessClient } from "./tiktok-business";
 import { TikTokBusinessOAuthAdapter } from "./oauth-framework/providers/tiktok-business";
 
 async function withMockedFetch<T>(
@@ -194,4 +195,40 @@ describe("TikTok OAuth token exchange", () => {
       else process.env.TIKTOK_BUSINESS_APP_SECRET = previousSecret;
     }
   });
+});
+
+
+describe("TikTok OAuth failure credential boundary", () => {
+  for (const operation of ["exchangeCode", "refreshAccessToken"] as const) {
+    for (const payload of [
+      { code: 40002, message: "Invalid refresh_token:synthetic-refresh-value", data: { access_token: "synthetic-access-value", secret: "synthetic-secret-value" } },
+      { code: "synthetic-refresh-value", data: { access_token: "synthetic-access-value", secret: "synthetic-secret-value" } },
+    ]) {
+      it(`${operation} excludes provider messages, payloads and nonnumeric codes from errors`, async () => {
+        const previousId = process.env.TIKTOK_BUSINESS_APP_ID;
+        const previousSecret = process.env.TIKTOK_BUSINESS_APP_SECRET;
+        process.env.TIKTOK_BUSINESS_APP_ID = "synthetic-app";
+        process.env.TIKTOK_BUSINESS_APP_SECRET = "synthetic-secret-value";
+        try {
+          await withMockedFetch(new Response(JSON.stringify(payload)), async () => {
+            await assert.rejects(new TikTokBusinessClient()[operation]("synthetic-refresh-value"), error => {
+              assert.ok(error instanceof Error);
+              assert.match(error.message, /error (40002|unknown): Token (exchange|refresh) rejected/);
+              for (const value of ["synthetic-refresh-value", "synthetic-access-value", "synthetic-secret-value", "Invalid refresh_token"]) {
+                assert.equal(error.message.includes(value), false);
+                assert.equal(error.stack?.includes(value), false);
+              }
+              assert.match(error.message, /reconnect TikTok Ads/);
+              return true;
+            });
+          });
+        } finally {
+          if (previousId === undefined) delete process.env.TIKTOK_BUSINESS_APP_ID;
+          else process.env.TIKTOK_BUSINESS_APP_ID = previousId;
+          if (previousSecret === undefined) delete process.env.TIKTOK_BUSINESS_APP_SECRET;
+          else process.env.TIKTOK_BUSINESS_APP_SECRET = previousSecret;
+        }
+      });
+    }
+  }
 });

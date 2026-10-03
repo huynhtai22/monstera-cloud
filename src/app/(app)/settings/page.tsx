@@ -1,7 +1,8 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell, MonitorSmartphone } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR from "swr";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { ClientsTab } from "@/components/settings/ClientsTab";
 import { TeamTab } from "@/components/settings/TeamTab";
 import { BillingTab } from "@/components/settings/BillingTab";
 import { ApiKeysTab } from "@/components/settings/ApiKeysTab";
+import { SessionsTab } from "@/components/settings/SessionsTab";
 import { DataQualityTab } from "@/components/settings/DataQualityTab";
 
 const fetcher = async (url: string) => {
@@ -22,7 +24,18 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
-    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api'>('workspace');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const tabs = ['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'] as const;
+    type SettingsTab = typeof tabs[number];
+    const requestedTab = searchParams.get('tab');
+    const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? requestedTab as SettingsTab : 'workspace';
+    const setActiveTab = (tab: SettingsTab) => {
+        const query = new URLSearchParams(searchParams.toString());
+        query.set('tab', tab);
+        router.push(`${pathname}?${query}`, { scroll: false });
+    };
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
@@ -49,16 +62,6 @@ export default function SettingsPage() {
         violations: [],
         telegramChatId: "",
     });
-
-    // Persistence of Tab
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get("tab") as any;
-        if (['workspace', 'clients', 'team', 'alerts', 'billing', 'api'].includes(tab)) {
-            setActiveTab(tab);
-        }
-    }, []);
 
     // --- API Handlers ---
 
@@ -173,10 +176,14 @@ export default function SettingsPage() {
     const handleGenerateKey = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
+            const storageKey = `monstera:api-key:create:${activeWorkspaceId}`;
+            const idempotencyKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+            sessionStorage.setItem(storageKey, idempotencyKey);
+            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
             if (res.ok) {
                 const data = await res.json();
                 setNewlyGeneratedKey(data.key);
+                sessionStorage.removeItem(storageKey);
                 fetchApiKeys();
                 toast.success("API Key generated");
             }
@@ -191,8 +198,41 @@ export default function SettingsPage() {
         } catch { toast.error("Failed to delete key"); }
     };
 
+    const handleRotateKey = async (id: string) => {
+        if (!confirm("Rotate this API key? The old secret stops working immediately — update Looker/Sheets configs right away.")) return;
+        try {
+            const storageKey = `monstera:api-key:rotate:${activeWorkspaceId}:${id}`;
+            const idempotencyKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+            sessionStorage.setItem(storageKey, idempotencyKey);
+            const res = await fetch("/api/settings/api-keys/rotate", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ workspaceId: activeWorkspaceId, id }) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setNewlyGeneratedKey(data.key);
+                sessionStorage.removeItem(storageKey);
+                fetchApiKeys();
+                toast.success("API Key rotated — copy the new secret now");
+            } else {
+                toast.error(data.error || "Failed to rotate key");
+            }
+        } catch { toast.error("Failed to rotate key"); }
+    };
+
+    const handlePinKey = async (id: string, enabled: boolean) => {
+        if (enabled && !confirm("Pin this key to your current network? It will stop working everywhere else — only use this for static office IPs, never for Looker scheduled refresh.")) return;
+        try {
+            const res = await fetch("/api/settings/api-keys/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, id, enabled }) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                fetchApiKeys();
+                toast.success(enabled ? "Key pinned to this network" : "Pin removed");
+            } else {
+                toast.error(data.error || "Failed to update pin");
+            }
+        } catch { toast.error("Failed to update pin"); }
+    };
+
     return (
-        <div className="w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
+        <div data-console-page="true" data-console-section="settings" className="console-page w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
             <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
                     <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />
@@ -203,10 +243,10 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            <div className="rounded-lg border border-line bg-panel">
+            <div data-console-settings-panel="true" className="rounded-lg border border-line bg-panel">
                 <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
                     <div className="border-b border-line bg-canvas px-3 py-4 lg:border-b-0 lg:border-r">
-                        <nav className="space-y-0.5 lg:sticky lg:top-8">
+                        <nav data-console-settings-nav="true" className="space-y-0.5 lg:sticky lg:top-8">
                             {[
                                 { id: 'workspace', label: 'Workspace', icon: Building2 },
                                 { id: 'clients', label: 'Clients', icon: Briefcase },
@@ -214,9 +254,11 @@ export default function SettingsPage() {
                                 { id: 'alerts', label: 'Alerts & Quality', icon: Bell },
                                 { id: 'billing', label: 'Billing', icon: CreditCard },
                                 { id: 'api', label: 'API Keys', icon: KeyRound },
+                                { id: 'sessions', label: 'Sessions', icon: MonitorSmartphone },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
+                                    aria-pressed={activeTab === tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
                                     className={cn(
                                         "flex items-center w-full px-3 py-2.5 rounded-md text-sm transition-colors",
@@ -270,6 +312,7 @@ export default function SettingsPage() {
                         />
                     )}
                     {activeTab === 'billing' && <BillingTab workspacePlan={workspacePlan} workspaceStatus={activeWorkspace?.status} workspaceId={activeWorkspace?.id} subscriptionEndsAt={activeWorkspace?.subscriptionEndsAt} isOwner={activeWorkspace?.role === 'owner'} />}
+                    {activeTab === 'sessions' && <SessionsTab />}
                     {activeTab === 'api' && (
                         <ApiKeysTab
                             apiKeys={apiKeys}
@@ -278,6 +321,8 @@ export default function SettingsPage() {
                             canManage={canManage}
                             handleGenerateKey={handleGenerateKey}
                             handleDeleteKey={handleDeleteKey}
+                            handleRotateKey={handleRotateKey}
+                            handlePinKey={handlePinKey}
                         />
                     )}
                     </div>{/* end content panel */}

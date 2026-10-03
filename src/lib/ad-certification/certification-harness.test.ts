@@ -12,7 +12,7 @@ import {
   METRIC_CONTRACTS,
   evaluateReconciliation,
 } from "./metric-contracts";
-import { CertificationHarness, RUNTIME_CONNECTOR_API_VERSIONS, getExactCommitSha } from "./harness";
+import { CertificationHarness, CURRENT_SCHEMA_VERSION, RUNTIME_CONNECTOR_API_VERSIONS, getExactCommitSha } from "./harness";
 import { TestCertificationHarness } from "./test-simulation-adapter";
 import { CERTIFICATION_LEVELS } from "./types";
 import prisma from "@/lib/prisma";
@@ -329,7 +329,7 @@ describe("Certification Harness & Standards Suite", () => {
         buildId: "commit-test-signoff",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: false,
         },
       });
@@ -605,7 +605,7 @@ describe("Certification Harness & Standards Suite", () => {
         trustedRuntimeMetadata: {
           workingTreeDirty: false,
           commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
         },
         providerAccessFacts: {
           observedApiVersion: "UNVERIFIED",
@@ -695,7 +695,7 @@ describe("Certification Harness & Standards Suite", () => {
 
       assert.equal(evidencePack.buildId, "build-sha-12345");
       assert.ok(evidencePack.metadata.gitCommit);
-      assert.equal(evidencePack.metadata.schemaVersion, "20260905000000");
+      assert.equal(evidencePack.metadata.schemaVersion, CURRENT_SCHEMA_VERSION);
       assert.equal(evidencePack.metadata.harnessVersion, "1.3.0");
       assert.equal(evidencePack.metadata.contractVersion, "1.0.0");
       assert.ok(Array.isArray(evidencePack.metadata.commandsUsed));
@@ -1031,7 +1031,7 @@ describe("Certification Harness & Standards Suite", () => {
         trustedRuntimeMetadata: {
           workingTreeDirty: false,
           commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
         },
       });
       assert.equal(defaultLiveRun.evidencePack.storageType, "database_backed");
@@ -1055,7 +1055,7 @@ describe("Certification Harness & Standards Suite", () => {
             trustedRuntimeMetadata: {
               workingTreeDirty: false,
               commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-              schemaVersion: "20260905000000",
+              schemaVersion: CURRENT_SCHEMA_VERSION,
             },
           }),
         /Security violation: Local filesystem export of live_certification_evidence is disabled by default/
@@ -1076,7 +1076,7 @@ describe("Certification Harness & Standards Suite", () => {
           trustedRuntimeMetadata: {
             workingTreeDirty: false,
             commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-            schemaVersion: "20260905000000",
+            schemaVersion: CURRENT_SCHEMA_VERSION,
           },
         });
 
@@ -1115,7 +1115,7 @@ describe("Certification Harness & Standards Suite", () => {
       const exactSha = getExactCommitSha();
       assert.ok(exactSha.length >= 7);
       assert.equal(run.evidencePack.metadata.gitCommit, exactSha);
-      assert.equal(run.evidencePack.metadata.schemaVersion, "20260905000000");
+      assert.equal(run.evidencePack.metadata.schemaVersion, CURRENT_SCHEMA_VERSION);
     });
   });
 
@@ -1133,7 +1133,7 @@ describe("Certification Harness & Standards Suite", () => {
         evidenceClass: "synthetic_fixture",
         trustedRuntimeMetadata: {
           commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: true,
         },
       });
@@ -1159,7 +1159,7 @@ describe("Certification Harness & Standards Suite", () => {
             evidenceClass: "live_certification_evidence",
             trustedRuntimeMetadata: {
               commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-              schemaVersion: "20260905000000",
+              schemaVersion: CURRENT_SCHEMA_VERSION,
               workingTreeDirty: true,
             },
           }),
@@ -1180,7 +1180,7 @@ describe("Certification Harness & Standards Suite", () => {
             evidenceClass: "live_certification_evidence",
             trustedRuntimeMetadata: {
               commitSha: "",
-              schemaVersion: "20260905000000",
+              schemaVersion: CURRENT_SCHEMA_VERSION,
               workingTreeDirty: false,
             },
           }),
@@ -1220,7 +1220,7 @@ describe("Certification Harness & Standards Suite", () => {
         clientSuppliedCommitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
         trustedRuntimeMetadata: {
           commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: false,
         },
       });
@@ -1241,7 +1241,7 @@ describe("Certification Harness & Standards Suite", () => {
             clientSuppliedCommitSha: "fake_client_sha_123",
             trustedRuntimeMetadata: {
               commitSha: "",
-              schemaVersion: "20260905000000",
+              schemaVersion: CURRENT_SCHEMA_VERSION,
               workingTreeDirty: false,
             },
           }),
@@ -1262,7 +1262,7 @@ describe("Certification Harness & Standards Suite", () => {
             clientSuppliedCommitSha: "0000000000000000000000000000000000000000",
             trustedRuntimeMetadata: {
               commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-              schemaVersion: "20260905000000",
+              schemaVersion: CURRENT_SCHEMA_VERSION,
               workingTreeDirty: false,
             },
           }),
@@ -1283,7 +1283,7 @@ describe("Certification Harness & Standards Suite", () => {
             expectedSchemaVersion: "20250101000000",
             trustedRuntimeMetadata: {
               commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-              schemaVersion: "20260905000000",
+              schemaVersion: CURRENT_SCHEMA_VERSION,
               workingTreeDirty: false,
             },
           }),
@@ -1324,11 +1324,11 @@ describe("Certification Harness & Standards Suite", () => {
           outputDirectory: tmpExportDir,
           trustedRuntimeMetadata: {
             commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-            schemaVersion: "20260905000000",
+            schemaVersion: CURRENT_SCHEMA_VERSION,
             workingTreeDirty: false,
           },
           expectedCommitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          expectedSchemaVersion: "20260905000000",
+          expectedSchemaVersion: CURRENT_SCHEMA_VERSION,
           simulation: {
             simulatePersistedLiveState: true,
             simulatedProviderAccessFacts: {
@@ -1402,7 +1402,7 @@ describe("Certification Harness & Standards Suite", () => {
         buildId: "build-all-versions",
         trustedRuntimeMetadata: {
           commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           harnessVersion: "1.2.0",
           evidencePackSchemaVersion: "1.0.0",
           workingTreeDirty: false,
@@ -1410,7 +1410,7 @@ describe("Certification Harness & Standards Suite", () => {
       });
 
       assert.equal(run.evidencePack.metadata.commitSha, "b3058dad3cfd45eab1697dac307d94f598edcbe7");
-      assert.equal(run.evidencePack.metadata.schemaVersion, "20260905000000");
+      assert.equal(run.evidencePack.metadata.schemaVersion, CURRENT_SCHEMA_VERSION);
       assert.equal(run.evidencePack.metadata.harnessVersion, "1.2.0");
       assert.equal(run.evidencePack.metadata.contractVersion, "1.0.0");
       assert.equal(run.evidencePack.metadata.evidencePackSchemaVersion, "1.0.0");
@@ -1421,7 +1421,7 @@ describe("Certification Harness & Standards Suite", () => {
       assert.ok(run.markdownReport.includes("- **Harness Version:** 1.2.0"));
       assert.ok(run.markdownReport.includes("- **Metric Contract Version:** 1.0.0"));
       assert.ok(run.markdownReport.includes("- **Evidence Pack Schema Version:** 1.0.0"));
-      assert.ok(run.markdownReport.includes("- **Schema Version:** 20260905000000"));
+      assert.ok(run.markdownReport.includes(`- **Schema Version:** ${CURRENT_SCHEMA_VERSION}`));
       assert.ok(run.markdownReport.includes("- **Git Commit SHA:** `b3058dad3cfd45eab1697dac307d94f598edcbe7`"));
     });
 
@@ -1698,7 +1698,7 @@ describe("Certification Harness & Standards Suite", () => {
         buildId: "build-hash-test",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: false,
         },
       });
@@ -1726,7 +1726,7 @@ describe("Certification Harness & Standards Suite", () => {
         buildId: "build-dirty-test",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: true,
         },
       });
@@ -1757,7 +1757,7 @@ describe("Certification Harness & Standards Suite", () => {
         evidenceClass: "live_certification_evidence",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: false,
         },
         nativeComparison: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
@@ -1827,7 +1827,7 @@ describe("Certification Harness & Standards Suite", () => {
         evidenceClass: "live_certification_evidence",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260905000000",
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           workingTreeDirty: false,
         },
         nativeComparison: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },

@@ -14,6 +14,7 @@ const DEFAULT_MARKETING_HOSTS = ["monsteracloud.com", "www.monsteracloud.com"];
 /** First URL segment must match one of these to rewrite under `/agencies/[slug]/…`. */
 export const AGENCY_APP_PREFIXES = new Set([
   "console",
+  "onboarding",
   "sources",
   "settings",
   "reports",

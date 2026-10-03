@@ -632,7 +632,7 @@ function deriveDeliveryAction(summary: OperationsSummary): OperationsAction | nu
         sectionKey: "delivery",
         priority: "high",
         title: "Inspect stale destination deliveries",
-        explanation: `${totals.stale} destination delivery receipt(s) exceed the ${recencyHours}h recency threshold.`,
+        explanation: `${totals.stale} destination delivery receipt(s) no longer match current dataset evidence or exceed the ${recencyHours}h recency threshold.`,
         state: "attention",
         cta: { label: "Open exports", href },
         count: count > 0 ? count : undefined,

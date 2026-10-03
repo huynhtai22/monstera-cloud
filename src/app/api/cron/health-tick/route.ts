@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { evaluateStaleHealth } from "@/lib/ingestion/stale-health";
 import { emitHealthMonitorsAndStaleAlerts } from "@/lib/ingestion/health-monitors";
 import { requireCronSecret } from "@/lib/request-auth";
+import { monitorReportFreshness } from "@/lib/ingestion/report-freshness-monitor";
+import { deliverPendingAgencyAlerts, shouldFailHealthTickForAlertDelivery } from "@/lib/alerts";
 
 /**
  * GET/POST /api/cron/health-tick
@@ -14,22 +16,26 @@ import { requireCronSecret } from "@/lib/request-auth";
 async function runHealthTick() {
   const report = await evaluateStaleHealth();
   const monitors = await emitHealthMonitorsAndStaleAlerts();
+  const reportFreshness = await monitorReportFreshness();
+  const alertDelivery = await deliverPendingAgencyAlerts();
   return NextResponse.json({
     ok: true,
     timestamp: new Date().toISOString(),
     ...report,
     monitors,
-  });
+    reportFreshness,
+    alertDelivery,
+  }, { status: shouldFailHealthTickForAlertDelivery(alertDelivery) ? 500 : 200 });
 }
 
 export async function GET(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "health_tick");
   if (denied) return denied;
   return runHealthTick();
 }
 
 export async function POST(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "health_tick");
   if (denied) return denied;
   return runHealthTick();
 }

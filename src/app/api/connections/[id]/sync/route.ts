@@ -18,7 +18,8 @@ import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled } from "@/lib/workspace-provider-access";
 import { isConnectionSyncBlocked } from "@/lib/connection-lifecycle";
 import { createImportJob, claimImportJob } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
+import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
 
 export async function POST(
   request: Request,
@@ -89,7 +90,7 @@ export async function POST(
     // TikTok report generation is asynchronous and may legitimately remain
     // PROCESSING beyond one serverless request. Queue it in the durable worker
     // so the report task ID can be retained and resumed across bounded retries.
-    if (connection.provider === "tiktok_business") {
+    if (connection.provider === "tiktok_business" || warehouseUsesDedicatedWorker()) {
       const until = new Date().toISOString().split("T")[0];
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const job = await createImportJob({
@@ -101,10 +102,11 @@ export async function POST(
         items: [{ connectionId }],
         // Keep one active manual job per connection for its entire lifetime.
         // The worker releases this key only when the job becomes terminal.
-        idempotencyKey: `manual-tiktok:${connectionId}`,
+        idempotencyKey: connection.provider === "tiktok_business"
+          ? `manual-tiktok:${connectionId}` : `manual-${connection.provider}:${connectionId}`,
         priority: limits.priority,
       });
-      after(async () => {
+      if (!warehouseUsesDedicatedWorker()) after(async () => {
         try {
           const claim = await claimImportJob(job.id);
           if (claim.claimed && claim.leaseId) {

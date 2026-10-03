@@ -104,6 +104,7 @@ describe("in-flight TikTok diagnostics", () => {
         healthState: "error",
         errorMsg: msg,
         lastSync: "2026-08-31T08:17:28.000Z",
+        syncAttemptAt: new Date().toISOString(),
       },
       false,
     );

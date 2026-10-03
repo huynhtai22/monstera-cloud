@@ -50,6 +50,7 @@ import { ScheduleReportModal, type ReportScheduleData } from "@/components/clien
 import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
 import { ReportReadinessPanel, readinessFetcher } from "@/components/reports/ReportReadinessPanel";
+import { ClientSetupChecklistContainer } from "@/components/reports/ClientSetupChecklist";
 import type { ReportReadinessEvaluation } from "@/lib/report-readiness";
 import { parseRequestedClientId, withClientContext, withClientContextAndParams } from "@/lib/client-context";
 
@@ -311,12 +312,12 @@ export function ClientsClient() {
   };
 
   return (
-    <PageShell>
+    <PageShell section="clients">
       {/* ─── 1. PORTFOLIO HEADER ─── */}
-      <div className="relative z-10 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-5">
+      <div data-console-page-header="true" className="relative z-10 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-5">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-semibold tracking-tight text-ink">Agency Portfolio</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-ink">Clients</h1>
             <span className="rounded-full bg-white/[0.06] border border-line px-2 py-0.5 text-[10px] font-mono text-ink-mute">
               {displayViewMode === "clients" ? `${clientsList.length} Brands` : `${workspacesList.length} Workspaces`}
             </span>
@@ -382,7 +383,7 @@ export function ClientsClient() {
 
       {/* ─── 2. EXECUTIVE METRICS BAR ─── */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="console-scorecard rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
             {displayViewMode === "clients" ? "Total Brands" : "Total Workspaces"}
           </p>
@@ -391,7 +392,7 @@ export function ClientsClient() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="console-scorecard rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
             {displayViewMode === "clients" ? "Assigned Accounts" : "Managed Sources"}
           </p>
@@ -402,7 +403,7 @@ export function ClientsClient() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
+        <div className="console-scorecard rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">Portfolio Health</p>
           <div className="mt-1 flex items-center gap-1.5">
             {(displayViewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount) > 0 ? (
@@ -660,6 +661,18 @@ export function ClientsClient() {
                       error={Boolean(readinessError)}
                       onRetry={() => void recheckReadiness()}
                     />
+
+                    {concreteClientId === c.id && activeWorkspaceId ? (
+                      <ClientSetupChecklistContainer
+                        key={`${activeWorkspaceId}:${c.id}`}
+                        workspaceId={activeWorkspaceId}
+                        clientId={c.id}
+                        clientName={c.name}
+                        evaluation={readinessByClient.get(c.id) ?? null}
+                        evaluationLoading={readinessLoading || readinessValidating}
+                        onRequestReadinessRefresh={() => recheckReadiness()}
+                      />
+                    ) : null}
 
                     {/* Marketing Anomaly Alert Banner */}
                     {(() => {

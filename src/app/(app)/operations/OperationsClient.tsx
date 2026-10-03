@@ -36,6 +36,8 @@ import {
 // Type-only import: the summary loader is server-only and must never be pulled
 // into the client bundle (enforced by the client-boundary guard).
 import type { OperationsSummary } from "@/lib/operations-summary";
+import { sourceRecoveryHref, reportRecoveryHref } from "@/lib/console-recovery";
+import { READINESS_MESSAGES } from "@/lib/report-readiness";
 
 type Summary = OperationsSummary;
 type ConnectorHealthSection = Summary["sections"]["connectorHealth"];
@@ -259,9 +261,10 @@ function SectionCard({
     const tone = operationsStateTone(state);
     return (
         <section
+            id={`operations-${sectionKey}`}
             data-testid={`operations-section-${sectionKey}`}
             data-state={state}
-            className="flex flex-col rounded-lg border border-line bg-panel shadow-xs"
+            className="console-scorecard scroll-mt-24 flex flex-col rounded-lg border border-line bg-panel shadow-xs"
         >
             <header className="flex items-start gap-3 border-b border-line px-5 py-4">
                 <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-canvas text-ink [&>svg]:h-4 [&>svg]:w-4">
@@ -300,7 +303,7 @@ function SectionCard({
     );
 }
 
-function renderConnectorHealth(section: ConnectorHealthSection): React.ReactNode {
+function renderConnectorHealth(section: ConnectorHealthSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -321,6 +324,7 @@ function renderConnectorHealth(section: ConnectorHealthSection): React.ReactNode
                 <EvidenceList>
                     {attention.map((account) => (
                         <EvidenceRow key={`${account.connectionId}:${account.accountId}`}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(sourceRecoveryHref(account.connectionId))}>Review account source →</Link>
                             <span className="font-semibold text-ink">
                                 {account.accountName ?? account.accountId}
                             </span>{" "}
@@ -344,7 +348,7 @@ function renderConnectorHealth(section: ConnectorHealthSection): React.ReactNode
     );
 }
 
-function renderFreshness(section: FreshnessSection): React.ReactNode {
+function renderFreshness(section: FreshnessSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -367,6 +371,7 @@ function renderFreshness(section: FreshnessSection): React.ReactNode {
                 <EvidenceList>
                     {attention.map((source) => (
                         <EvidenceRow key={source.connectionId}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(sourceRecoveryHref(source.connectionId))}>Review source →</Link>
                             <span className="font-semibold text-ink">{source.name}</span>{" "}
                             <span className="text-ink-mute">· {humanize(source.provider)}</span>{" "}
                             <span className="font-medium text-amber-600 dark:text-amber-400">
@@ -384,7 +389,7 @@ function renderFreshness(section: FreshnessSection): React.ReactNode {
     );
 }
 
-function renderIngestion(section: IngestionSection): React.ReactNode {
+function renderIngestion(section: IngestionSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -405,6 +410,7 @@ function renderIngestion(section: IngestionSection): React.ReactNode {
                 <EvidenceList>
                     {recentFailures.map((failure) => (
                         <EvidenceRow key={failure.id}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(`/explorer?startDate=${formatEvidenceDay(failure.since)}&endDate=${formatEvidenceDay(failure.until)}#warehouse-refresh`, ALL_CLIENTS_TOKEN)}>Review failed import window →</Link>
                             <span className="font-semibold text-ink">Import job</span>{" "}
                             <span className="font-medium text-amber-600 dark:text-amber-400">
                                 {humanize(failure.status)}
@@ -422,6 +428,7 @@ function renderIngestion(section: IngestionSection): React.ReactNode {
                     ))}
                     {syncLogErrors.map((entry) => (
                         <EvidenceRow key={entry.id}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor("/reports?view=sync&status=error")}>Inspect sync errors →</Link>
                             <span className="font-semibold text-ink">Sync log</span>{" "}
                             <span className="font-medium text-amber-600 dark:text-amber-400">
                                 {humanize(entry.status)}
@@ -440,7 +447,7 @@ function renderIngestion(section: IngestionSection): React.ReactNode {
     );
 }
 
-function renderReadiness(section: ReadinessSection): React.ReactNode {
+function renderReadiness(section: ReadinessSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -460,6 +467,7 @@ function renderReadiness(section: ReadinessSection): React.ReactNode {
                 <EvidenceList>
                     {clients.map((client) => (
                         <EvidenceRow key={client.clientId}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(reportRecoveryHref(client.clientId, section.data.window), client.clientId)}>Resolve report blockers →</Link>
                             <span className="font-semibold text-ink">{client.clientName}</span>{" "}
                             <span
                                 className={cn(
@@ -489,7 +497,7 @@ function renderReadiness(section: ReadinessSection): React.ReactNode {
     );
 }
 
-function renderDelivery(section: DeliverySection): React.ReactNode {
+function renderDelivery(section: DeliverySection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -508,6 +516,7 @@ function renderDelivery(section: DeliverySection): React.ReactNode {
                 <EvidenceList>
                     {latest.map((entry) => (
                         <EvidenceRow key={`${entry.clientId}:${entry.destination}:${entry.windowStart}`}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(`/exports?startDate=${entry.windowStart}&endDate=${entry.windowEnd}`, entry.clientId)}>Review client delivery →</Link>
                             <span className="font-semibold text-ink">{humanize(entry.destination)}</span>{" "}
                             <span
                                 className={cn(
@@ -563,6 +572,39 @@ function renderAnomalies(section: AnomaliesSection): React.ReactNode {
     );
 }
 
+function FreshnessJourneyCard({ section, hrefFor }: { section: ReadinessSection; hrefFor: (path: string, clientId?: string | null) => string }) {
+    return (
+        <section data-testid="freshness-journey" aria-labelledby="freshness-journey-title" className="mb-6 rounded-lg border border-line bg-panel p-5">
+            <h2 id="freshness-journey-title" className="text-sm font-semibold text-ink">End-to-end data freshness</h2>
+            <p className="mt-1 text-xs text-ink-mute">Source → Warehouse → Report → Delivery. Evidence for the reporting window—not a guarantee of live data.</p>
+            {!section.data ? <SectionNotice reason={section.reason} /> : section.data.clients.length === 0 ? <Quiet>No client reporting evidence yet. Configure a client and its required sources.</Quiet> : (
+                <div className="mt-4 space-y-4">
+                    {section.data.clients.map(client => (
+                        <div key={client.clientId} className="rounded-md border border-line p-3">
+                            <div className="text-sm font-semibold text-ink">{client.clientName} · {humanize(client.status)}</div>
+                            <p className="mt-1 text-xs text-ink-mute">Background check: {client.monitor ? `${formatEvidenceTimestamp(client.monitor.checkedAt)} · ${humanize(client.monitor.status)}` : "Not recorded"}</p>
+                            {!client.journey ? <Quiet>Freshness evidence unavailable. Refresh to recheck.</Quiet> : <>
+                                <p className="mt-1 text-xs text-ink-mute">Window {client.journey.window.start} – {client.journey.window.end} · Checked {formatEvidenceTimestamp(client.journey.evaluatedAt)}</p>
+                                <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                    {client.journey.stages.map(stage => (
+                                        <li key={stage.key} className="min-w-0 rounded-md border border-line bg-canvas p-3">
+                                            <div className="text-xs font-semibold text-ink">{humanize(stage.key)} · {stage.state === "waiting" ? "Waiting upstream" : humanize(stage.state)}</div>
+                                            {stage.codes.map(code => <p key={code} className="mt-1 text-xs text-ink-mute">{READINESS_MESSAGES[code]}</p>)}
+                                            {stage.state !== "passed" && <Link className="mt-2 inline-block text-xs underline" href={hrefFor(stage.href, client.clientId)}>Review {stage.key}</Link>}
+                                        </li>
+                                    ))}
+                                </ol>
+                                <p className="mt-2 text-xs text-ink-mute">Latest successful sync: {formatEvidenceTimestamp(client.journey.lastSuccessfulSyncAt)} · Latest data date: {formatEvidenceDay(client.journey.dataThroughDate)} · Current delivery: {formatEvidenceTimestamp(client.journey.deliveredAt)}</p>
+                            </>}
+                        </div>
+                    ))}
+                </div>
+            )}
+            {section.truncated && <Quiet>Evidence is capped. This view must not be read as an all-client health certification.</Quiet>}
+        </section>
+    );
+}
+
 function LoadingGrid() {
     return (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2" aria-hidden>
@@ -583,7 +625,10 @@ export function OperationsClient() {
     const key = activeWorkspaceId ? `/api/operations/summary?${query.toString()}` : null;
 
     const { data, error, isLoading, isValidating, mutate } = useSWR<Summary>(key, fetcher, {
-        revalidateOnFocus: false,
+        revalidateOnFocus: true,
+        refreshInterval: 60_000,
+        refreshWhenHidden: false,
+        refreshWhenOffline: false,
     });
 
     const scopeLabel = (() => {
@@ -597,15 +642,15 @@ export function OperationsClient() {
     const actions = React.useMemo(() => deriveOperationsActions(data), [data]);
 
     return (
-        <PageShell>
+        <PageShell section="operations">
             <div data-testid="operations-page" className="mx-auto w-full max-w-6xl">
-                <header className="mb-6 flex flex-col justify-between gap-3 border-b border-line pb-6 sm:flex-row sm:items-center">
+                <header data-console-page-header="true" className="mb-6 flex flex-col justify-between gap-3 border-b border-line pb-6 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-4">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-ink">
                             <Activity className="h-5 w-5" aria-hidden />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold tracking-tight text-ink">Operations Hub</h1>
+                            <h1 className="text-xl font-bold tracking-tight text-ink">Operations</h1>
                             <p className="mt-1 text-xs text-ink-mute">
                                 Read-only operational health across connectors, freshness, ingestion, readiness,
                                 delivery and anomalies.
@@ -651,6 +696,7 @@ export function OperationsClient() {
                 ) : (
                     <>
                         <NextActionsCard actions={actions} hrefFor={hrefFor} />
+                        <FreshnessJourneyCard section={data.sections.readiness} hrefFor={hrefFor} />
                         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                         <SectionCard
                             sectionKey="connectorHealth"
@@ -663,7 +709,7 @@ export function OperationsClient() {
                             unit="accounts"
                             cta={{ label: "Open sources", href: hrefFor(data.navigation.sources) }}
                         >
-                            {renderConnectorHealth(data.sections.connectorHealth)}
+                            {renderConnectorHealth(data.sections.connectorHealth, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -677,7 +723,7 @@ export function OperationsClient() {
                             unit="sources"
                             cta={{ label: "Open sources", href: hrefFor(data.navigation.sources) }}
                         >
-                            {renderFreshness(data.sections.freshness)}
+                            {renderFreshness(data.sections.freshness, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -691,7 +737,7 @@ export function OperationsClient() {
                             unit="entries"
                             cta={{ label: "Open reports", href: hrefFor(data.navigation.reports) }}
                         >
-                            {renderIngestion(data.sections.ingestion)}
+                            {renderIngestion(data.sections.ingestion, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -705,7 +751,7 @@ export function OperationsClient() {
                             unit="clients"
                             cta={{ label: "Open reports", href: hrefFor(data.navigation.reports) }}
                         >
-                            {renderReadiness(data.sections.readiness)}
+                            {renderReadiness(data.sections.readiness, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -719,7 +765,7 @@ export function OperationsClient() {
                             unit="destinations"
                             cta={{ label: "Open exports", href: hrefFor(data.navigation.exports) }}
                         >
-                            {renderDelivery(data.sections.delivery)}
+                            {renderDelivery(data.sections.delivery, hrefFor)}
                         </SectionCard>
 
                         <SectionCard

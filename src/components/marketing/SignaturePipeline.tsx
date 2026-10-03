@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   CheckCircle2,
   ShieldCheck,
   FileSpreadsheet,
   BarChart2,
   Terminal,
+  Play,
+  Pause,
+  RotateCcw,
 } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
@@ -65,8 +68,34 @@ const DESTINATIONS = [
   },
 ];
 
-export function SignaturePipeline() {
+export function SignaturePipeline({ lang = "en" }: { lang?: "en" | "vi" }) {
   const [activeStage, setActiveStage] = useState<PipelineStage>("connect");
+  const [playing, setPlaying] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const labels = lang === "vi"
+    ? { flow: "Luồng dữ liệu báo cáo", hint: "Chọn một bước để xem", play: "Phát luồng", pause: "Tạm dừng", replay: "Phát lại", reduced: "Tự phát bị tắt theo cài đặt giảm chuyển động" }
+    : { flow: "Reporting data flow", hint: "Select a stage to inspect it", play: "Play flow", pause: "Pause", replay: "Replay", reduced: "Automatic playback is off because reduced motion is enabled" };
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!playing || reducedMotion) return;
+    const timer = window.setTimeout(() => {
+      const currentIndex = STAGES.findIndex((stage) => stage.id === activeStage);
+      if (currentIndex === STAGES.length - 1) {
+        setPlaying(false);
+        return;
+      }
+      setActiveStage(STAGES[currentIndex + 1].id);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [playing, activeStage, reducedMotion]);
 
   return (
     <div
@@ -77,10 +106,10 @@ export function SignaturePipeline() {
         <div className="flex items-center gap-2">
           <span className="flex h-2 w-2 rounded-full bg-emerald-400" />
           <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink">
-            Reporting data flow
+            {labels.flow}
           </span>
           <span className="hidden text-xs text-ink-mute sm:inline">
-            · Select a stage to inspect it
+            · {labels.hint}
           </span>
         </div>
 
@@ -106,8 +135,16 @@ export function SignaturePipeline() {
               </button>
             );
           })}
+          <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
+          <button type="button" disabled={reducedMotion} onClick={() => setPlaying((value) => !value)} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.12] px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-50" aria-label={playing ? labels.pause : labels.play} title={reducedMotion ? labels.reduced : undefined}>
+            {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}{playing ? labels.pause : labels.play}
+          </button>
+          <button type="button" onClick={() => { setActiveStage("connect"); setPlaying(true); }} className="inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs text-ink-mute transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70" aria-label={labels.replay} title={labels.replay}>
+            <RotateCcw className="h-3 w-3" />
+          </button>
         </div>
       </div>
+      {reducedMotion ? <p className="sr-only" role="status">{labels.reduced}</p> : null}
 
       {/* ── Main Interactive Flow Canvas ── */}
       <div className="p-5 sm:p-8">

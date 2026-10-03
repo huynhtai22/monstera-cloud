@@ -48,6 +48,13 @@ describe("tenant query guard", () => {
         data: { workspaceId: "ws-a", platform: "meta_ads" },
       }),
     );
+    assert.throws(
+      () => assertTenantScoped("ReportEmailDeliveryAttempt", "findMany", { where: { clientId: "client-b" } }),
+      TenantScopeError,
+    );
+    assert.doesNotThrow(() =>
+      assertTenantScoped("ReportEmailDeliveryAttempt", "findMany", { where: { workspaceId: "ws-a" } }),
+    );
     assert.doesNotThrow(() =>
       assertTenantScoped("User", "findMany", { where: {} }),
     );

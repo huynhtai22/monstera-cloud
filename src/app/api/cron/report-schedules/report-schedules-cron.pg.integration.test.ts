@@ -3,6 +3,10 @@ import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { assertCiDatabaseReachableWhenMissing } from "@/lib/pg-test-discipline";
+import {
+  acquireSuiteFleetLock,
+  type FleetSuiteLock,
+} from "@/lib/report-schedule-fleet-lock";
 import prisma from "@/lib/prisma";
 import { TENANT_GUARDED_MODELS } from "@/lib/tenant-guard";
 import { GET as reportSchedules } from "./route";
@@ -40,10 +44,8 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
   // on a dedicated single-connection client serializes the report-schedule pg
   // suites without affecting any other suite. Session locks die with the
   // connection, so a crashed process cannot leave a stale lock behind.
-  const suiteLockDb = new PrismaClient({
-    datasources: { db: { url: `${process.env.DATABASE_URL}${process.env.DATABASE_URL?.includes("?") ? "&" : "?"}connection_limit=1` } },
-  });
-  const SUITE_LOCK_KEY = "report-schedules-pg-suite";
+  let fleetLock: FleetSuiteLock;
+  let fleetBackendPid = 0;
 
   const authed = () =>
     new Request("http://localhost:3000/api/cron/report-schedules", {
@@ -51,7 +53,9 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
     });
 
   before(async () => {
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_lock(hashtext(${SUITE_LOCK_KEY}))`;
+    const fleet = await acquireSuiteFleetLock(process.env.DATABASE_URL!);
+    fleetLock = fleet.lock;
+    fleetBackendPid = fleet.backendPid;
     // Never permit this suite against anything but the isolated loopback DB.
     const url = new URL(process.env.DATABASE_URL!);
     assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
@@ -117,8 +121,13 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
     }
     await db.user.deleteMany({ where: { id: { in: [userA, userB] } } });
     await db.$disconnect();
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_unlock(hashtext(${SUITE_LOCK_KEY}))`;
-    await suiteLockDb.$disconnect();
+    await fleetLock.releaseAndClose();
+  });
+
+  beforeEach(async () => {
+    // Fail closed before any fixture or route work if the fleet lock session
+    // was lost (a reaped connection would silently unlock the fleet).
+    await fleetLock.assertHeld();
   });
 
   it("keeps ReportSchedule in the tenant-guarded model set", () => {

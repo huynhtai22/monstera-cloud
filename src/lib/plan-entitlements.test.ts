@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { PLAN_LIMITS, PLAN_PRICING, workspaceAllowsScheduledRefresh } from "./plan-config";
 import {
+  evaluateApiKeyCount,
   evaluateApiKeyCreate,
   evaluateCsvExport,
   evaluateLookerAccess,
@@ -157,5 +158,16 @@ describe("refresh, API keys, CSV, seats, workspaces", () => {
     assert.equal(evaluateWorkspaceCreateLimit({ plan: "starter", ownedWorkspaceCount: 1 }).ok, false);
     assert.equal(evaluateWorkspaceCreateLimit({ plan: "professional", ownedWorkspaceCount: 2 }).ok, true);
     assert.equal(evaluateWorkspaceCreateLimit({ plan: "professional", ownedWorkspaceCount: 3 }).ok, false);
+  });
+
+  it("caps API keys per plan (P2: Studio 3, Agency 10, Start 0 via plan gate)", () => {
+    assert.equal(evaluateApiKeyCount({ plan: "starter", keyCount: 2 }).ok, true);
+    const over = evaluateApiKeyCount({ plan: "starter", keyCount: 3 });
+    assert.equal(over.ok, false);
+    if (!over.ok) assert.equal(over.code, PLAN_LIMIT_CODES.KEY_LIMIT);
+    assert.equal(evaluateApiKeyCount({ plan: "professional", keyCount: 9 }).ok, true);
+    assert.equal(evaluateApiKeyCount({ plan: "professional", keyCount: 10 }).ok, false);
+    assert.equal(evaluateApiKeyCount({ plan: "enterprise", keyCount: 24 }).ok, true);
+    assert.equal(PLAN_LIMITS.free.maxApiKeys, 0);
   });
 });

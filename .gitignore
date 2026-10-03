@@ -33,5 +33,4 @@ scratch/
 .idea/
 
 # Certification live evidence & reviewer reports
-evidence/
-
+/evidence/

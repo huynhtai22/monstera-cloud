@@ -7,7 +7,7 @@ import {
 } from "./authenticated-session";
 
 const suffix = `ccx-e2e-${Date.now()}-${process.pid}`;
-const DATE = "2026-09-04";
+const DATE = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const ALICE = { email: "alice@alpha-agency.test", password: "Pilot_Alpha_2026!" };
 const BOB = { email: "bob@beta-media.test", password: "Pilot_Beta_2026!" };
 
@@ -295,7 +295,7 @@ test.describe("client context navigation", () => {
     await expect(page).toHaveURL(/platform=google_ads/);
     await followSidebarLink(page, "Sources");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
-    await followSidebarLink(page, "Warehouse");
+    await followSidebarLink(page, "Data explorer");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await expect(page.getByText("Northwind Exclusive Campaign")).toBeVisible();
 

@@ -50,4 +50,35 @@ describe("CRON /api/cron/warehouse-refresh", () => {
     assert.equal(body.window.lookbackDays, 30);
     assert.equal(body.staleConnectionsCount, 1);
   });
+
+  it("coalesces an hourly workspace's source connections into bounded queue jobs", async () => {
+    const connections = Array.from({ length: 30 }, (_, index) => ({
+      id: `conn-${index}`,
+      provider: "meta_ads",
+    }));
+    const created: any[] = [];
+    (prisma.workspace.findMany as any) = async () => [{
+      id: "workspace-hourly",
+      ownerId: "owner",
+      plan: "enterprise",
+      providerAccess: [{ provider: "meta_ads" }],
+      connections,
+    }];
+    (prisma.connection.findMany as any) = async () => [];
+    (prisma as any).warehouseImportJob = {
+      findUnique: async () => null,
+      create: async ({ data }: any) => {
+        created.push(data);
+        return { ...data, createdAt: new Date(), updatedAt: new Date() };
+      },
+    };
+
+    const res = await GET(new Request("http://localhost:3000/api/cron/warehouse-refresh", {
+      headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+    }));
+    assert.equal(res.status, 200);
+    assert.equal(created.length, 2, "frequent and daily repair schedules each create one workspace job");
+    assert.deepEqual(created.map((job) => job.items.length), [30, 30]);
+    assert.ok(created.every((job) => job.idempotencyKey.startsWith("scheduled:workspace-hourly:")));
+  });
 });

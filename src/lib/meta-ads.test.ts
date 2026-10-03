@@ -136,8 +136,7 @@ describe("Meta Ads client telemetry & error handling", () => {
       assert.equal(capture.events[0].errorCategory, "rate_limited");
       assert.equal(capture.events[1].attempt, 2);
       assert.equal(capture.events[1].outcome, "success");
-      assert.equal(sleptMs.length, 2, "Expected proactive pause sleep and backoff sleep");
-      assert.equal(sleptMs[0], 15000, "First sleep was proactive pause");
+      assert.equal(sleptMs.length, 1, "Rate-limited request should only defer through retry backoff");
     } finally {
       capture.restore();
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
+import { recordLoginEvent } from "@/lib/login-telemetry";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { defaultSignupWorkspacePlan, getPlanLimits } from "@/lib/plan-config";
 
@@ -101,6 +102,9 @@ export async function POST(req: NextRequest) {
       });
       workspaces = [newWs];
     }
+
+    // P0 telemetry (fail-open): Sheets open visibility without enforcement.
+    await recordLoginEvent({ userId: user.id, method: "google-sheets", request: req });
 
     return NextResponse.json({
       email: user.email,

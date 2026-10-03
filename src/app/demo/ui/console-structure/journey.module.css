@@ -1,0 +1,27 @@
+.trigger{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid var(--color-line);border-radius:6px;background:var(--color-panel);color:var(--color-ink);font-size:11px;white-space:nowrap}
+.dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(460px,100%);height:100dvh;max-height:100dvh;max-width:100%;padding:28px;border:0;border-left:1px solid var(--color-line);background:var(--color-canvas);color:var(--color-ink);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#555 transparent}
+.dialog[open]{animation:arrive 240ms cubic-bezier(.2,.8,.2,1) both}
+.dialog::backdrop{background:#0008;animation:veil 160ms ease both}
+.dialog header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.dialog header button{padding:7px;border:1px solid var(--color-line);border-radius:6px;color:var(--color-ink-mute)}
+.eyebrow{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--color-ink-mute)}
+.dialog h2{font-size:28px;font-weight:500;letter-spacing:-1px;margin-top:8px}
+.scope{margin-top:16px;font-size:12px;color:var(--color-ink)}
+.intro,.note{font-size:12px;line-height:1.7;color:var(--color-ink-mute);margin-top:12px}
+.dialog .stages{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin-block:26px}
+.stages button{position:relative;display:flex;align-items:center;gap:14px;padding:12px;border:1px solid transparent;border-radius:8px;text-align:left;transition:background 160ms ease,border-color 160ms ease}
+.stages button:not(:last-child)::after{content:"";position:absolute;left:26px;top:44px;height:16px;width:1px;background:var(--color-line)}
+.step{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid var(--color-line);border-radius:8px;color:var(--color-ink-mute);font-size:11px;transition:background 240ms ease,border-color 240ms ease}
+.stages button[aria-pressed=true]{background:var(--color-panel);border-color:var(--color-line)}
+.stages button[aria-pressed=true] .step{background:color-mix(in srgb,var(--console-motion-accent) 12%,var(--color-panel));border-color:var(--console-motion-accent);color:var(--console-motion-accent)}
+.stages strong{display:block;font-size:13px;font-weight:500}.stages small{display:block;font-size:11px;color:var(--color-ink-mute);margin-top:4px}
+.evidence{padding:20px;border:1px solid var(--color-line);border-radius:10px;background:var(--color-panel);animation:evidence 160ms ease both}
+.evidence h3{font-size:17px;font-weight:500;line-height:1.4;margin-top:10px}.evidence p{font-size:12px;line-height:1.7;color:var(--color-ink-mute);margin-top:10px}
+.evidence dl{margin-block:18px}.evidence dl>div{padding:10px 0;border-top:1px solid var(--color-line)}.evidence dt{font-size:10px;color:var(--color-ink-mute)}.evidence dd{font-size:12px;margin-top:5px;overflow-wrap:anywhere}
+.evidence a{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px;padding:10px 0;color:var(--console-motion-accent)}
+.note{font-size:10px}.dialog button:focus-visible,.dialog a:focus-visible,.trigger:focus-visible{outline:2px solid var(--console-motion-accent);outline-offset:3px}
+@keyframes arrive{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes evidence{from{opacity:.6;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes veil{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.dialog[open],.dialog::backdrop,.evidence{animation:none}.stages button,.step{transition:none}}
+@media(max-width:639px){.dialog{padding:24px}}

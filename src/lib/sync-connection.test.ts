@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import prisma from "@/lib/prisma";
-import { syncConnectionData, calculateInclusiveDataWindowDays } from "./sync-connection";
+import { syncConnectionData, calculateInclusiveDataWindowDays, persistPreSyncConnectionFailure } from "./sync-connection";
 
 const TEST_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+type ConnectionUpdate = { data: Record<string, unknown>; where?: Record<string, unknown> };
 
 async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
   const originalTimeout = globalThis.setTimeout;
@@ -20,23 +21,30 @@ async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
 
 async function withSyncHarness<T>(
   fetchImpl: typeof fetch,
-  run: (updates: Array<{ data: Record<string, unknown> }>) => Promise<T>,
+  run: (updates: ConnectionUpdate[]) => Promise<T>,
+  options: { leaseBusy?: boolean; storedCredentials?: string; storedProvider?: string; storedWorkspaceId?: string } = {},
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
   const originalConnection = (prisma as any).connection;
   const originalTransaction = (prisma as any).$transaction;
   const originalSyncLock = (prisma as any).syncLock;
   const originalKey = process.env.ENCRYPTION_KEY;
-  const updates: Array<{ data: Record<string, unknown> }> = [];
+  const updates: ConnectionUpdate[] = [];
   process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
   globalThis.fetch = fetchImpl;
   (prisma as any).connection = {
     findUnique: async () => null,
+    findFirst: async ({ where }: any) => where.workspaceId === (options.storedWorkspaceId ?? "workspace-1")
+      ? {
+          credentials: options.storedCredentials ?? "stored-credentials",
+          provider: options.storedProvider ?? "google_ads",
+        }
+      : null,
     update: async (args: { data: Record<string, unknown> }) => {
       updates.push(args);
       return args;
     },
-    updateMany: async (args: { data: Record<string, unknown> }) => {
+    updateMany: async (args: ConnectionUpdate) => {
       updates.push(args);
       return { count: args.data && Object.keys(args.data).length >= 0 ? 1 : 0 };
     },
@@ -51,7 +59,7 @@ async function withSyncHarness<T>(
   };
   (prisma as any).$transaction = async (fn: any) =>
     fn({
-      $queryRawUnsafe: async () => [{ locked: true }],
+      $queryRawUnsafe: async () => [{ locked: !options.leaseBusy }],
       syncLock: {
         findUnique: async () => null,
         upsert: async (args: any) => ({ ...args.update, ...validLease }),
@@ -84,6 +92,129 @@ async function withSyncHarness<T>(
 const freshCredentials = { accessToken: "test-access-token", expiresAt: "2099-01-01T00:00:00.000Z" };
 
 describe("provider HTTP failures preserve sync correctness", () => {
+  it("persists pre-sync failures through the connection lease", async () => {
+    await withSyncHarness((async () => new Response("[]", { status: 200 })) as typeof fetch, async (updates) => {
+      await persistPreSyncConnectionFailure({
+        connectionId: "connection-with-invalid-credentials",
+        workspaceId: "workspace-1",
+        provider: "google_ads",
+        credentials: "stored-credentials",
+        error: "Credential decryption failed",
+      });
+
+      assert.equal(updates.length, 1);
+      assert.deepEqual(updates[0].data, { lastError: "[failed] Credential decryption failed" });
+      assert.deepEqual(updates[0].where, {
+        id: "connection-with-invalid-credentials",
+        status: { not: "disconnected" },
+        credentials: "stored-credentials",
+        workspaceId: "workspace-1",
+      });
+    });
+  });
+
+  it("does not persist a pre-sync failure while another worker owns the lease", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-owned-by-active-worker",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "stored-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { leaseBusy: true },
+    );
+  });
+
+  it("does not persist a stale credential failure after the source credentials are repaired", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-with-repaired-credentials",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "old-invalid-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { storedCredentials: "new-repaired-credentials" },
+    );
+  });
+
+  it("does not persist a failure for a connection from another workspace", async () => {
+    await withSyncHarness(
+      (async () => new Response("[]", { status: 200 })) as typeof fetch,
+      async (updates) => {
+        await persistPreSyncConnectionFailure({
+          connectionId: "connection-from-another-workspace",
+          workspaceId: "workspace-1",
+          provider: "google_ads",
+          credentials: "stored-credentials",
+          error: "Credential decryption failed",
+        });
+
+        assert.equal(updates.length, 0);
+      },
+      { storedWorkspaceId: "workspace-2" },
+    );
+  });
+
+  it("resolves manager roots before filtering selected leaves and never queries unselected siblings", async () => {
+    const queried: string[] = [];
+    await withSyncHarness((async (input, init) => {
+      const root = String(input).match(/customers\/([^/]+)\//)?.[1];
+      const query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
+      if (query.includes("customer_client")) return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
+      queried.push(root!); return Response.json([]);
+    }) as typeof fetch, async () => {
+      const result = await syncConnectionData({ connectionId: "google-selected", provider: "google_ads", credentials: { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"], extraFields: { selectedCustomerIds: ["202"] } }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(result.success, true); assert.deepEqual(queried, ["101"]); assert.deepEqual(result.children.map(child => child.id), ["101"]);
+    });
+  });
+  it("retries transient manager discovery using only the originally selected leaf", async () => {
+    let hierarchyRecovered = false;
+    const queried: string[] = [];
+    await withFastRetries(() => withSyncHarness((async (input, init) => {
+      const query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
+      if (query.includes("customer_client")) {
+        if (!hierarchyRecovered) return Response.json({ error: { code: 429, message: "RESOURCE_EXHAUSTED quota" } }, { status: 429 });
+        return Response.json([{ results: ["101", "202"].map(id => ({ customerClient: { id, manager: false, status: "ENABLED" } })) }]);
+      }
+      const customerId = String(input).match(/customers\/([^/]+)\//)?.[1];
+      assert.ok(customerId);
+      queried.push(customerId);
+      return Response.json([]);
+    }) as typeof fetch, async () => {
+      const credentials = { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] };
+      const first = await syncConnectionData({ connectionId: "google-transient-hierarchy", provider: "google_ads", credentials, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(first.success, false);
+      assert.deepEqual(first.children.map(child => ({ id: child.id, retryable: child.retryable })), [{ id: "101", retryable: true }]);
+      assert.deepEqual(queried, []);
+      hierarchyRecovered = true;
+      const retryIds = first.children.filter(child => !child.ok && child.retryable).map(child => child.id);
+      const recovered = await syncConnectionData({ connectionId: "google-transient-hierarchy", provider: "google_ads", credentials: { ...credentials, selectedCustomerIds: retryIds }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(recovered.success, true);
+      assert.deepEqual(queried, ["101"]);
+      assert.deepEqual(recovered.children.map(child => child.id), ["101"]);
+    }));
+  });
+  it("does not query a selected leaf that disappeared from its manager", async () => {
+    await withSyncHarness((async (_input, init) => {
+      assert.ok(JSON.parse(String(init?.body)).query.includes("customer_client"), "must not query metrics for missing leaf");
+      return Response.json([{ results: [{ customerClient: { id: "202", manager: false, status: "ENABLED" } }] }]);
+    }) as typeof fetch, async () => {
+      const result = await syncConnectionData({ connectionId: "google-revoked", provider: "google_ads", credentials: { ...freshCredentials, customerIds: ["999"], selectedCustomerIds: ["101"] }, workspaceId: "workspace-1", userPlan: "pilot" });
+      assert.equal(result.success, false); assert.equal(result.children[0].id, "101");
+    });
+  });
   it("keeps mixed Google customer outcomes partial and does not advance lastSyncAt after a 429", async () => {
     let calls = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {

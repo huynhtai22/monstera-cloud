@@ -102,7 +102,7 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
             if (!orMatch) match = false;
           }
           if (match) {
-            mockDb.set(id, { ...item, ...data, updatedAt: new Date() });
+            mockDb.set(id, { ...item, ...Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)), updatedAt: new Date() });
             count++;
           }
         }
@@ -151,6 +151,47 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
 
     const next = await createImportJob({ ...common, id: "tiktok-job-2" });
     assert.equal(next.id, "tiktok-job-2");
+  });
+
+  for (const provider of ["tiktok", "google_ads", "meta", "shopee", "lazada"]) {
+    for (const outcome of ["completed", "partial", "failed"] as const) {
+      it(`releases manual ${provider} key after ${outcome}, allowing another sync`, async () => {
+        const common = { workspaceId: "ws-manual", userId: "user-1", since: "2026-08-01", until: "2026-08-29",
+          items: [{ connectionId: "conn-manual" }], idempotencyKey: `manual-${provider}:conn-manual` };
+        const first = await createImportJob({ ...common, id: "manual-first" });
+        assert.equal((await createImportJob({ ...common, id: "manual-duplicate" })).id, first.id);
+        const claim = await claimImportJob(first.id);
+        await completeImportJob(first.id, claim.leaseId!, [], 0, outcome);
+        assert.equal(mockDb.get(first.id).idempotencyKey, null);
+        assert.equal((await createImportJob({ ...common, id: "manual-next" })).id, "manual-next");
+      });
+    }
+  }
+
+  it("retains a manual key during retry and releases it only on permanent failure", async () => {
+    const common = { workspaceId: "ws-manual", userId: "user-1", since: "2026-08-01", until: "2026-08-29",
+      items: [{ connectionId: "conn-manual" }], idempotencyKey: "manual-google_ads:conn-manual" };
+    const first = await createImportJob({ ...common, id: "retry-first" });
+    let claim = await claimImportJob(first.id);
+    await failImportJob(first.id, claim.leaseId!, "temporary");
+    assert.equal(mockDb.get(first.id).idempotencyKey, common.idempotencyKey);
+    assert.equal((await createImportJob({ ...common, id: "retry-duplicate" })).id, first.id);
+    mockDb.get(first.id).scheduledAt = new Date(0);
+    mockDb.get(first.id).retryCount = mockDb.get(first.id).maxRetries;
+    claim = await claimImportJob(first.id);
+    await failImportJob(first.id, claim.leaseId!, "permanent");
+    assert.equal(mockDb.get(first.id).idempotencyKey, null);
+    assert.equal((await createImportJob({ ...common, id: "retry-next" })).id, "retry-next");
+  });
+
+  it("preserves non-manual request idempotency after completion", async () => {
+    const common = { workspaceId: "ws-batch", userId: "user-1", since: "2026-08-01", until: "2026-08-29",
+      items: [{ connectionId: "conn-batch" }], idempotencyKey: "batch:original-request" };
+    const first = await createImportJob({ ...common, id: "batch-first" });
+    const claim = await claimImportJob(first.id);
+    await completeImportJob(first.id, claim.leaseId!, [], 0);
+    assert.equal(mockDb.get(first.id).idempotencyKey, common.idempotencyKey);
+    assert.equal((await createImportJob({ ...common, id: "batch-duplicate" })).id, first.id);
   });
 
   it("atomically claims a job with a lease and generates unique lease identity", async () => {
@@ -403,14 +444,16 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
       jobId,
       claim.leaseId!,
       [{ connectionId: "conn-1", accountId: "failed-account" }],
-      [{ connectionId: "conn-1", provider: "meta_ads", outcome: "partial", ok: false, retryable: true }],
+      [{ connectionId: "conn-1", provider: "meta_ads", outcome: "partial", ok: false, retryable: true, retryAfterMs: 180000 }],
       10,
       "Partial import: failed-account was rate limited",
     );
     assert.equal(requeued.status, "queued");
     assert.equal(requeued.retryCount, 1);
+    assert.ok(new Date(requeued.scheduledAt!).getTime() >= Date.now() + 179000, "Provider retry delay must dominate local backoff");
     assert.deepEqual(requeued.items, [{ connectionId: "conn-1", accountId: "failed-account" }]);
 
+    mockDb.get(jobId).scheduledAt = new Date(0);
     const retryClaim = await claimImportJob(jobId);
     const partial = await completeImportJob(
       jobId,

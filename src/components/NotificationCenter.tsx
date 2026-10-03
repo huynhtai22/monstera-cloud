@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, { useMemo, useState, useRef, useEffect, Suspense } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Bell, AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import type { OperationsSummary } from "@/lib/operations-summary";
+import { consoleNotifications } from "@/lib/console-notifications";
 import { cn } from "@/lib/utils";
 
 const fetcher = async (url: string) => {
@@ -14,20 +17,25 @@ const fetcher = async (url: string) => {
     return data;
 };
 
-type NotifItem = { id: string; title: string; detail: string; href?: string; tone: "error" | "warn" | "info" };
-
 export function NotificationCenter() {
+    return <Suspense fallback={null}><NotificationInbox /></Suspense>;
+}
+
+function NotificationInbox() {
     const { activeWorkspaceId } = useWorkspaceStore();
+    const { requestedRaw, hrefFor } = useClientContextNavigation();
     const [open, setOpen] = useState(false);
     const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
     const [isPanelVisible, setIsPanelVisible] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
-
-    const { data: workspaces } = useSWR("/api/workspaces", fetcher);
-    const { data: errLogs } = useSWR(
-        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}&status=error` : null,
-        fetcher
-    );
+    const query = new URLSearchParams();
+    if (activeWorkspaceId) query.set("workspaceId", activeWorkspaceId);
+    if (requestedRaw) query.set("clientId", requestedRaw);
+    const { data, error, isLoading, isValidating } = useSWR<OperationsSummary>(activeWorkspaceId ? `/api/operations/summary?${query}` : null, fetcher, { refreshInterval: 60_000, keepPreviousData: false });
+    const scoped = data?.workspaceId === activeWorkspaceId && (data?.clientContext?.client?.id ?? "all") === (requestedRaw || "all");
+    const items = useMemo(() => !error && scoped && data?.sections ? consoleNotifications(data) : [], [data, error, scoped]);
+    const unavailable = Boolean(error || (!isLoading && activeWorkspaceId && !scoped));
+    const checking = isLoading || isValidating || !activeWorkspaceId;
 
     useEffect(() => {
         if (open) {
@@ -49,32 +57,6 @@ export function NotificationCenter() {
         if (open) document.addEventListener("mousedown", onDoc);
         return () => document.removeEventListener("mousedown", onDoc);
     }, [open]);
-
-    const items: NotifItem[] = useMemo(() => {
-        const out: NotifItem[] = [];
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return out;
-        const ws = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
-        if (ws?.health?.failingConnections > 0) {
-            out.push({
-                id: `workspace-${ws.id}`,
-                title: `${ws.health.failingConnections} source${ws.health.failingConnections === 1 ? "" : "s"} need attention`,
-                detail: "Open Sources for diagnostics and reconnection.",
-                href: "/sources",
-                tone: "error",
-            });
-        }
-        const logs = (errLogs?.logs ?? []) as Array<{ id: string; errorMsg?: string; pipeline?: { name: string }; createdAt: string }>;
-        for (const l of logs.slice(0, 8)) {
-            out.push({
-                id: `log-${l.id}`,
-                title: `Sync failed: ${l.pipeline?.name ?? "Pipeline"}`,
-                detail: (l.errorMsg ?? "").slice(0, 140),
-                href: "/reports",
-                tone: "error",
-            });
-        }
-        return out.slice(0, 12);
-    }, [workspaces, activeWorkspaceId, errLogs]);
 
     const count = items.length;
 
@@ -114,15 +96,15 @@ export function NotificationCenter() {
                         </button>
                     </div>
                     <div className="max-h-[min(70vh,24rem)] overflow-y-auto p-1.5">
-                        {items.length === 0 ? (
+                        {unavailable || checking ? <div className="px-3 py-8 text-center text-xs text-ink-mute" role="status">{unavailable ? "Could not verify current issues. Open Operations to retry." : "Checking current issues…"}</div> : items.length === 0 ? (
                             <div className="flex flex-col items-center px-3 py-10 text-center">
                                 <CheckCircle2 className="mb-2 h-5 w-5 text-accent" strokeWidth={1.5} />
                                 <p className="text-sm font-medium text-ink">All clear</p>
-                                <p className="mt-1 text-xs text-ink-mute">No failing sources or sync errors right now.</p>
+                                <p className="mt-1 text-xs text-ink-mute">No next actions in the current scope.</p>
                             </div>
                         ) : (
                             <ul className="space-y-0.5">
-                                {items.map((it) => (
+                                {items.slice(0, 12).map((it) => (
                                     <li key={it.id}>
                                         {it.href ? (
                                             <Link
@@ -148,8 +130,8 @@ export function NotificationCenter() {
                         )}
                     </div>
                     <div className="border-t border-line px-3 py-2.5">
-                        <Link href="/reports" onClick={() => setOpen(false)} className="block text-center font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-ink-mute hover:text-ink">
-                            Open reports
+                        <Link href={hrefFor("/operations")} onClick={() => setOpen(false)} className="block text-center font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-ink-mute hover:text-ink">
+                            {items.length > 12 ? `View all ${items.length} actions in Operations` : "Open Operations"}
                         </Link>
                     </div>
                 </div>
