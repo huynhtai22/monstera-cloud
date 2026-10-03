@@ -9,6 +9,7 @@ import { clientContextHrefWithPending } from "@/lib/pending-query";
 import { usePendingNavigation } from "./client-context/PendingNavigationProvider";
 import { useState, useRef, useEffect } from "react";
 import {
+    X,
     LayoutGrid,
     DatabaseZap,
     Database,
@@ -76,6 +77,35 @@ export function Sidebar({
     previewDirectory,
     previewDirectories,
 }: SidebarProps) {
+    const sidebarElement = useRef<HTMLElement>(null);
+    const [mobile, setMobile] = useState(false);
+    useEffect(() => {
+        const media = window.matchMedia("(max-width: 1023px)");
+        const update = () => { setMobile(media.matches); if (!media.matches) setIsOpen?.(false); };
+        update(); media.addEventListener("change", update);
+        return () => media.removeEventListener("change", update);
+    }, [setIsOpen]);
+    useEffect(() => {
+        if (!mobile || !isOpen) return;
+        const previous = document.activeElement;
+        const overflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        const controls = () => [...(sidebarElement.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),select,input,[tabindex="0"]') ?? [])].filter(element => element.offsetParent !== null && !element.closest("[inert]"));
+        (controls()[0] ?? sidebarElement.current)?.focus();
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key === "Escape") { event.preventDefault(); setIsOpen?.(false); }
+            if (event.key !== "Tab") return;
+            const items = controls(), first = items[0], last = items.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        };
+        document.addEventListener("keydown", handleKey);
+        return () => {
+            document.body.style.overflow = overflow;
+            document.removeEventListener("keydown", handleKey);
+            if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+        };
+    }, [mobile, isOpen, setIsOpen]);
     const { data: session } = useSession();
     const currentPathname = usePathname();
     const pathname = previewPath ?? currentPathname;
@@ -213,6 +243,11 @@ export function Sidebar({
 
     return (
         <aside
+            ref={sidebarElement}
+            id="application-sidebar"
+            tabIndex={-1}
+            inert={mobile && !isOpen}
+            aria-hidden={mobile && !isOpen ? true : undefined}
             aria-label="Application sidebar"
             data-collapsed={collapsed}
             className={cn(
@@ -221,6 +256,7 @@ export function Sidebar({
                 isOpen ? "translate-x-0" : "-translate-x-full"
             )}
         >
+            <button type="button" aria-label="Close menu" onClick={() => setIsOpen?.(false)} className="absolute right-1 top-1 z-30 grid h-7 w-7 place-items-center rounded-md bg-panel text-ink-mute lg:hidden"><X className="h-4 w-4" aria-hidden /></button>
             {/* ── 1. Workspace Control ────────────────────────────────────────── */}
             <div ref={workspaceRef} className="relative z-20 border-b border-line px-3.5 py-3.5">
                 <button

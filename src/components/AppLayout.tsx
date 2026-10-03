@@ -127,13 +127,15 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         {!visualPreview && <SessionHeartbeat />}
         <div data-workspace-shell data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
-            <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
+            <div inert={isSidebarOpen} className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
                     <button
                         type="button"
                         onClick={() => setIsSidebarOpen(true)}
                         className="-ml-2 p-2 text-ink-mute hover:text-ink"
                         aria-label="Open menu"
+                        aria-expanded={isSidebarOpen}
+                        aria-controls="application-sidebar"
                     >
                         <Menu className="h-5 w-5" strokeWidth={1.5} />
                     </button>
@@ -171,6 +173,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
             />
 
             <div
+                inert={isSidebarOpen}
                 className={`relative flex min-w-0 flex-1 flex-col bg-canvas text-ink transition-[padding-left] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`}
             >
                 <div className="h-14 shrink-0 lg:hidden" />

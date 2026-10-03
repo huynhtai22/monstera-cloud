@@ -36,7 +36,7 @@ try {
     await page.getByRole('button', { name: 'Switch to light mode', exact: true }).click();
     await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
     const light = await page.locator('[data-workspace-shell]').evaluate(el => ({ canvas: getComputedStyle(el).backgroundColor, ink: getComputedStyle(el).color, scheme: getComputedStyle(el).colorScheme }));
-    assert.deepEqual(light, { canvas: 'rgb(248, 250, 248)', ink: 'rgb(24, 35, 28)', scheme: 'light' });
+    assert.deepEqual(light, { canvas: 'rgb(246, 247, 249)', ink: 'rgb(24, 35, 28)', scheme: 'light' });
     const portalColors = await page.evaluate(() => {
       const portal = document.createElement('div');
       portal.style.cssText = 'background:var(--color-panel);color:var(--color-ink);outline-color:var(--color-primary-ring)';

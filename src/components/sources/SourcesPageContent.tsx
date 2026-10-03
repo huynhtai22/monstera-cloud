@@ -1115,11 +1115,20 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             )}
 
             <div className="mb-6 flex flex-col gap-4 border-b border-line lg:flex-row lg:items-center lg:justify-between">
-                <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations">
+                <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations" onKeyDown={event => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="tab"]')];
+                    const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+                    if (index < 0) return;
+                    event.preventDefault();
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                    tabs[next]?.focus(); tabs[next]?.click();
+                }}>
                     <SlidingControlIndicator />
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
+                        tabIndex={activeFilter === 'connected' ? 0 : -1}
                         onClick={() => setActiveFilter('connected')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
@@ -1136,6 +1145,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'accounts'}
+                        tabIndex={activeFilter === 'accounts' ? 0 : -1}
                         onClick={() => setActiveFilter('accounts')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
@@ -1150,6 +1160,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'available'}
+                        tabIndex={activeFilter === 'available' ? 0 : -1}
                         onClick={() => setActiveFilter('available')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
@@ -1163,6 +1174,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'attention'}
+                        tabIndex={activeFilter === 'attention' ? 0 : -1}
                         onClick={() => setActiveFilter('attention')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
