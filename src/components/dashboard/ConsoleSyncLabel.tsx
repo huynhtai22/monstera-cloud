@@ -10,6 +10,7 @@ type ConsoleSyncLabelProps = {
   idleIcon?: ReactNode;
   className?: string;
   iconOnly?: boolean;
+  size?: "small" | "large";
 };
 
 /** Keep both states mounted so direction changes dissolve smoothly without moving the label. */
@@ -20,10 +21,11 @@ export function ConsoleSyncLabel({
   idleIcon = <RefreshCw size={14} />,
   className,
   iconOnly = false,
+  size = "small",
 }: ConsoleSyncLabelProps) {
   return (
     <span
-      className={cn(styles.root, iconOnly && styles.iconOnly, className)}
+      className={cn(styles.root, iconOnly && styles.iconOnly, size === "large" && styles.large, className)}
       data-busy={active}
     >
       <span className="sr-only">{active ? activeLabel : idleLabel}</span>
@@ -40,7 +42,7 @@ export function ConsoleSyncLabel({
       {!iconOnly && (
         <span className={styles.labels} aria-hidden="true">
           <span className={styles.idleText}>{idleLabel}</span>
-          <span className={cn(styles.busyText, "console-activity-text")}>
+          <span className={styles.busyText}>
             {activeLabel}
           </span>
         </span>

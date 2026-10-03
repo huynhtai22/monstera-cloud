@@ -186,12 +186,14 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
             kind: "advertiser",
             ok: false,
             retryable: true,
+            retryAfterMs: 180000,
             retryState: providerState,
           }],
         };
       }) as any,
     });
 
+    assert.equal(results[0].retryAfterMs, 180000, "Provider delay must survive batch normalization");
     assert.deepEqual(receivedState, providerState);
     assert.deepEqual(receivedCredentials.selectedAdvertiserIds, [providerState.advertiserId]);
     assert.deepEqual(receivedCredentials.extraFields.selectedAdvertiserIds, [providerState.advertiserId]);

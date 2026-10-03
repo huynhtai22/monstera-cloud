@@ -51,6 +51,11 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ReportScheduleDispatchAttempt",
   "WorkspaceAiPolicy",
   "AgentJob",
+  "AgentRun",
+  "AgentTask",
+  "AgentTaskConnection",
+  "AgentRunMessage",
+  "AgentRunEvent",
   "AgentTrace",
   "EvidencePackRecord",
   "ConnectorRunArtifact",
@@ -76,6 +81,18 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ClientFreshnessState",
   "WorkspaceSessionEvidence",
   "ApiKeyMutationReceipt",
+  // Agent-first console: direct workspace-owned responsibility and execution records
+  "AgentApproval",
+  "AgentAuthorization",
+  "AgentCase",
+  "AgentConsoleEvent",
+  "AgentEvaluation",
+  "AgentEventSequence",
+  "AgentEvidenceSnapshot",
+  "AgentNotificationOutbox",
+  "AgentOperation",
+  "AgentResponsibility",
+  "AgentResponsibilityScope",
 ]);
 
 /**

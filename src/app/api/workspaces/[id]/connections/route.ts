@@ -102,6 +102,7 @@ export async function GET(req: Request, context: { params: any }) {
                     connectionStatus: connection.status,
                     lastError: connection.lastError,
                     lastSyncAt: connection.lastSyncAt,
+                    syncAttemptAt: connection.updatedAt,
                     staleBefore,
                 })
                 : undefined,

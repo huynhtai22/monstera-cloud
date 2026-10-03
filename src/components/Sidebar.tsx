@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { consoleDirectory } from "@/lib/console-navigation";
 import { LogoMark } from "./Logo";
 import { usePathname, useSearchParams } from "next/navigation";
 import { shouldPropagateClientContext } from "@/lib/client-context";
@@ -8,6 +9,7 @@ import { clientContextHrefWithPending } from "@/lib/pending-query";
 import { usePendingNavigation } from "./client-context/PendingNavigationProvider";
 import { useState, useRef, useEffect } from "react";
 import {
+    X,
     LayoutGrid,
     DatabaseZap,
     Database,
@@ -46,6 +48,9 @@ const fetcher = async (url: string) => {
 const SIDEBAR_COLLAPSED_KEY = "monstera-sidebar-collapsed";
 
 interface SidebarProps {
+    previewPath?: string;
+    previewDirectory?: readonly { label: string; href: string }[];
+    previewDirectories?: Readonly<Record<string, readonly { label: string; href: string }[]>>;
     isOpen?: boolean;
     setIsOpen?: (v: boolean) => void;
     isDarkMode?: boolean;
@@ -66,11 +71,45 @@ export function Sidebar({
     setIsOpen,
     isDarkMode,
     toggleDarkMode,
-    collapsed = false,
+    collapsed: preferredCollapsed = false,
     setCollapsed,
+    previewPath,
+    previewDirectory,
+    previewDirectories,
 }: SidebarProps) {
+    const sidebarElement = useRef<HTMLElement>(null);
+    const [mobile, setMobile] = useState(false);
+    const collapsed = preferredCollapsed && !mobile;
+    useEffect(() => {
+        const media = window.matchMedia("(max-width: 1023px)");
+        const update = () => { setMobile(media.matches); if (!media.matches) setIsOpen?.(false); };
+        update(); media.addEventListener("change", update);
+        return () => media.removeEventListener("change", update);
+    }, [setIsOpen]);
+    useEffect(() => {
+        if (!mobile || !isOpen) return;
+        const previous = document.activeElement;
+        const overflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        const controls = () => [...(sidebarElement.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),select,input,[tabindex="0"]') ?? [])].filter(element => element.offsetParent !== null && !element.closest("[inert]"));
+        (controls()[0] ?? sidebarElement.current)?.focus();
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key === "Escape") { event.preventDefault(); setIsOpen?.(false); }
+            if (event.key !== "Tab") return;
+            const items = controls(), first = items[0], last = items.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        };
+        document.addEventListener("keydown", handleKey);
+        return () => {
+            document.body.style.overflow = overflow;
+            document.removeEventListener("keydown", handleKey);
+            if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+        };
+    }, [mobile, isOpen, setIsOpen]);
     const { data: session } = useSession();
-    const pathname = usePathname();
+    const currentPathname = usePathname();
+    const pathname = previewPath ?? currentPathname;
     const searchParams = useSearchParams();
     const requestedClientId = searchParams.get("clientId");
     // Pending-aware cross-surface links: an uncommitted page edit — including
@@ -90,6 +129,25 @@ export function Sidebar({
     };
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [expandedSubsections, setExpandedSubsections] = useState<Record<string, boolean>>(() => ({ [`/${pathname?.split("/")[1]}`]: true }));
+    const subsectionStorageKey = previewDirectories ? "monstera:preview:expanded-sections" : "monstera:console:expanded-sections";
+    const [subsectionsRestored, setSubsectionsRestored] = useState(false);
+    useEffect(() => {
+        try {
+            const saved = JSON.parse(sessionStorage.getItem(subsectionStorageKey) ?? "{}");
+            const entries = Object.entries(saved).filter((entry): entry is [string, boolean] => entry[0].startsWith("/") && typeof entry[1] === "boolean");
+            setExpandedSubsections(current => ({ ...current, ...Object.fromEntries(entries) }));
+        } catch { /* Keep navigation usable when storage is unavailable. */ }
+        setSubsectionsRestored(true);
+    }, [subsectionStorageKey]);
+    useEffect(() => {
+        if (!subsectionsRestored) return;
+        try { sessionStorage.setItem(subsectionStorageKey, JSON.stringify(expandedSubsections)); } catch { /* storage is optional */ }
+    }, [expandedSubsections, subsectionStorageKey, subsectionsRestored]);
+    useEffect(() => {
+        const section = `/${pathname?.split("/")[1]}`;
+        setExpandedSubsections(current => current[section] !== undefined ? current : { ...current, [section]: true });
+    }, [pathname]);
 
     const toggleCollapsed = () => {
         const next = !collapsed;
@@ -160,7 +218,7 @@ export function Sidebar({
         {
             label: "Data",
             items: [
-                { name: "Warehouse", href: "/explorer", icon: Database },
+                { name: "Data explorer", href: "/explorer", icon: Database },
                 { name: "Exports & API", href: "/exports", icon: Download },
             ],
         },
@@ -186,13 +244,20 @@ export function Sidebar({
 
     return (
         <aside
+            ref={sidebarElement}
+            id="application-sidebar"
+            tabIndex={-1}
+            inert={mobile && !isOpen}
+            aria-hidden={mobile && !isOpen ? true : undefined}
             aria-label="Application sidebar"
+            data-collapsed={collapsed}
             className={cn(
-                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
+                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[var(--console-duration-normal)] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
                 collapsed ? "w-[68px]" : "w-64",
                 isOpen ? "translate-x-0" : "-translate-x-full"
             )}
         >
+            <button type="button" aria-label="Close menu" onClick={() => setIsOpen?.(false)} className="absolute right-1 top-1 z-30 grid h-7 w-7 place-items-center rounded-md bg-panel text-ink-mute lg:hidden"><X className="h-4 w-4" aria-hidden /></button>
             {/* ── 1. Workspace Control ────────────────────────────────────────── */}
             <div ref={workspaceRef} className="relative z-20 border-b border-line px-3.5 py-3.5">
                 <button
@@ -204,7 +269,7 @@ export function Sidebar({
                     aria-label={collapsed ? `Active workspace: ${activeWorkspace?.name || "Workspace"}` : undefined}
                     className="group relative flex h-10 w-full items-center rounded-lg border border-line bg-panel transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas"
                 >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                    <div data-workspace-mark className="flex h-10 w-10 shrink-0 items-center justify-center">
                         <LogoMark className="h-6 w-6 shrink-0" />
                     </div>
 
@@ -339,9 +404,13 @@ export function Sidebar({
                             {group.items.map((item) => {
                                 const isActive = navIsActive(pathname, item.href);
                                 const href = navHref(item.href);
+                                const directory = previewDirectories?.[item.href] ?? (isActive ? previewDirectory : undefined) ?? consoleDirectory.find(section => section.path === item.href)?.entries;
+                                const hasSubsection = !collapsed && Boolean(directory && directory.length > 1);
+                                const subsectionOpen = expandedSubsections[item.href] ?? false;
+                                const subsectionId = `sidebar-subsection-${item.href.slice(1)}`;
                                 return (
+                                    <div key={item.href} className="relative">
                                     <Link
-                                        key={item.href}
                                         href={href}
                                         onClick={() => {
                                             setIsWorkspaceOpen(false);
@@ -351,6 +420,7 @@ export function Sidebar({
                                         aria-label={collapsed ? item.name : undefined}
                                         className={cn(
                                             "group relative flex h-9 w-full items-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas overflow-hidden",
+                                            hasSubsection && "pr-9",
                                             isActive
                                                 ? "bg-white/[0.06] text-ink font-semibold border border-line/40 shadow-sm"
                                                 : "text-ink-mute hover:bg-white/[0.04] hover:text-ink border border-transparent"
@@ -384,6 +454,24 @@ export function Sidebar({
                                             </div>
                                         )}
                                     </Link>
+                                    {hasSubsection ? <>
+                                        <button type="button" className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-md text-ink-mute transition-colors hover:bg-white/[0.06] hover:text-ink" aria-expanded={subsectionOpen} aria-controls={subsectionId} aria-label={`${subsectionOpen ? "Collapse" : "Expand"} ${item.name} subsection`} title={`${subsectionOpen ? "Collapse" : "Expand"} subsection`} onClick={() => setExpandedSubsections(current => ({ ...current, [item.href]: !subsectionOpen }))}>
+                                            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[var(--console-duration-normal)] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none", !subsectionOpen && "-rotate-90")} aria-hidden="true" />
+                                        </button>
+                                        <div className="grid transition-[grid-template-rows,opacity] duration-[var(--console-duration-normal)] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none" style={{ gridTemplateRows: subsectionOpen ? "1fr" : "0fr", opacity: subsectionOpen ? 1 : 0 }} inert={!subsectionOpen} aria-hidden={!subsectionOpen}>
+                                            <div className="min-h-0 overflow-hidden">
+                                        <nav id={subsectionId} className="ml-7 my-2 space-y-1 border-l border-line pl-3" aria-label={`${item.name} directory`}>
+                                            {directory?.map((entry, index) => {
+                                                const query = new URL(entry.href, "https://preview.invalid").searchParams;
+                                                const entryPath = new URL(entry.href, "https://console.invalid").pathname;
+                                                const selected = (previewDirectories ? isActive : navIsActive(pathname, entryPath)) && [...query.entries()].every(([key, value]) => searchParams.get(key) === value || (!searchParams.has(key) && index === 0));
+                                                return <Link key={entry.href} href={navHref(entry.href)} aria-current={selected ? "page" : undefined} className={cn("block rounded-md px-2 py-2 text-[11px]", selected ? "bg-panel text-ink" : "text-ink-mute hover:text-ink")} onClick={() => setIsOpen?.(false)}>{entry.label}</Link>;
+                                            })}
+                                        </nav>
+                                            </div>
+                                        </div>
+                                    </> : null}
+                                    </div>
                                 );
                             })}
                         </div>

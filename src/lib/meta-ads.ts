@@ -152,10 +152,24 @@ export class MetaAdsClient {
     url.searchParams.set('fields', 'id,name,currency,timezone_name,account_status');
     url.searchParams.set('access_token', accessToken);
 
-    const res = await fetch(url.toString());
-    const json = await res.json() as { data: Array<{ id: string; name: string; currency: string; timezone_name?: string; account_status: number }>; error?: { message: string } };
-    if (json.error) throw new Error(`Meta adaccounts error: ${(json as any).error.message}`);
-    return json.data ?? [];
+    type Account = { id: string; name: string; currency: string; timezone_name?: string; account_status: number };
+    const accounts = new Map<string, Account>();
+    const visited = new Set<string>();
+    let next: string | undefined = url.toString();
+    const signal = AbortSignal.timeout(15_000);
+    for (let page = 0; next; page++) {
+      if (page >= 20 || visited.has(next)) throw new Error("Meta account discovery pagination limit reached");
+      const pageUrl = new URL(next);
+      if (pageUrl.origin !== "https://graph.facebook.com" || pageUrl.username || pageUrl.password) throw new Error("Invalid Meta pagination URL");
+      visited.add(next);
+      const res = await fetch(pageUrl.toString(), { signal, redirect: "error" });
+      const json = await res.json() as { data?: Account[]; paging?: { next?: string }; error?: { message?: string } };
+      if (!res.ok || json.error) throw new Error("Meta ad account discovery failed");
+      if (!Array.isArray(json.data)) throw new Error("Invalid Meta account inventory");
+      for (const account of json.data) accounts.set(account.id, account);
+      next = json.paging?.next;
+    }
+    return [...accounts.values()];
   }
 }
 

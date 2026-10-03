@@ -1,20 +1,41 @@
 /* Visual treatment for the real app shell. Page behavior stays in its existing components. */
+.root[data-console-theme="light"] { color-scheme: light; }
+.root[data-console-theme="light"] > aside { background: #f3f4f6; }
+.root[data-console-theme="light"] :global([aria-selected="true"]),
+.root[data-console-theme="light"] :global([aria-current="page"]) { color: #286b40; }
+.root[data-console-theme="light"] :where(button, a):focus-visible {
+  outline: 2px solid #286b40;
+  outline-offset: 2px;
+}
+.root[data-console-theme="light"] :global(.text-emerald-300),
+.root[data-console-theme="light"] :global(.text-emerald-400),
+.root[data-console-theme="light"] :global(.text-green-400) { color: #286b40; }
+.root[data-console-theme="light"] :global(.text-sky-300),
+.root[data-console-theme="light"] :global(.text-sky-400) { color: var(--console-info-ink); }
+.root[data-console-theme="light"] :global(.text-rose-300),
+.root[data-console-theme="light"] :global(.text-rose-400),
+.root[data-console-theme="light"] :global(.text-red-400) { color: var(--console-error-ink); }
+.root[data-console-theme="light"] :global(.text-amber-200),
+.root[data-console-theme="light"] :global(.text-amber-300),
+.root[data-console-theme="light"] :global(.text-amber-400) { color: var(--console-warning-ink); }
+.root[data-console-theme="dark"] { color-scheme: dark; }
 .root[data-console-theme="dark"] {
   --color-canvas: #0a0a0a;
-  --color-panel: #111111;
-  --color-line: #2a2a2a;
+  --color-panel: #141414;
+  --console-surface-raised: #1c1c1c;
+  --color-line: #282828;
   --color-ink: #ededed;
-  --color-ink-mute: #969696;
+  --color-ink-mute: #adadad;
   --color-primary: #ededed;
   --color-primary-foreground: #171717;
   --color-primary-hover: #ffffff;
-  --color-surface-muted: #161616;
+  --color-surface-muted: #1c1c1c;
   --ui-bg-rgb: 17 17 17;
   --ui-fg-rgb: 237 237 237;
   --ui-border-rgb: 42 42 42;
   --ui-primary-rgb: 237 237 237;
   --ui-primary-foreground-rgb: 23 23 23;
-  --console-motion-accent: #86c99b;
+  --console-motion-accent: var(--console-brand-green);
   --shadow-card: 0 1px 0 #ffffff04;
 }
 .root[data-console-theme="dark"] > aside {
@@ -34,7 +55,7 @@
   border-color: color-mix(in srgb, var(--color-ink) 20%, var(--color-line));
 }
 .root [data-console-button="primary"] {
-  --console-motion-accent: #39764c;
+  --console-motion-accent: #6b6b6b;
   border-color: var(--color-primary);
 }
 .root main :global(.console-page) > :where(header, div) > h1,
@@ -145,12 +166,12 @@
    owned by the page components. */
 .root[data-console-theme="dark"] {
   --color-canvas: #0a0a0a;
-  --color-panel: #111111;
-  --color-line: #2a2a2a;
+  --color-panel: #141414;
+  --color-line: #282828;
   --color-ink: #ededed;
-  --color-ink-mute: #969696;
-  --color-surface-muted: #161616;
-  --console-motion-accent: #86c99b;
+  --color-ink-mute: #adadad;
+  --color-surface-muted: #1c1c1c;
+  --console-motion-accent: var(--console-brand-green);
   --shadow-card: 0 1px 0 #ffffff05;
 }
 .root[data-console-theme="dark"] > aside {
@@ -158,9 +179,9 @@
 }
 .root[data-console-theme="dark"] main :global(.console-page),
 .root[data-console-theme="dark"] main :global([data-console-page="true"]) {
-  --console-surface-raised: #111111;
-  --console-surface-muted: #161616;
-  --console-line-soft: #2a2a2a;
+  --console-surface-raised: #181818;
+  --console-surface-muted: #1c1c1c;
+  --console-line-soft: #282828;
   color: var(--color-ink);
 }
 .root main :global(.console-page) :where(h1, h2, h3) {
@@ -226,7 +247,7 @@
 }
 .root[data-console-theme="dark"] main :global(.console-page) :where(.console-scorecard) {
   border-color: var(--console-line-soft);
-  background: linear-gradient(145deg, #171717, #101010 72%);
+  background: linear-gradient(145deg, #1c1c1c, #141414 72%);
 }
 .root[data-console-theme="dark"] main :global(.console-page) :where(.console-scorecard:hover) {
   border-color: color-mix(in srgb, var(--console-motion-accent) 34%, var(--color-line));
@@ -289,7 +310,7 @@
 }
 .root main :global([data-console-destinations="true"] > div) {
   border-radius: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 2%, var(--color-panel)), var(--color-panel) 76%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)), var(--color-panel) 76%);
   box-shadow: inset 0 1px 0 #ffffff05;
 }
 .root main :global([data-console-section="sources"] .console-section-heading),
@@ -302,7 +323,7 @@
 }
 .root main :global([data-console-section="sources"] .console-source-summary > div) {
   min-width: 0;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 2%, var(--color-panel)), var(--color-panel) 78%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)), var(--color-panel) 78%);
 }
 .root main :global([data-console-section="sources"] .console-source-tabs > [role="tab"]) {
   margin-bottom: -1px;
@@ -315,7 +336,7 @@
   transition: color 260ms ease, border-color 320ms ease;
 }
 .root main :global([data-console-section="sources"] .console-source-tabs > [role="tab"][aria-selected="true"]) {
-  border-bottom-color: #86c99b;
+  border-bottom-color: var(--console-brand-green);
   color: var(--color-ink);
 }
 .root main :global([data-console-section="sources"] .console-source-layout) {
@@ -358,7 +379,7 @@
 }
 .root main :global([data-console-warehouse-filters="true"]) {
   border-radius: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 2%, var(--color-panel)), var(--color-panel) 78%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-ink) 3%, var(--color-panel)), var(--color-panel) 78%);
   box-shadow: inset 0 1px 0 #ffffff04;
 }
 .root main :global([data-console-warehouse-summary="true"] .console-scorecard) {
@@ -388,3 +409,66 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.root { --console-duration-fast: 150ms; --console-duration-normal: 240ms; --console-duration-slow: 360ms; --console-ease: cubic-bezier(.2,.8,.2,1); }
+.root main { padding-bottom: 32px; }
+.root :global(.console-route-stage) { position: relative; }
+.root :global(.console-route-enter) { animation: consoleRouteIn var(--console-duration-normal) var(--console-ease) both; }
+.root :global(.console-route-exit) { position: absolute; inset: 0; pointer-events: none; animation: consoleRouteOut var(--console-duration-fast) var(--console-ease) both; }
+.root :global(.console-sliding-control) { position: relative; }
+.root :global(.console-sliding-indicator) { position: absolute; bottom: 0; left: 0; width: 1px; height: 2px; border-radius: 2px; background: var(--console-brand-green); transform-origin: left; pointer-events: none; transition: transform var(--console-duration-normal) var(--console-ease), opacity var(--console-duration-fast) var(--console-ease); }
+@keyframes consoleRouteIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes consoleRouteOut { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .root :global(.console-route-enter), .root :global(.console-route-exit) { animation: none; } .root :global(.console-route-exit) { display: none; } .root :global(.console-sliding-indicator) { transition: none; } }
+
+@media (min-width: 1100px) {
+  .root :global(.console-source-list) :global([data-source-connection]) > div:last-child { width: 380px; display: grid; grid-template-columns: 132px 232px; gap: 16px; }
+}
+.root :global(.console-source-list) :global([aria-label="Duplicate connections"]) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+
+.root :global(.console-activity-text) { background: none; -webkit-text-fill-color: currentColor; animation: consoleWorkText var(--console-duration-slow) var(--console-ease) infinite alternate; }
+@keyframes consoleWorkText { from { opacity: .65; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .root :global(.console-activity-text) { animation: none; } }
+
+.root :global([aria-selected="true"]), .root :global([aria-checked="true"]), .root :global([aria-current="page"]) { color: var(--console-brand-green); }
+
+.root main :global(.console-source-list [aria-label="Connection view"] button[aria-pressed="true"]) {
+  background-color: var(--console-brand-green);
+  color: #101010;
+}
+
+/* Light navigation uses neutral selection; green remains for actions and status. */
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) {
+  background: #e4e7eb; color: #202124; border-color: #d2d6dc; box-shadow: inset 3px 0 #5f6368;
+}
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) svg { color: #202124; }
+
+.root[data-console-theme="light"] > aside :where(button, a):focus-visible {
+  outline-color: #5f6368;
+}
+
+.root[data-console-theme="light"] main :global([aria-pressed="true"]),
+.root[data-console-theme="light"] main :global([data-state="active"]) { background-color: #e3f0e7; color: #245e38; border-color: #c1d9c9; }
+.root[data-console-theme="light"] main :global(.console-source-list [aria-label="Connection view"] button[aria-pressed="true"]) { background-color: #e3f0e7; color: #245e38; }
+.root[data-console-theme="light"] main :global(thead th) { background: var(--color-surface-muted); color: var(--color-ink-mute); }
+.root[data-console-theme="light"] main :global(.console-scorecard),
+.root[data-console-theme="light"] main :global(.console-source-summary > div) { background: var(--color-panel); }
+
+.root :where(button, a, input, select, textarea) {
+  transition-timing-function: var(--console-ease);
+  transition-duration: var(--console-duration-fast);
+}
+.root :global([data-console-settings-panel="true"]),
+.root :global([data-console-feedback]) { animation: consolePanelSettle var(--console-duration-normal) var(--console-ease) both; }
+.root :global(.console-source-tabs > [role="tab"][aria-selected="true"]) { border-bottom-color: transparent !important; }
+@keyframes consolePanelSettle { from { opacity: .8; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .root :where(button, a, input, select, textarea),
+  .root :global([data-console-settings-panel="true"]),
+  .root :global([data-console-feedback]) { animation: none; transition: none; }
+}
+
+/* Light shell: navigation recedes; work surfaces and controls remain crisp. */
+.root[data-console-theme="light"] main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { background-color: var(--color-panel); }
+.root[data-console-theme="light"] :global(.console-sliding-indicator) { background: var(--color-accent); }
+.root[data-console-theme="light"] main :global(.console-source-tabs > [role="tab"][aria-selected="true"]) { color: var(--color-accent); }

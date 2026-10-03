@@ -1092,9 +1092,9 @@ export function WarehouseWorkbench() {
   return (
     <div data-console-warehouse="true" className="flex flex-col gap-6">
       {/* ─── 1. HEADER ─── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div data-console-page-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Warehouse</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Data explorer</h1>
           <p className="mt-1 text-sm text-ink-mute">
             Unified performance data across connected sources.
           </p>
@@ -1126,12 +1126,7 @@ export function WarehouseWorkbench() {
       </div>
 
       <Suspense fallback={null}>
-        <AnalystPane
-          selectedClientId={selectedClientId}
-          selectedClientName={selectedClientName}
-          startDate={startDate}
-          endDate={endDate}
-        />
+        <AnalystPane />
       </Suspense>
 
       {/* ─── 2. FILTERS ─── */}

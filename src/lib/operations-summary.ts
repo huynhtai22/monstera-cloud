@@ -417,10 +417,12 @@ export type FreshnessRow = {
   lastError: string | null;
   lastSyncAt: Date | null;
   lastDataThrough: Date | null;
+  syncAttemptAt?: Date | null;
   isSyncing?: boolean;
 };
 
 const SOURCE_HEALTH_STATES: SourceHealthState[] = [
+  "stuck",
   "fresh",
   "stale",
   "error",
@@ -448,7 +450,9 @@ export function summarizeFreshness(
       connectionStatus: row.status,
       lastError: row.lastError,
       lastSyncAt: row.lastSyncAt,
+      syncAttemptAt: row.syncAttemptAt,
       isSyncing: row.isSyncing,
+      now: options.now,
       staleBefore,
     });
     totals[state] += 1;
@@ -930,9 +934,10 @@ async function loadFreshness(
         lastError: true,
         lastSyncAt: true,
         lastDataThrough: true,
+        updatedAt: true,
       },
     });
-    const full = summarizeFreshness(rows, { now, limit: rows.length });
+    const full = summarizeFreshness(rows.map((row) => ({ ...row, syncAttemptAt: row.updatedAt })), { now, limit: rows.length });
     const attentionCount = full.attention.length;
     const data: FreshnessData = {
       ...full,
