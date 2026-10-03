@@ -1,3 +1,5 @@
+import { onboardingGoal } from "./onboarding-goals";
+import { savedRunGoal } from "./saved-goal";
 import prisma from "@/lib/prisma";
 import { AgentError, CreateRunSchema, MessageSchema, VersionSchema, WorkProfileSchema } from "./contracts";
 import type { AgentScope } from "./contracts";
@@ -32,7 +34,8 @@ export async function createOrResumeOnboardingRun(userId: string, input: unknown
     const run = await tx.agentRun.create({
       data: { workspaceId: scope.workspaceId, initiatorUserId: userId, clientId: parsed.clientId, kind: "onboarding", resumeKey },
     });
-    await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: run.id, type: "run_created", payload: { kind: "onboarding" } });
+    const profile = await tx.user.findUnique({ where: { id: userId }, select: { workContext: true } });
+    await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: run.id, type: "run_created", payload: { kind: "onboarding", goalId: onboardingGoal(profile?.workContext)?.id ?? null } });
     return { run: await tx.agentRun.findUniqueOrThrow({ where: { workspaceId_id: { workspaceId: scope.workspaceId, id: run.id } } }), created: true };
   });
 }
@@ -75,7 +78,7 @@ async function continueCompletedOnboarding(scope: AgentScope, completedRunId: st
     const deferred = copyDeferred ? await tx.agentTask.findMany({ where: { workspaceId: scope.workspaceId, runId: source.id, state: "deferred" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, provider: true } }) : [];
     if (copyDeferred && !deferred.length) throw new AgentError("no_deferred_sources", "There are no saved sources to continue");
     const run = await tx.agentRun.create({ data: { workspaceId: scope.workspaceId, initiatorUserId: scope.userId, kind: "onboarding", clientId: source.clientId, resumeKey, createdAt: new Date(Math.max(Date.now(), source.createdAt.getTime() + 1)) } });
-    await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: run.id, type: "run_created", payload: { kind: "onboarding", previousRunId: source.id } });
+    await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: run.id, type: "run_created", payload: { kind: "onboarding", previousRunId: source.id, goalId: (await savedRunGoal(tx, scope.workspaceId, source.id))?.id ?? null } });
     for (const task of deferred) {
       const next = await tx.agentTask.create({ data: { workspaceId: scope.workspaceId, runId: run.id, taskKey: `connect:${task.provider}`, provider: task.provider } });
       await appendAgentEvent(tx, { workspaceId: scope.workspaceId, runId: run.id, taskId: next.id, type: "task_created", payload: { provider: task.provider, previousTaskId: task.id } });
@@ -91,7 +94,7 @@ export async function getAgentRun(scope: AgentScope, runId: string, afterSequenc
     const tasks = await tx.agentTask.findMany({ where: { workspaceId: scope.workspaceId, runId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], include: { connections: true } });
     const messages = await tx.agentRunMessage.findMany({ where: { workspaceId: scope.workspaceId, runId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50 });
     const events = await tx.agentRunEvent.findMany({ where: { workspaceId: scope.workspaceId, runId, sequence: { gt: afterSequence } }, orderBy: { sequence: "asc" }, take: 100 });
-    return { run, tasks, messages: messages.reverse(), events,
+    return { run: { ...run, goal: await savedRunGoal(tx, scope.workspaceId, runId) }, tasks, messages: messages.reverse(), events,
       lastSequence: run.lastEventSequence,
       nextSequence: events.at(-1)?.sequence ?? afterSequence,
       hasMoreEvents: (events.at(-1)?.sequence ?? afterSequence) < run.lastEventSequence,

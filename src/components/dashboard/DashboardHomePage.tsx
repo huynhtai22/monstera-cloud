@@ -4,6 +4,7 @@ import React, { useState, useCallback } from "react";
 import useSWR from "swr";
 import { AlertTriangle } from "lucide-react";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
+import { AutomaticFeatureReminder } from "../console/AutomaticFeatureReminder";
 import { DashboardHandoff } from "./DashboardHandoff";
 import { useWorkspaceStartupActions } from "../WorkspaceStartup";
 import { PageShell } from "@/components/ui/PageShell";
@@ -201,6 +202,7 @@ export function DashboardHomePage() {
 
   return (
     <DashboardHandoff ready>
+      <AutomaticFeatureReminder workspaceId={workspaceId!} enabled={overview.overallStatus.state === "healthy" && !isUpdating && !error && !fixTarget} />
       <ConsoleOverview
         overview={overview}
         isUpdating={isUpdating}

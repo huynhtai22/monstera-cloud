@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { flushSync } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import { ConsoleRouteTransition } from './console/ConsoleMotion';
 import { ConsoleSupportControl } from './LiveChatWidget';
@@ -86,32 +87,57 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         } catch {}
     }, []);
 
-    // Sync .dark on <html> and persist; skip until initial read above has run so we don't flash light.
-    useEffect(() => {
+    // Apply shell, portal tokens and Tailwind theme in the same commit, before paint.
+    // Restoring a saved preference is immediate; only an explicit toggle animates.
+    useLayoutEffect(() => {
         if (!themeReady.current) return;
         const root = document.documentElement;
         root.dataset.consoleTheme = isDarkMode ? "dark" : "light";
-        root.classList.add("disable-transitions");
-        requestAnimationFrame(() => {
-            if (isDarkMode) {
-                root.classList.add("dark");
-            } else {
-                root.classList.remove("dark");
-            }
-            try {
-                localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "dark" : "light");
-            } catch {
-                /* ignore quota / private mode */
-            }
-            requestAnimationFrame(() => {
-                root.classList.remove("disable-transitions");
-            });
-        });
+        root.classList.toggle("dark", isDarkMode);
+        try { localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "dark" : "light"); }
+        catch { /* private mode / storage unavailable */ }
     }, [isDarkMode]);
 
-    useEffect(() => () => { delete document.documentElement.dataset.consoleTheme; }, []);
+    const themeTransition = useRef<ViewTransition | null>(null);
+    const themeFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+        themeTransition.current?.skipTransition();
+        if (themeFallbackTimer.current) clearTimeout(themeFallbackTimer.current);
+        const root = document.documentElement;
+        delete root.dataset.consoleTheme;
+        delete root.dataset.consoleThemeMotion;
+    }, []);
 
-    const toggleDarkMode = () => setIsDarkMode((v) => !v);
+    const toggleDarkMode = () => {
+        const root = document.documentElement;
+        themeTransition.current?.skipTransition();
+        if (themeFallbackTimer.current) clearTimeout(themeFallbackTimer.current);
+        const apply = () => flushSync(() => setIsDarkMode((value) => !value));
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            delete root.dataset.consoleThemeMotion;
+            apply();
+            return;
+        }
+        if (typeof document.startViewTransition === "function") {
+            root.dataset.consoleThemeMotion = "crossfade";
+            const transition = document.startViewTransition(apply);
+            themeTransition.current = transition;
+            // A newer toggle owns cleanup when switching quickly.
+            void transition.finished.catch(() => {}).finally(() => {
+                if (themeTransition.current === transition) {
+                    themeTransition.current = null;
+                    delete root.dataset.consoleThemeMotion;
+                }
+            });
+        } else {
+            root.dataset.consoleThemeMotion = "colors";
+            apply();
+            themeFallbackTimer.current = setTimeout(() => {
+                delete root.dataset.consoleThemeMotion;
+                themeFallbackTimer.current = null;
+            }, 320);
+        }
+    };
 
     useEffect(() => {
         if (status !== "authenticated" || !pathname) return;
@@ -127,13 +153,15 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
         {!visualPreview && <SessionHeartbeat />}
         <div data-workspace-shell data-console-theme={isDarkMode ? "dark" : "light"} aria-busy={loading} inert={loading} className={`${consoleTheme.root} flex min-h-screen bg-canvas font-sans text-ink`}>
             {/* Mobile Header (only visible on small screens) */}
-            <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
+            <div inert={isSidebarOpen} className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
                     <button
                         type="button"
                         onClick={() => setIsSidebarOpen(true)}
                         className="-ml-2 p-2 text-ink-mute hover:text-ink"
                         aria-label="Open menu"
+                        aria-expanded={isSidebarOpen}
+                        aria-controls="application-sidebar"
                     >
                         <Menu className="h-5 w-5" strokeWidth={1.5} />
                     </button>
@@ -171,6 +199,7 @@ export function AppLayout({ children, visualPreview = false, previewTitle = "Das
             />
 
             <div
+                inert={isSidebarOpen}
                 className={`relative flex min-w-0 flex-1 flex-col bg-canvas text-ink transition-[padding-left] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`}
             >
                 <div className="h-14 shrink-0 lg:hidden" />

@@ -262,10 +262,10 @@ export const IntegrationCard = React.memo(function IntegrationCard({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onConnect(integration); }}
-            className="group/cta inline-flex w-full items-center justify-between rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm font-semibold text-ink transition-colors duration-150 hover:border-white/20 hover:bg-white/[0.04] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="group/cta inline-flex w-full items-center justify-between rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm font-semibold text-ink transition-colors duration-150 hover:border-ink-mute hover:bg-surface-muted hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/30"
           >
             <span>Connect {integration.name}</span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-ink-mute group-hover/cta:text-white group-hover/cta:translate-x-0.5 transition-all duration-150" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-ink-mute group-hover/cta:text-ink group-hover/cta:translate-x-0.5 transition-all duration-150" />
           </button>
         )}
       </div>

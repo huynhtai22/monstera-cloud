@@ -14,7 +14,9 @@ import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { trackEvent } from "@/lib/analytics-events";
 import { useMounted } from "@/hooks/useMounted";
 import { LogoMark } from "@/components/Logo";
+import { CONSOLE_MOTION } from "@/lib/console-motion";
 import styles from "./ConnectSourceModal.module.css";
+import { ReportingJourneyMotion } from "./onboarding/ReportingJourneyMotion";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -77,8 +79,8 @@ const PICKER_DESCRIPTION: Record<string, string> = {
     amazon: "Sales, orders, and inventory.",
 };
 
-const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
-const PANEL_DURATION_MS = 280;
+const PANEL_EASE = CONSOLE_MOTION.easing;
+const PANEL_DURATION_MS = CONSOLE_MOTION.normal;
 
 export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [], previewState, previewMode = false }: ConnectSourceModalProps) {
     const mounted = useMounted();
@@ -127,7 +129,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     }, [isOpen, displayPhase]);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!shouldRender) return;
         previousActiveElement.current = document.activeElement;
         const timer = setTimeout(() => {
             dialogRef.current?.focus();
@@ -138,7 +140,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 previousActiveElement.current.focus();
             }
         };
-    }, [isOpen]);
+    }, [shouldRender]);
 
     useEffect(() => {
         if (isOpen) {
@@ -163,24 +165,25 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     }, []);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!shouldRender) return;
         const prev = document.body.style.overflow;
         document.body.style.overflow = "hidden";
         return () => {
             document.body.style.overflow = prev;
         };
-    }, [isOpen]);
+    }, [shouldRender]);
 
     useEffect(() => {
         if (isOpen) {
             setShouldRender(true);
+            let settleFrame = 0;
             const raf = requestAnimationFrame(() => {
-                requestAnimationFrame(() => setIsVisible(true));
+                settleFrame = requestAnimationFrame(() => setIsVisible(true));
             });
-            return () => cancelAnimationFrame(raf);
+            return () => { cancelAnimationFrame(raf); cancelAnimationFrame(settleFrame); };
         }
         setIsVisible(false);
-        const t = setTimeout(() => setShouldRender(false), PANEL_DURATION_MS);
+        const t = setTimeout(() => setShouldRender(false), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PANEL_DURATION_MS);
         return () => clearTimeout(t);
     }, [isOpen]);
 
@@ -302,21 +305,21 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
 
     const dialogMotion = cn(
         "relative flex w-full max-h-[90dvh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-[0_32px_100px_#0009] outline-none",
-        "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none motion-reduce:transform-none",
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+        "transition-[opacity,transform] duration-[var(--console-duration-normal)] motion-reduce:transition-none motion-reduce:transform-none",
+        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
     );
 
     const overlay = (
         <div
             className={cn(
                 "fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6",
-                !isVisible && "pointer-events-none"
+                "pointer-events-auto"
             )}
         >
             <div
                 className={cn(
-                    "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
-                    "transition-opacity duration-200 ease-out motion-reduce:transition-none",
+                    styles.veil, "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
+                    "transition-opacity duration-[var(--console-duration-fast)] ease-out motion-reduce:transition-none",
                     isVisible ? "opacity-100" : "opacity-0"
                 )}
                 onClick={handleClose}
@@ -327,12 +330,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     ref={dialogRef}
                     onKeyDown={handleKeyDown}
                     onClick={(e) => e.stopPropagation()}
+                    inert={!isOpen}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
                     className={cn(dialogMotion, styles.surface, "max-w-[640px]")}
-                    style={{ transitionTimingFunction: PANEL_EASE }}
+                    style={{ transitionTimingFunction: PANEL_EASE, transitionDuration: `${isVisible ? CONSOLE_MOTION.slow : PANEL_DURATION_MS}ms` }}
                 >
                     <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] px-6 pb-5 pt-6 sm:px-8 sm:pt-7">
                         <div className="min-w-0">
@@ -399,12 +403,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     ref={dialogRef}
                     onKeyDown={handleKeyDown}
                     onClick={(e) => e.stopPropagation()}
+                    inert={!isOpen}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="connect-source-modal-title"
                     tabIndex={-1}
                     className={cn(dialogMotion, styles.surface, styles.consent, displayPhase && styles.connecting, "max-w-[590px]")}
-                    style={{ transitionTimingFunction: PANEL_EASE }}
+                    style={{ transitionTimingFunction: PANEL_EASE, transitionDuration: `${isVisible ? CONSOLE_MOTION.slow : PANEL_DURATION_MS}ms` }}
                 >
                     <div className="flex items-center justify-between px-6 pt-5 sm:px-8">
                         <div className="flex items-center gap-2.5">
@@ -417,14 +422,10 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-5 sm:px-8">
-                        <div className={styles.visual} aria-hidden="true">
-                            <div className={styles.node}><IntegrationMark src={logoSrc} alt="" size="lg" /></div>
-                            <div className={styles.bridge}><span /></div>
-                            <div className={cn(styles.node, styles.monsteraNode)}><LogoMark className="h-full w-full" /></div>
-                        </div>
+                        <ReportingJourneyMotion compact visual={{ step: "connect", provider: id, logoSrc, running: Boolean(displayPhase) }} />
 
                         <div className={cn(styles.waitingPanel, displayPhase && styles.waitingPanelActive)} aria-hidden={!displayPhase} inert={!displayPhase} role={displayPhase ? "status" : undefined} aria-live={displayPhase ? "polite" : undefined}>
-                            <div className="pb-4 text-left">
+                            <div className="pb-4 text-center">
                                 <p className={styles.statusBadge}><span className={styles.statusDot} aria-hidden="true" />{displayPhase === "preparing" ? "Preparing secure connection" : "Opening secure sign-in"}</p>
                                 <h3 id={displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white">
                                     {displayPhase === "preparing" ? "Preparing your connection" : `Opening ${name}`}
@@ -440,9 +441,10 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         </div>
 
                         <div className={cn(styles.idlePanel, displayPhase && styles.idlePanelHidden)} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
-                                <div className="text-left">
+                            <div className={styles.phaseBody}>
+                                <div className={styles.intro}>
                                     <h3 id={!displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white sm:text-[30px]">Connect {name} to Monstera Cloud</h3>
-                                    <p className="mt-3 max-w-[420px] text-[14px] leading-[1.6] text-[#afb8b0]">
+                                    <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-[1.6] text-[#afb8b0]">
                                         {connectDescription}
                                     </p>
                                 </div>
@@ -465,11 +467,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 )}
 
                                 {!integration && draftPick && <button type="button" onClick={() => setDraftPick(null)} className="mt-4 text-[11px] text-[#86c99b] hover:text-white">Choose a different source</button>}
-
+                            </div>
                         </div>
                     </div>
 
                     <div className={cn(styles.footer, displayPhase && styles.footerHidden, "px-6 pb-7 sm:px-8")} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
+                            <div className={styles.phaseBody}>
                             <div className={styles.actions}>
                                 <button type="button" onClick={handleClose} className={styles.cancel}>Cancel</button>
                                 <button type="button" onClick={handleAuthenticate} aria-busy={isProcessing} disabled={isProcessing || oauthPrimaryDisabled} className={styles.continue}>
@@ -477,6 +480,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 </button>
                             </div>
                             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-[#858d87]"><Lock className="h-3 w-3 shrink-0" aria-hidden="true" /> Sign in on {name}. Disconnect anytime in Monstera Cloud.</p>
+                        </div>
                     </div>
                 </div>
             )}

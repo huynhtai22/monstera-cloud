@@ -1,6 +1,6 @@
 /* Visual treatment for the real app shell. Page behavior stays in its existing components. */
 .root[data-console-theme="light"] { color-scheme: light; }
-.root[data-console-theme="light"] > aside { background: #f0f4f0; }
+.root[data-console-theme="light"] > aside { background: #f3f4f6; }
 .root[data-console-theme="light"] :global([aria-selected="true"]),
 .root[data-console-theme="light"] :global([aria-current="page"]) { color: #286b40; }
 .root[data-console-theme="light"] :where(button, a):focus-visible {
@@ -11,13 +11,13 @@
 .root[data-console-theme="light"] :global(.text-emerald-400),
 .root[data-console-theme="light"] :global(.text-green-400) { color: #286b40; }
 .root[data-console-theme="light"] :global(.text-sky-300),
-.root[data-console-theme="light"] :global(.text-sky-400) { color: #036487; }
+.root[data-console-theme="light"] :global(.text-sky-400) { color: var(--console-info-ink); }
 .root[data-console-theme="light"] :global(.text-rose-300),
 .root[data-console-theme="light"] :global(.text-rose-400),
-.root[data-console-theme="light"] :global(.text-red-400) { color: #a6233f; }
+.root[data-console-theme="light"] :global(.text-red-400) { color: var(--console-error-ink); }
 .root[data-console-theme="light"] :global(.text-amber-200),
 .root[data-console-theme="light"] :global(.text-amber-300),
-.root[data-console-theme="light"] :global(.text-amber-400) { color: #875600; }
+.root[data-console-theme="light"] :global(.text-amber-400) { color: var(--console-warning-ink); }
 .root[data-console-theme="dark"] { color-scheme: dark; }
 .root[data-console-theme="dark"] {
   --color-canvas: #0a0a0a;
@@ -410,7 +410,7 @@
   }
 }
 
-.root { --console-duration-fast: 160ms; --console-duration-normal: 240ms; --console-duration-slow: 480ms; --console-ease: cubic-bezier(.2,.8,.2,1); }
+.root { --console-duration-fast: 150ms; --console-duration-normal: 240ms; --console-duration-slow: 360ms; --console-ease: cubic-bezier(.2,.8,.2,1); }
 .root main { padding-bottom: 32px; }
 .root :global(.console-route-stage) { position: relative; }
 .root :global(.console-route-enter) { animation: consoleRouteIn var(--console-duration-normal) var(--console-ease) both; }
@@ -436,3 +436,39 @@
   background-color: var(--console-brand-green);
   color: #101010;
 }
+
+/* Light navigation uses neutral selection; green remains for actions and status. */
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) {
+  background: #e4e7eb; color: #202124; border-color: #d2d6dc; box-shadow: inset 3px 0 #5f6368;
+}
+.root[data-console-theme="light"] > aside :global(a[aria-current="page"]) svg { color: #202124; }
+
+.root[data-console-theme="light"] > aside :where(button, a):focus-visible {
+  outline-color: #5f6368;
+}
+
+.root[data-console-theme="light"] main :global([aria-pressed="true"]),
+.root[data-console-theme="light"] main :global([data-state="active"]) { background-color: #e3f0e7; color: #245e38; border-color: #c1d9c9; }
+.root[data-console-theme="light"] main :global(.console-source-list [aria-label="Connection view"] button[aria-pressed="true"]) { background-color: #e3f0e7; color: #245e38; }
+.root[data-console-theme="light"] main :global(thead th) { background: var(--color-surface-muted); color: var(--color-ink-mute); }
+.root[data-console-theme="light"] main :global(.console-scorecard),
+.root[data-console-theme="light"] main :global(.console-source-summary > div) { background: var(--color-panel); }
+
+.root :where(button, a, input, select, textarea) {
+  transition-timing-function: var(--console-ease);
+  transition-duration: var(--console-duration-fast);
+}
+.root :global([data-console-settings-panel="true"]),
+.root :global([data-console-feedback]) { animation: consolePanelSettle var(--console-duration-normal) var(--console-ease) both; }
+.root :global(.console-source-tabs > [role="tab"][aria-selected="true"]) { border-bottom-color: transparent !important; }
+@keyframes consolePanelSettle { from { opacity: .8; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .root :where(button, a, input, select, textarea),
+  .root :global([data-console-settings-panel="true"]),
+  .root :global([data-console-feedback]) { animation: none; transition: none; }
+}
+
+/* Light shell: navigation recedes; work surfaces and controls remain crisp. */
+.root[data-console-theme="light"] main :global(.console-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { background-color: var(--color-panel); }
+.root[data-console-theme="light"] :global(.console-sliding-indicator) { background: var(--color-accent); }
+.root[data-console-theme="light"] main :global(.console-source-tabs > [role="tab"][aria-selected="true"]) { color: var(--color-accent); }

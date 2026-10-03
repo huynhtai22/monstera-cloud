@@ -14,7 +14,7 @@ export type SourceOutcomeNotice = {
 export function SourceOutcomeBanner({ notice, onDismiss }: { notice: SourceOutcomeNotice; onDismiss: () => void }) {
   const Icon = notice.kind === "success" ? CheckCircle2 : notice.kind === "blocked" || notice.kind === "cooldown" ? Clock3 : AlertCircle;
   const tone = notice.kind === "success" ? "text-emerald-600 dark:text-emerald-400" : notice.kind === "error" ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400";
-  return <div className="flex items-start gap-3 rounded-lg border border-line bg-panel px-4 py-3" role={notice.kind === "error" ? "alert" : "status"}>
+  return <div data-console-feedback className="flex items-start gap-3 rounded-lg border border-line bg-panel px-4 py-3" role={notice.kind === "error" ? "alert" : "status"}>
     <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} aria-hidden="true" />
     <div className="min-w-0 flex-1">
       <p className="text-xs font-semibold text-ink">{notice.title}</p>
