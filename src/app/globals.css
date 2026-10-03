@@ -915,3 +915,99 @@ html[data-console-theme="light"] [data-sonner-toast] {
 }
 html[data-console-theme="light"] [data-sonner-toast] [data-title] { color: var(--color-ink) !important; }
 html[data-console-theme="light"] [data-sonner-toast] [data-description] { color: var(--color-ink-mute) !important; }
+
+/* Legacy status utilities also appear in body portals. Map only actual light-mode
+   utility classes; dark: variants keep their existing dark-mode treatment. */
+html[data-console-theme="light"] {
+  --console-success-bg: #edf7ef;
+  --console-success-line: #cfe2d3;
+  --console-success-ink: #286b40;
+  --console-warning-bg: #fff8e8;
+  --console-warning-line: #e9cd91;
+  --console-warning-ink: #76500b;
+  --console-error-bg: #fff1f2;
+  --console-error-line: #f0cbd3;
+  --console-error-ink: #a6233f;
+  --console-info-bg: #edf5ff;
+  --console-info-line: #cedef0;
+  --console-info-ink: #245b8a;
+}
+html[data-console-theme="light"] :where([class~="bg-emerald-950/20"]),
+html[data-console-theme="light"] :where([class~="bg-emerald-950/30"]),
+html[data-console-theme="light"] :where([class~="bg-emerald-950/40"]),
+html[data-console-theme="light"] :where([class~="bg-emerald-950/60"]) { background-color: var(--console-success-bg); }
+html[data-console-theme="light"] :where([class~="text-emerald-100"]),
+html[data-console-theme="light"] :where([class~="text-emerald-200"]),
+html[data-console-theme="light"] :where([class~="text-emerald-300"]),
+html[data-console-theme="light"] :where([class~="text-emerald-400"]),
+html[data-console-theme="light"] :where([class~="text-emerald-400/90"]) { color: var(--console-success-ink); }
+html[data-console-theme="light"] :where([class~="border-emerald-800/40"]),
+html[data-console-theme="light"] :where([class~="border-emerald-800/50"]),
+html[data-console-theme="light"] :where([class~="border-emerald-900/40"]),
+html[data-console-theme="light"] :where([class~="border-emerald-900/50"]) { border-color: var(--console-success-line); }
+html[data-console-theme="light"] :where([class~="bg-amber-950/20"]),
+html[data-console-theme="light"] :where([class~="bg-amber-950/30"]),
+html[data-console-theme="light"] :where([class~="bg-amber-950/40"]),
+html[data-console-theme="light"] :where([class~="bg-amber-950/60"]) { background-color: var(--console-warning-bg); }
+html[data-console-theme="light"] :where([class~="text-amber-100"]),
+html[data-console-theme="light"] :where([class~="text-amber-100/75"]),
+html[data-console-theme="light"] :where([class~="text-amber-200"]),
+html[data-console-theme="light"] :where([class~="text-amber-200/80"]),
+html[data-console-theme="light"] :where([class~="text-amber-300"]),
+html[data-console-theme="light"] :where([class~="text-amber-300/70"]),
+html[data-console-theme="light"] :where([class~="text-amber-300/80"]),
+html[data-console-theme="light"] :where([class~="text-amber-300/90"]),
+html[data-console-theme="light"] :where([class~="text-amber-400"]),
+html[data-console-theme="light"] :where([class~="text-amber-400/90"]) { color: var(--console-warning-ink); }
+html[data-console-theme="light"] :where([class~="border-amber-700"]),
+html[data-console-theme="light"] :where([class~="border-amber-800/40"]),
+html[data-console-theme="light"] :where([class~="border-amber-800/50"]),
+html[data-console-theme="light"] :where([class~="border-amber-900/40"]),
+html[data-console-theme="light"] :where([class~="border-amber-900/50"]),
+html[data-console-theme="light"] :where([class~="border-amber-900/60"]) { border-color: var(--console-warning-line); }
+html[data-console-theme="light"] :where([class~="hover:bg-amber-900/40"]):hover { background-color: var(--console-warning-bg); }
+html[data-console-theme="light"] :where([class~="hover:bg-amber-950/35"]):hover { background-color: var(--console-warning-bg); }
+html[data-console-theme="light"] :where([class~="hover:bg-amber-950/90"]):hover { background-color: var(--console-warning-bg); }
+html[data-console-theme="light"] :where([class~="bg-red-950/10"]),
+html[data-console-theme="light"] :where([class~="bg-red-950/20"]),
+html[data-console-theme="light"] :where([class~="bg-red-950/30"]),
+html[data-console-theme="light"] :where([class~="bg-red-950/40"]),
+html[data-console-theme="light"] :where([class~="bg-red-950/50"]),
+html[data-console-theme="light"] :where([class~="bg-red-950/60"]),
+html[data-console-theme="light"] :where([class~="bg-rose-950/25"]),
+html[data-console-theme="light"] :where([class~="bg-rose-950/30"]),
+html[data-console-theme="light"] :where([class~="bg-rose-950/40"]) { background-color: var(--console-error-bg); }
+html[data-console-theme="light"] :where([class~="text-red-100"]),
+html[data-console-theme="light"] :where([class~="text-red-200"]),
+html[data-console-theme="light"] :where([class~="text-red-200/80"]),
+html[data-console-theme="light"] :where([class~="text-red-300"]),
+html[data-console-theme="light"] :where([class~="text-red-400"]),
+html[data-console-theme="light"] :where([class~="text-red-400/90"]),
+html[data-console-theme="light"] :where([class~="text-rose-200"]),
+html[data-console-theme="light"] :where([class~="text-rose-200/80"]),
+html[data-console-theme="light"] :where([class~="text-rose-300"]),
+html[data-console-theme="light"] :where([class~="text-rose-300/90"]),
+html[data-console-theme="light"] :where([class~="text-rose-400"]) { color: var(--console-error-ink); }
+html[data-console-theme="light"] :where([class~="border-red-800/40"]),
+html[data-console-theme="light"] :where([class~="border-red-800/60"]),
+html[data-console-theme="light"] :where([class~="border-red-900/30"]),
+html[data-console-theme="light"] :where([class~="border-red-900/40"]),
+html[data-console-theme="light"] :where([class~="border-red-900/50"]),
+html[data-console-theme="light"] :where([class~="border-red-900/60"]),
+html[data-console-theme="light"] :where([class~="border-red-950/40"]),
+html[data-console-theme="light"] :where([class~="border-rose-900/50"]) { border-color: var(--console-error-line); }
+html[data-console-theme="light"] :where([class~="hover:bg-red-900/40"]):hover { background-color: var(--console-error-bg); }
+html[data-console-theme="light"] :where([class~="hover:bg-red-950/20"]):hover { background-color: var(--console-error-bg); }
+html[data-console-theme="light"] :where([class~="hover:bg-red-950/30"]):hover { background-color: var(--console-error-bg); }
+html[data-console-theme="light"] :where([class~="hover:bg-red-950/60"]):hover { background-color: var(--console-error-bg); }
+html[data-console-theme="light"] :where([class~="hover:bg-rose-950/45"]):hover { background-color: var(--console-error-bg); }
+html[data-console-theme="light"] :where([class~="bg-sky-950/20"]) { background-color: var(--console-info-bg); }
+html[data-console-theme="light"] :where([class~="text-sky-100/90"]),
+html[data-console-theme="light"] :where([class~="text-sky-200"]),
+html[data-console-theme="light"] :where([class~="text-sky-300"]),
+html[data-console-theme="light"] :where([class~="text-sky-300/70"]),
+html[data-console-theme="light"] :where([class~="text-sky-300/80"]),
+html[data-console-theme="light"] :where([class~="text-sky-300/90"]),
+html[data-console-theme="light"] :where([class~="text-sky-400"]) { color: var(--console-info-ink); }
+html[data-console-theme="light"] :where([class~="border-sky-800/40"]),
+html[data-console-theme="light"] :where([class~="border-sky-900/50"]) { border-color: var(--console-info-line); }

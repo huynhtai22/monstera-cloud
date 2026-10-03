@@ -133,3 +133,13 @@ test("light failure notification uses the same light surface as the console", as
   expect(await notification.evaluate(element => getComputedStyle(element).backgroundColor)).toBe("rgb(255, 255, 255)");
   expect(await notification.locator("[data-title]").evaluate(element => getComputedStyle(element).color)).toBe("rgb(32, 33, 36)");
 });
+
+
+test("light account status does not retain a dark emerald plate", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("monstera-theme", "light"));
+  await page.goto("/sources?tab=accounts");
+  const connected = page.getByRole("table").getByText("connected", { exact: true }).first();
+  await expect(connected).toBeVisible();
+  expect(await connected.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color })))
+    .toEqual({ background: "rgb(237, 247, 239)", color: "rgb(40, 107, 64)" });
+});

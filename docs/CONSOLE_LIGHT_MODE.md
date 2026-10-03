@@ -30,7 +30,7 @@ Our palette and implementation are our design choices based on those references.
 
 ## Coverage
 
-Document-level tokens supply body portals as well as the app shell. Legacy glass cards, panels, dialogs, and Sonner notifications receive light surfaces. The connector picker, consent panel, feature reminder, dashboard warnings, identifier chips, tab indicator, and form controls use matching colors. Source connector hover actions retain readable text in both themes.
+Document-level tokens supply body portals as well as the app shell. Legacy glass cards, panels, dialogs, and Sonner notifications receive light surfaces. The connector picker, consent panel, feature reminder, dashboard warnings, identifier chips, account status badges and legacy status utilities, tab indicator, and form controls use matching colors. Source connector hover actions retain readable text in both themes.
 
 Preserve existing navigation, consent, delivery evidence, reminder frequency, and reduced-motion behavior. Do not turn sample preview data into a readiness claim.
 

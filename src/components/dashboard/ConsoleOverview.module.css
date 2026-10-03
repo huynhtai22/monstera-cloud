@@ -1468,9 +1468,9 @@
 :global(html[data-console-theme="light"]) .metric:hover,
 :global(html[data-console-theme="light"]) .sourceCard:hover { border-color: #abb8af; box-shadow: none; }
 :global(html[data-console-theme="light"]) .status:global(.text-emerald-400) { color: #286b40; }
-:global(html[data-console-theme="light"]) .status:global(.text-sky-400) { color: #036487; }
-:global(html[data-console-theme="light"]) .status:global(.text-amber-400) { color: #875600; }
-:global(html[data-console-theme="light"]) .status:global(.text-rose-400) { color: #a6233f; }
+:global(html[data-console-theme="light"]) .status:global(.text-sky-400) { color: var(--console-info-ink); }
+:global(html[data-console-theme="light"]) .status:global(.text-amber-400) { color: var(--console-warning-ink); }
+:global(html[data-console-theme="light"]) .status:global(.text-rose-400) { color: var(--console-error-ink); }
 
 .issueGroup { margin-top: 14px; border-top: 1px solid var(--color-line); padding-top: 14px; }
 .issueGroup summary { cursor: pointer; font-size: 12px; font-weight: 500; line-height: 1.7; }
