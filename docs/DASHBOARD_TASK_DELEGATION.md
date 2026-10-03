@@ -7,7 +7,7 @@ The dashboard is the entry point for returning customers to prepare reporting da
 - New customers keep the existing signup → workspace → desired outcome → consent and client/account scope → approved import → warehouse review → dashboard journey.
 - Returning customers choose a reporting outcome and client in the dashboard, optionally add context, and save a task. The task is visible beneath the composer. **Continue task** opens the same run in guided setup, where source access and accounts/dates are approved.
 - Reloading and reopening the console reads the saved run. Paused work stays paused. A new task is available only after the latest setup is completed, and starts without copied source/import approvals.
-- Reports contains links to these reporting recipes. Settings → Workspace explains task permissions and links to workspace roles and existing source management.
+- Reports contains links to these reporting recipes and preserves the selected client. Settings → Workspace explains task permissions and links to workspace roles and existing source management.
 
 ## What the native cards show
 

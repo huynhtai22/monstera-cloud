@@ -38,7 +38,11 @@ test.describe("persisted agent onboarding (M2)", () => {
     await page.goto("/console");
     const delegation = page.locator("[data-dashboard-delegation]");
     await expect(delegation.getByRole("heading", { name: "What would you like Monstera to do?" })).toBeVisible();
-    await delegation.getByLabel("Task reporting client").selectOption(client.id);
+    await page.goto(`/reports?clientId=${client.id}`);
+    const recipe = page.getByRole("region", { name: "Reporting task recipes" }).getByRole("link", { name: "Prepare client reporting" });
+    await expect(recipe).toHaveAttribute("href", `/console?task=reporting&clientId=${client.id}`);
+    await recipe.click();
+    await expect(delegation.getByLabel("Task reporting client")).toHaveValue(client.id);
     await delegation.getByLabel("Additional reporting context (optional)").fill("Prepare the weekly North report");
     await delegation.getByLabel("Additional reporting context (optional)").press("Enter");
     await expect(delegation.getByRole("link", { name: "Continue task" })).toBeVisible();

@@ -411,8 +411,10 @@ function WorkspaceDelegation({
 
 export function ReportingTaskRecipes({
   workspaceId,
+  clientId,
 }: {
   workspaceId: string | null;
+  clientId?: string | null;
 }) {
   const { data: session } = useSession();
   const pathname = usePathname();
@@ -443,7 +445,7 @@ export function ReportingTaskRecipes({
             <Link
               className={styles.secondary}
               key={goal.id}
-              href={`${prefix}/console?task=${goal.id}`}
+              href={`${prefix}/console?task=${goal.id}${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ""}`}
             >
               <Icon size={17} />
               {goal.title}

@@ -264,7 +264,7 @@ export function ReportsClient() {
 
     return (
         <PageShell section="reports">
-            <ReportingTaskRecipes workspaceId={activeWorkspaceId} />
+            <ReportingTaskRecipes workspaceId={activeWorkspaceId} clientId={clientFilter || null} />
             <div className="relative z-10 mb-6">
                 <div data-console-section-header="true" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
