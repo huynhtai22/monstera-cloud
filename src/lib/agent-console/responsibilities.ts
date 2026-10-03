@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import {
   agentConsoleTransaction,
   requireWorkspaceRole,
@@ -7,6 +8,8 @@ import {
   confirmResponsibility,
   updateResponsibilityStatus,
   AgentConsoleError,
+  canonicalJsonStringify,
+  appendConsoleEvent,
   type ConsoleTransaction,
 } from "./persistence";
 import { safeDecrypt } from "@/lib/encryption";
@@ -16,6 +19,7 @@ import { isAgentConsoleMonitoringAvailable } from "./availability";
 
 export const CreateResponsibilitySchema = z.object({
   workspaceId: z.string().min(1),
+  draftRequestId: z.string().uuid().optional(),
   clientId: z.string().nullable().optional(),
   ownerId: z.string().optional(),
   kind: z.string().default("monitoring"),
@@ -68,20 +72,39 @@ async function validateDataHealthScope(tx: ConsoleTransaction, workspaceId: stri
   }
 }
 
-export async function createResponsibilityDraft(
-  userId: string,
-  rawInput: unknown
+export async function createResponsibilityDraft(userId: string, rawInput: unknown) {
+  return agentConsoleTransaction(tx => createResponsibilityDraftInTransaction(tx, userId, rawInput));
+}
+
+export async function createResponsibilityDraftInTransaction(
+  tx: ConsoleTransaction, userId: string, rawInput: unknown
 ) {
   const input = CreateResponsibilitySchema.parse(rawInput);
   if (input.kind === "data_health" && input.cadence !== "daily") {
     throw new AgentConsoleError("unsupported_cadence", "Connected data health checks currently support daily cadence only", 400);
   }
 
-  return agentConsoleTransaction(async (tx) => {
     await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin", "member"]);
 
     if (input.ownerId) await requireWorkspaceRole(tx, input.workspaceId, input.ownerId, ["owner", "admin", "member", "viewer"]);
-    if (input.kind === "data_health" && input.scopeItems?.length) await validateDataHealthScope(tx, input.workspaceId, input.scopeItems);
+    const requestHash = createHash("sha256").update(canonicalJsonStringify(input)).digest("hex");
+    if (input.kind === "data_health" && input.draftRequestId) {
+      const existing = await tx.agentResponsibility.findFirst({
+        where: { workspaceId: input.workspaceId, createdByUserId: userId, kind: "data_health",
+          configuration: { path: ["draftRequestId"], equals: input.draftRequestId } },
+      });
+      if (existing) {
+        const config = existing.configuration as Record<string, unknown>;
+        if (config.draftRequestHash !== requestHash) {
+          throw new AgentConsoleError("idempotency_conflict", "This draft request already saved different choices. Refresh before trying again.", 409);
+        }
+        const scopes = await tx.agentResponsibilityScope.findMany({ where: {
+          workspaceId: input.workspaceId, responsibilityId: existing.id, scopeRevision: existing.scopeRevision,
+        } });
+        return { responsibility: existing, scopes };
+      }
+    }
+    if (input.kind === "data_health") await validateDataHealthScope(tx, input.workspaceId, input.scopeItems ?? []);
 
     let responsibility = await createResponsibility(tx, {
       workspaceId: input.workspaceId,
@@ -89,7 +112,9 @@ export async function createResponsibilityDraft(
       ownerId: input.ownerId ?? userId,
       createdByUserId: userId,
       kind: input.kind,
-      configuration: input.configuration,
+      configuration: input.kind === "data_health" && input.draftRequestId
+        ? { ...input.configuration, draftRequestId: input.draftRequestId, draftRequestHash: requestHash }
+        : input.configuration,
       cadence: input.cadence,
       timezone: input.timezone,
     });
@@ -110,6 +135,41 @@ export async function createResponsibilityDraft(
       });
     }
 
+    return { responsibility, scopes };
+
+}
+
+export const UpdateDataHealthDraftSchema = z.object({
+  workspaceId: z.string().min(1),
+  expectedVersion: z.number().int().min(0),
+  scopeItems: CreateResponsibilitySchema.shape.scopeItems.unwrap().min(1),
+});
+
+/** Editing setup saves a new scope revision; it never creates execution authority. */
+export async function updateDataHealthDraft(userId: string, responsibilityId: string, rawInput: unknown) {
+  const input = UpdateDataHealthDraftSchema.parse(rawInput);
+  return agentConsoleTransaction(async tx => {
+    const membership = await requireWorkspaceRole(tx, input.workspaceId, userId, ["owner", "admin", "member"]);
+    const draft = await tx.agentResponsibility.findFirst({ where: { id: responsibilityId, workspaceId: input.workspaceId } });
+    if (!draft) throw new AgentConsoleError("responsibility_not_found", "Saved setup not found", 404);
+    if (membership === "member" && draft.createdByUserId !== userId) {
+      throw new AgentConsoleError("forbidden", "Only the setup author or a workspace admin can change this draft", 403);
+    }
+    if (draft.status !== "draft" || draft.kind !== "data_health") {
+      throw new AgentConsoleError("draft_only", "This responsibility is no longer a draft. Refresh to review its current policy.", 409);
+    }
+    if (draft.version !== input.expectedVersion) throw new AgentConsoleError("stale_version", "Saved setup changed. Refresh before saving.", 409);
+    await validateDataHealthScope(tx, input.workspaceId, input.scopeItems ?? []);
+    const revision = draft.scopeRevision + 1;
+    const updated = await tx.agentResponsibility.updateMany({
+      where: { workspaceId: input.workspaceId, id: responsibilityId, version: input.expectedVersion, status: "draft" },
+      data: { scopeRevision: revision, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) throw new AgentConsoleError("stale_version", "Saved setup changed. Refresh before saving.", 409);
+    const scopes = await setResponsibilityScope(tx, { workspaceId: input.workspaceId, responsibilityId, scopeRevision: revision, items: input.scopeItems });
+    await appendConsoleEvent(tx, { workspaceId: input.workspaceId, responsibilityId, type: "responsibility_draft_updated",
+      actorType: "user", actorUserId: userId, payload: { scopeRevision: revision, accountCount: scopes.length } });
+    const responsibility = await tx.agentResponsibility.findUniqueOrThrow({ where: { workspaceId_id: { workspaceId: input.workspaceId, id: responsibilityId } } });
     return { responsibility, scopes };
   });
 }

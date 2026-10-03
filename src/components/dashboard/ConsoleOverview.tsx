@@ -24,6 +24,9 @@ import type {
   DashboardOverviewDTO,
   DashboardIssueItem,
 } from "@/lib/dashboard-overview";
+import type { DataHealthSetupDraft } from "@/lib/agent-console/setup-contracts";
+import { useSearchParams } from "next/navigation";
+import { OnboardingHandoffCard } from "./OnboardingHandoffCard";
 import { ConnectedDataResponsibilitySetup } from "./ConnectedDataResponsibilitySetup";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
@@ -66,6 +69,7 @@ type Props = {
     lastSuccessfulCheck: string | null;
     dataThroughCoverage: string | null;
     activeBlockers: string[];
+    setupDrafts?: DataHealthSetupDraft[];
     responsibilities?: Array<{
       id: string;
       kind: string;
@@ -183,6 +187,7 @@ export function ConsoleOverview({
   agentConsoleSummary,
   onRefreshSummary,
 }: Props) {
+  const searchParams = useSearchParams();
   const { hrefFor } = useClientContextNavigation();
   const [activeCaseActionId, setActiveCaseActionId] = useState<string | null>(null);
   const [activeRespAction, setActiveRespAction] = useState<boolean>(false);
@@ -409,6 +414,7 @@ export function ConsoleOverview({
         </div>
       )}
 
+      <OnboardingHandoffCard workspaceId={workspace.id} onDraftSaved={onRefreshSummary} />
       <section className={styles.statusGroup} aria-label="Workspace status">
       <div
         className={styles.healthStrip}
@@ -546,6 +552,9 @@ export function ConsoleOverview({
         <ConnectedDataResponsibilitySetup
           workspaceId={workspace.id}
           sources={sourcesList}
+          preferredDraftId={searchParams.get("monitoringDraftId")}
+          drafts={agentConsoleSummary.setupDrafts}
+          onSaved={onRefreshSummary}
           monitoringAvailable={agentConsoleSummary.monitoringAvailable}
           onActivated={async () => {
             await onRefreshSummary?.();
