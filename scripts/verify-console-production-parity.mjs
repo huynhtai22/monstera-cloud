@@ -37,6 +37,25 @@ try {
     await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');
     const light = await page.locator('[data-workspace-shell]').evaluate(el => ({ canvas: getComputedStyle(el).backgroundColor, ink: getComputedStyle(el).color, scheme: getComputedStyle(el).colorScheme }));
     assert.deepEqual(light, { canvas: 'rgb(248, 250, 248)', ink: 'rgb(24, 35, 28)', scheme: 'light' });
+    const portalColors = await page.evaluate(() => {
+      const portal = document.createElement('div');
+      portal.style.cssText = 'background:var(--color-panel);color:var(--color-ink);outline-color:var(--color-primary-ring)';
+      document.body.append(portal);
+      const css = getComputedStyle(portal);
+      const result = { panel: css.backgroundColor, ink: css.color, ring: css.outlineColor, accent: css.getPropertyValue('--color-accent').trim() };
+      portal.remove();
+      return result;
+    });
+    assert.deepEqual(portalColors, { panel: 'rgb(255, 255, 255)', ink: 'rgb(24, 35, 28)', ring: 'rgb(40, 107, 64)', accent: '#286b40' });
+    await page.getByRole('button', { name: 'Disconnect Meta Ads', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await dialog.waitFor();
+    assert.equal(await dialog.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
+    assert.equal(await dialog.getByRole('heading').evaluate(el => getComputedStyle(el).color), 'rgb(24, 35, 28)');
+    await dialog.locator('button[data-console-button="ghost"]').click();
+    await dialog.waitFor({ state: 'hidden' });
+
+
     assert.equal(await page.getByRole('navigation', { name: 'Main navigation', exact: true }).evaluate(el => getComputedStyle(el).scrollbarColor), 'rgb(162, 175, 164) rgba(0, 0, 0, 0)');
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForFunction(() => document.documentElement.dataset.consoleTheme === 'light');

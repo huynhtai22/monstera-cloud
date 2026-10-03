@@ -24,6 +24,36 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Document scope also supplies theme tokens to body-level dialog portals. */
+html[data-console-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f8faf8;
+  --color-panel: #ffffff;
+  --console-surface-raised: #eef2ee;
+  --console-surface-muted: #eef2ee;
+  --console-line-soft: #d9e1da;
+  --color-line: #d9e1da;
+  --color-ink: #18231c;
+  --color-ink-mute: #526057;
+  --color-primary: #18231c;
+  --color-primary-foreground: #ffffff;
+  --color-primary-muted: #eef2ee;
+  --color-primary-ring: #286b40;
+  --color-accent: #286b40;
+  --color-primary-hover: #2c3d31;
+  --color-surface-muted: #eef2ee;
+  --ui-bg-rgb: 248 250 248;
+  --ui-fg-rgb: 24 35 28;
+  --ui-border-rgb: 217 225 218;
+  --ui-muted-bg-rgb: 238 242 238;
+  --ui-muted-fg-rgb: 82 96 87;
+  --ui-primary-rgb: 24 35 28;
+  --ui-primary-foreground-rgb: 255 255 255;
+  --console-motion-accent: #286b40;
+  --shadow-card: 0 1px 3px #18231c0a;
+  --shadow-elevated: 0 12px 32px #18231c1a;
+}
+
 /* Match native controls and every nested console scroller to the selected theme. */
 html[data-console-theme="dark"] { color-scheme: dark; --console-scroll-thumb: #505851; }
 html[data-console-theme="light"] {
