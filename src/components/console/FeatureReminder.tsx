@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { CONSOLE_MOTION } from "@/lib/console-motion";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Database, DatabaseZap, FileText, ShieldCheck, ShoppingBag, Users, X } from "lucide-react";
@@ -12,8 +13,8 @@ import styles from "./FeatureReminder.module.css";
 import { defaultHighlights, type FeatureHighlight } from "@/lib/console-feature-campaigns";
 export type { FeatureHighlight } from "@/lib/console-feature-campaigns";
 
-const CLOSE_DURATION_MS = 280;
-const SCENE_EXIT_MS = 200;
+const CLOSE_DURATION_MS = CONSOLE_MOTION.normal;
+const SCENE_EXIT_MS = CONSOLE_MOTION.exit;
 
 function BrandEmblem() {
   return <span className={styles.brandEmblem}><LogoMark className={styles.brandMark} /></span>;

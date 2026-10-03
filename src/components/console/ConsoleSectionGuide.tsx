@@ -40,11 +40,15 @@ export function ConsoleSectionGuide() {
         </button>
         </div>
       </div>
-      {open && <div id="console-page-guide" className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-ink-mute">
+      <div className="grid transition-[grid-template-rows,opacity] duration-[var(--console-duration-normal)] ease-[var(--console-ease)] motion-reduce:transition-none" style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }} inert={!open} aria-hidden={!open}>
+      <div className="min-h-0 overflow-hidden">
+      <div id="console-page-guide" className="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-ink-mute">
         <p>{entry.purpose}</p>
         <button type="button" onClick={() => setReminderOpen(true)} className="mt-2 mr-4 text-ink">Explore Monstera features →</button>
         <Link href={hrefFor(section.next)} className="mt-2 inline-flex items-center gap-1 text-ink">Next step<ChevronRight className="h-3 w-3" aria-hidden /></Link>
-      </div>}
+      </div>
+      </div>
+      </div>
       <FeatureReminder open={reminderOpen} onClose={() => setReminderOpen(false)} hrefFor={hrefFor} />
     </div>
   );

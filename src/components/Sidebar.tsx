@@ -216,7 +216,7 @@ export function Sidebar({
             aria-label="Application sidebar"
             data-collapsed={collapsed}
             className={cn(
-                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
+                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[var(--console-duration-normal)] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
                 collapsed ? "w-[68px]" : "w-64",
                 isOpen ? "translate-x-0" : "-translate-x-full"
             )}
@@ -419,9 +419,9 @@ export function Sidebar({
                                     </Link>
                                     {hasSubsection ? <>
                                         <button type="button" className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-md text-ink-mute transition-colors hover:bg-white/[0.06] hover:text-ink" aria-expanded={subsectionOpen} aria-controls={subsectionId} aria-label={`${subsectionOpen ? "Collapse" : "Expand"} ${item.name} subsection`} title={`${subsectionOpen ? "Collapse" : "Expand"} subsection`} onClick={() => setExpandedSubsections(current => ({ ...current, [item.href]: !subsectionOpen }))}>
-                                            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[240ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none", !subsectionOpen && "-rotate-90")} aria-hidden="true" />
+                                            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[var(--console-duration-normal)] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none", !subsectionOpen && "-rotate-90")} aria-hidden="true" />
                                         </button>
-                                        <div className="grid transition-[grid-template-rows,opacity] duration-[240ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none" style={{ gridTemplateRows: subsectionOpen ? "1fr" : "0fr", opacity: subsectionOpen ? 1 : 0 }} inert={!subsectionOpen} aria-hidden={!subsectionOpen}>
+                                        <div className="grid transition-[grid-template-rows,opacity] duration-[var(--console-duration-normal)] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none" style={{ gridTemplateRows: subsectionOpen ? "1fr" : "0fr", opacity: subsectionOpen ? 1 : 0 }} inert={!subsectionOpen} aria-hidden={!subsectionOpen}>
                                             <div className="min-h-0 overflow-hidden">
                                         <nav id={subsectionId} className="ml-7 my-2 space-y-1 border-l border-line pl-3" aria-label={`${item.name} directory`}>
                                             {directory?.map((entry, index) => {

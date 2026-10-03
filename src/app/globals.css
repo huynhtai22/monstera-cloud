@@ -871,3 +871,27 @@ html.disable-transitions *::after {
         border-color: rgb(255 255 255 / 0.25) !important;
     }
 }
+
+/* Shared console motion also reaches body-level dialog portals. */
+html[data-console-theme] {
+  --console-duration-fast: 150ms;
+  --console-duration-normal: 240ms;
+  --console-duration-slow: 360ms;
+  --console-duration-exit: 180ms;
+  --console-ease: cubic-bezier(.2,.8,.2,1);
+}
+@keyframes consoleSurfaceSettle {
+  from { opacity: .8; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+html[data-console-theme] [role="tabpanel"],
+html[data-console-theme] [data-console-feedback] {
+  animation: consoleSurfaceSettle var(--console-duration-normal) var(--console-ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-console-theme] [role="tabpanel"],
+  html[data-console-theme] [data-console-feedback] { animation: none; }
+}
+
+.console-route-boundary { position: relative; }
+.console-route-indicator { position: absolute; top: 12px; right: 20px; z-index: 10; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); color: var(--color-ink-mute); font-size: 11px; }
