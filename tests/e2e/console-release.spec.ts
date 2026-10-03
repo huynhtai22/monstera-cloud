@@ -48,6 +48,7 @@ for (const theme of ["light", "dark"]) {
 
 test("mobile navigation contains focus, closes with Escape, and restores the opener", async ({ page }) => {
   test.skip(page.viewportSize()!.width >= 1024, "Mobile drawer only");
+  await page.addInitScript(() => localStorage.setItem("monstera-sidebar-collapsed", "1"));
   await page.goto(`${root}/console`);
   const sidebar = page.locator("#application-sidebar");
   await expect(sidebar).toHaveAttribute("inert", "");
@@ -55,6 +56,7 @@ test("mobile navigation contains focus, closes with Escape, and restores the ope
   await opener.click();
   const close = page.getByRole("button", { name: "Close menu", exact: true });
   await expect(close).toBeFocused();
+  await expect(sidebar).toHaveAttribute("data-collapsed", "false");
   await close.press("Shift+Tab");
   expect(await page.evaluate(() => !!document.activeElement?.closest("#application-sidebar"))).toBe(true);
   await page.keyboard.press("Tab");

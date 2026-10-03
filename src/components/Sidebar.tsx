@@ -71,7 +71,7 @@ export function Sidebar({
     setIsOpen,
     isDarkMode,
     toggleDarkMode,
-    collapsed = false,
+    collapsed: preferredCollapsed = false,
     setCollapsed,
     previewPath,
     previewDirectory,
@@ -79,6 +79,7 @@ export function Sidebar({
 }: SidebarProps) {
     const sidebarElement = useRef<HTMLElement>(null);
     const [mobile, setMobile] = useState(false);
+    const collapsed = preferredCollapsed && !mobile;
     useEffect(() => {
         const media = window.matchMedia("(max-width: 1023px)");
         const update = () => { setMobile(media.matches); if (!media.matches) setIsOpen?.(false); };
