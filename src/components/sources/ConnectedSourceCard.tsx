@@ -120,7 +120,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
           <Link
             href={`/sources/${integration.id}`}
             onClick={(e) => e.stopPropagation()}
-            className="group/title inline-flex max-w-full items-center gap-1 text-base font-semibold tracking-tight text-ink hover:text-white"
+            className="group/title inline-flex max-w-full items-center gap-1 text-base font-semibold tracking-tight text-ink hover:text-ink"
           >
             <span className="truncate">{integration.name}</span>
           </Link>

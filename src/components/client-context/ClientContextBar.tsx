@@ -56,7 +56,7 @@ function assignedAccountCount(client: ClientListItem): number | null {
   return null;
 }
 
-export function ClientContextBar() {
+export function ClientContextBar({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
   const surface = surfaceForPathname(pathname ?? "");
   const { activeWorkspaceId } = useWorkspaceStore();
@@ -115,10 +115,10 @@ export function ClientContextBar() {
     <div
       data-testid="client-context-bar"
       data-client-scope={scope}
-      className="border-b border-line bg-panel px-4 py-3 sm:px-6"
+      className={compact ? "min-w-0" : "border-b border-line bg-panel px-4 py-3 sm:px-6"}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
+        <div className={compact ? "sr-only" : "min-w-0"}>
           <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
             Client context
           </p>
@@ -149,9 +149,9 @@ export function ClientContextBar() {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-col gap-1 sm:w-64">
-          <label htmlFor="client-context-selector" className="text-xs font-medium text-ink-mute">
-            Switch client
+        <div className={compact ? "flex min-w-0 items-center gap-2 sm:w-60" : "flex min-w-0 flex-col gap-1 sm:w-64"}>
+          <label htmlFor="client-context-selector" className="shrink-0 text-xs font-medium text-ink-mute">
+            {compact ? "Client" : "Switch client"}
           </label>
           <select
             id="client-context-selector"
@@ -166,7 +166,7 @@ export function ClientContextBar() {
             }}
             className={cn(
               "h-10 w-full max-w-full truncate rounded-lg border border-line bg-canvas px-3 text-sm text-ink",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/30",
               "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >

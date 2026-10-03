@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { confirmedFirstResultTasks, firstResultAccounts, firstResultKey, type FirstResultPreviews } from "./first-result";
 import type { AgentSnapshot } from "@/hooks/use-agent-run";
-const task = { id: "task", provider: "meta_ads", state: "ready", scopeRevision: 2, version: 4, confirmedScope: { since: "2026-09-23", until: "2026-09-29" } } as AgentSnapshot["tasks"][number];
-const previews = { task: { scopeRevision: 2, data: { provider: "meta_ads", verified: true, rowsCount: 5, window: { since: "2026-09-23", until: "2026-09-29" }, accounts: [{ id: "populated", groups: [{ rows: 5 }] }] } } } as unknown as FirstResultPreviews;
+const task = { id: "task", provider: "meta_ads", state: "ready", scopeRevision: 2, version: 4, confirmedScope: { selectedAccountIds: ["populated"], since: "2026-09-23", until: "2026-09-29" } } as AgentSnapshot["tasks"][number];
+const previews = { task: { scopeRevision: 2, data: { provider: "meta_ads", verified: true, rowsCount: 5, window: { since: "2026-09-23", until: "2026-09-29" }, sampleRows: [{ date: "2026-09-24", accountId: "act_1" }], accounts: [{ id: "populated", accountId: "act_1", groups: [{ rows: 5 }] }] } } } as unknown as FirstResultPreviews;
 test("first result excludes zero rows, unfinished sources, stale approvals and mismatched dates", () => {
   assert.equal(confirmedFirstResultTasks([task], previews).length, 1);
   assert.equal(confirmedFirstResultTasks([{ ...task, state: "deferred" }], previews).length, 0);
@@ -28,4 +28,15 @@ test("first overview shows populated accounts before applying its display cap", 
   assert.deepEqual(firstResultAccounts(data).map(account => account.id), ["populated-0", "populated-1", "populated-2"]);
   const noAccounts = { ...data, accounts: [] };
   assert.equal(confirmedFirstResultTasks([task], { task: { ...previews.task, data: noAccounts } }).length, 0);
+});
+
+test("first result rejects missing rows, unapproved accounts and rows outside the approved window", () => {
+  assert.equal(confirmedFirstResultTasks([{ ...task, confirmedScope: { ...task.confirmedScope!, selectedAccountIds: ["populated", "missing"] } }], previews).length, 0);
+  const base = previews.task;
+  for (const data of [
+    { ...base.data, sampleRows: [] },
+    { ...base.data, accounts: [{ ...base.data.accounts[0], id: "not-approved" }] },
+    { ...base.data, sampleRows: [{ ...base.data.sampleRows[0], accountId: "other" }] },
+    { ...base.data, sampleRows: [{ ...base.data.sampleRows[0], date: "2026-09-30" }] },
+  ]) assert.equal(confirmedFirstResultTasks([task], { task: { ...base, data } }).length, 0);
 });
