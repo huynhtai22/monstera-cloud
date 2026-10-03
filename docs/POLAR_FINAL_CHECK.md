@@ -35,7 +35,7 @@ Check monthly/annual price, currency, billing interval and advertised limits aga
 | Refund | Verify explicit refund/access policy; do not assume a refund automatically triggers revocation. |
 | Webhook temporarily unavailable | Redelivery restores correct final state without manual plan editing. |
 
-The current local code uses subscription-state updates and subscription-ID matching. Durable event ordering was not established in this audit. **Out-of-order regrant is a release gate to test and fix if reproduced**, not a certified pass. Confirm cancellation, past-due, refund and expiry semantics with the final customer contract.
+The current local code has a concrete replay risk: `revokePolarSubscription()` clears subscriptionProvider/subscriptionId, while `activatePolarSubscription()` accepts a workspace with subscriptionProvider=null. A delayed, previously valid active/trialing payload for the revoked subscription therefore passes that eligibility condition and can grant Professional again. This is a code-path finding, not a live incident. **Fix and regression-test this before paid release.** Preserve durable subscription/event state and reject stale transitions, or verify authoritative current subscription state before granting; also protect the check/update from concurrent delivery. Confirm cancellation, past-due, refund and expiry semantics with the final customer contract.
 
 ## 4. Production paid-launch gate
 
