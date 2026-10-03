@@ -6,7 +6,7 @@ This is mandatory for every console section, subsection, and new feature. The re
 - State the page purpose directly. Show workspace/client/reporting-window scope where relevant.
 - Use compact grouped rows for administrative choices; use cards only for distinct resources or measurements.
 - Present one clear primary task. Place secondary controls near the resource they affect.
-- Keep navigation neutral gray. Reserve green, amber, and red for meaningful activity and semantic status.
+- Keep navigation neutral gray. Reserve green, amber, and red for meaningful activity and semantic status; a primary action may use the shared brand token.
 - Use shared light/dark tokens, 8px content corners, consistent outlined icons, and restrained elevation. Preserve official platform logos.
 - Use brief opacity/position transitions; no decorative card lift, fake loading progress, or repeated promotional animation. Respect reduced motion.
 

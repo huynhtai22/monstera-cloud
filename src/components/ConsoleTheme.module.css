@@ -508,3 +508,7 @@
 .root[data-console-theme="light"] main :global([aria-label="Connection view"] button[aria-pressed="true"]),
 .root[data-console-theme="light"] main :global([data-console-section="reports"] button[aria-pressed="true"]) { color:#202124; background:#eceef1; border-color:#d2d6dc; box-shadow:none; }
 .root[data-console-theme="light"] main :global(.console-source-tabs > [role="tab"][aria-selected="true"]) { color:#202124; background:transparent; }
+.root[data-console-theme="light"] :global(.console-sliding-indicator) { background:#60656d; }
+.root main :global(.console-source-summary),
+.root main :global(.console-source-discover),
+.root main :global([data-console-section="clients"] [class*="rounded-xl"][class*="border"]) { border-radius:8px; box-shadow:none; }
