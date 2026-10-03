@@ -18,7 +18,11 @@ export async function onboardingPageData(agencySlug?: string, requestedWorkspace
       select: { role: true, workspace: { select: { id: true, name: true, slug: true } } } }),
   ]);
   const pilotMemberships = memberships.filter(({ workspace }) => isAgentWorkspaceEnabled(workspace.id));
-  if (!pilotMemberships.length) notFound();
+  if (!memberships.length) notFound();
+  const requestedMembership = memberships.find(({ workspace }) => workspace.id === requestedWorkspaceId);
+  const unavailableWorkspace = requestedMembership && !isAgentWorkspaceEnabled(requestedMembership.workspace.id)
+    ? requestedMembership.workspace
+    : !pilotMemberships.length ? memberships[0].workspace : null;
   const workspaces = await Promise.all(pilotMemberships.map(async ({ role, workspace }) => {
     const [clients, access, run] = await Promise.all([
       prisma.client.findMany({ where: { workspaceId: workspace.id }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -28,6 +32,6 @@ export async function onboardingPageData(agencySlug?: string, requestedWorkspace
     return { ...workspace, role, clients, run, enabledProviders: access.map(row => row.provider).filter(id => ProviderSchema.safeParse(id).success && isConnectEnabled(id)) };
   }));
   const selectedWorkspaceId = workspaces.find(w => w.id === requestedWorkspaceId)?.id ?? workspaces[0]?.id ?? null;
-  return { profile: { category: profile.workCategory, context: profile.workContext, answered: Boolean(profile.workProfileAnsweredAt) }, workspaces, selectedWorkspaceId, agencySlug: agencySlug ?? null, canAuthorizeTikTok: isProviderConfigured("tiktok_business"), canAuthorizeMeta: isProviderConfigured("meta_ads"), canAuthorizeGoogle: isProviderConfigured("google_ads"), canAuthorizeShopee: isProviderConfigured("shopee") };
+  return { unavailableWorkspace, profile: { category: profile.workCategory, context: profile.workContext, answered: Boolean(profile.workProfileAnsweredAt) }, workspaces, selectedWorkspaceId, agencySlug: agencySlug ?? null, canAuthorizeTikTok: isProviderConfigured("tiktok_business"), canAuthorizeMeta: isProviderConfigured("meta_ads"), canAuthorizeGoogle: isProviderConfigured("google_ads"), canAuthorizeShopee: isProviderConfigured("shopee") };
 }
 export type OnboardingBoot = Awaited<ReturnType<typeof onboardingPageData>>;

@@ -84,6 +84,11 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") ?? "");
     const [activeFilter, setActiveFilter] = useState(() => searchParams.get("tab") ?? "connected");
+    const pendingFilterRef = useRef<string | null>(null);
+    const chooseFilter = (tab: string) => {
+        pendingFilterRef.current = tab;
+        setActiveFilter(tab);
+    };
     const [initialClientId, setInitialClientId] = useState<string | null>(null);
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
@@ -485,6 +490,10 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
     useEffect(() => {
         const tab = searchParams.get("tab");
         const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
+        const urlTab = ["connected", "accounts", "available", "attention"].includes(tab ?? "") ? tab! : cId ? "accounts" : "connected";
+        // An older route commit must not undo a newer keyboard/click selection.
+        if (pendingFilterRef.current && pendingFilterRef.current !== urlTab) return;
+        pendingFilterRef.current = null;
         setInitialClientId(cId);
         setSearchQuery(searchParams.get("search") ?? "");
         const validTabs = ["connected", "accounts", "available", "attention"];
@@ -501,6 +510,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             const next = params.toString();
             const current = window.location.search.replace(/^\?/, "");
             if (next !== current) router.replace(next ? `${previewBasePath}?${next}` : previewBasePath, { scroll: false });
+            else pendingFilterRef.current = null;
         }, 120);
         return () => window.clearTimeout(timer);
     }, [activeFilter, router, searchQuery, previewBasePath]);
@@ -920,7 +930,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             <div data-console-page-header="true" className="console-section-heading mb-7 flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                 <div>
                     <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-ink-mute">Workspace / Data connections</p>
-                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[#86c99b]">.</span></h1>
+                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[var(--console-motion-accent)]">.</span></h1>
                     <p className="mt-2 text-sm text-ink-mute">
                         {isLoading
                             ? "Loading your workspace…"
@@ -1093,7 +1103,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     </div>
                     <div className="min-w-0 border-r border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
                         <p className="text-[11px] font-medium text-ink-mute">Syncing well</p>
-                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-[#86c99b] tabular-nums">{filterStats.connected}</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-[var(--console-motion-accent)] tabular-nums">{filterStats.connected}</p>
                         <p className="mt-2 text-[11px] text-ink-mute">Recent successful syncs</p>
                     </div>
                     <div className="min-w-0 p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
@@ -1115,12 +1125,21 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             )}
 
             <div className="mb-6 flex flex-col gap-4 border-b border-line lg:flex-row lg:items-center lg:justify-between">
-                <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations">
+                <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations" onKeyDown={event => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="tab"]')];
+                    const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+                    if (index < 0) return;
+                    event.preventDefault();
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                    tabs[next]?.focus(); tabs[next]?.click();
+                }}>
                     <SlidingControlIndicator />
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
-                        onClick={() => setActiveFilter('connected')}
+                        tabIndex={activeFilter === 'connected' ? 0 : -1}
+                        onClick={() => chooseFilter('connected')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'connected'
@@ -1136,7 +1155,8 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'accounts'}
-                        onClick={() => setActiveFilter('accounts')}
+                        tabIndex={activeFilter === 'accounts' ? 0 : -1}
+                        onClick={() => chooseFilter('accounts')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'accounts'
@@ -1150,7 +1170,8 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'available'}
-                        onClick={() => setActiveFilter('available')}
+                        tabIndex={activeFilter === 'available' ? 0 : -1}
+                        onClick={() => chooseFilter('available')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'available'
@@ -1163,7 +1184,8 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'attention'}
-                        onClick={() => setActiveFilter('attention')}
+                        tabIndex={activeFilter === 'attention' ? 0 : -1}
+                        onClick={() => chooseFilter('attention')}
                         className={cn(
                             "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                             activeFilter === 'attention'

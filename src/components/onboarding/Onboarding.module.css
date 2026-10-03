@@ -417,3 +417,10 @@
 .recovery p { font-size: 11px; color: #aaa; line-height: 1.7; }
 @media(max-width:700px) { .goalPicker > div[role="group"] { grid-template-columns: 1fr; } .goalPicker, .firstResult { padding: 18px; } }
 @media(prefers-reduced-motion:reduce) { .goalPicker button { transition: none; } }
+
+.outputRows { max-width: 100%; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #555 transparent; color-scheme: dark; }
+.outputRows:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
+.outputRows table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.outputRows caption { text-align: left; padding: 12px 0; }
+.outputRows th, .outputRows td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; min-width: 100px; }
+.outputRows th { color: #bbb; font-weight: 500; }

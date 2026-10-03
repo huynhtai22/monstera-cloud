@@ -83,6 +83,8 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
           MONSTERA_E2E_ISOLATED: "1"
           CLIENT_ASSIGNMENT_TEST_DB: "1"
+          # Exercise guided setup only with the explicit disposable test cohort.
+          ENABLE_AGENT_ONBOARDING: "1"
           # Enables server-side analyst routes during browser QA execution.
           ENABLE_GOVERNED_ANALYST: "1"
           # The application records the actually tested commit in report

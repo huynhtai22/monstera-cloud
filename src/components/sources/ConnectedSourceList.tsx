@@ -590,7 +590,7 @@ export function ConnectedSourceList({
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <Link
                         href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                        className="truncate text-sm font-medium tracking-tight text-ink hover:text-white"
+                        className="truncate text-sm font-medium tracking-tight text-ink hover:text-ink"
                       >
                         {r.name}
                       </Link>
@@ -700,7 +700,7 @@ export function ConnectedSourceList({
                             <div className="flex items-center gap-1.5 group/name">
                               <Link
                                 href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                                className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
+                                className="truncate text-sm font-semibold tracking-tight text-ink hover:text-ink transition-colors"
                                 data-no-row-click
                               >
                                 {r.name}
@@ -798,11 +798,11 @@ export function ConnectedSourceList({
                             <SourceTrustSummary state={sourceState} lastSync={r.lastSync} dataThrough={r.dataThroughDate} reportsHref={hrefFor("/reports?view=performance#report-readiness")} />
                             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-mute">
                               <div className="flex flex-wrap items-center gap-3">
-                                <Link href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)} className="font-semibold text-ink hover:text-white transition-colors">
+                                <Link href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)} className="font-semibold text-ink hover:text-ink transition-colors">
                                   Open source details →
                                 </Link>
                                 <span className="text-line">·</span>
-                                <Link href={hrefFor("/explorer")} className="font-semibold text-ink hover:text-white transition-colors">
+                                <Link href={hrefFor("/explorer")} className="font-semibold text-ink hover:text-ink transition-colors">
                                   View warehouse data →
                                 </Link>
                               </div>

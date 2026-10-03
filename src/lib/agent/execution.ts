@@ -436,7 +436,10 @@ export async function reconcileRunImports(scope: AgentScope, runId: string) {
 }
 
 export async function getTaskDataPreview(scope: AgentScope, taskId: string) {
-  return agentTransaction(async tx => {
+  return agentTransaction(tx => getTaskDataPreviewInTransaction(tx, scope, taskId));
+}
+
+export async function getTaskDataPreviewInTransaction(tx: AgentTransaction, scope: AgentScope, taskId: string) {
     const { task, run } = await requireTask(tx, scope, taskId, false);
     if (!task.confirmedScope) throw new AgentError("scope_required", "Confirm an import before reviewing results");
     const confirmed = ConfirmedScopeSchema.parse(task.confirmedScope);
@@ -444,7 +447,6 @@ export async function getTaskDataPreview(scope: AgentScope, taskId: string) {
     const actual = await evidence(tx, scope.workspaceId, confirmed);
     const rows = await tx.campaignMetric.findMany({ where: warehouseWhere(scope.workspaceId, confirmed), orderBy: [{ date: "desc" }, { id: "asc" }], take: 10, select: { date: true, accountId: true, campaignName: true, spend: true, conversions: true, revenue: true, currency: true } });
     return { ...actual, sampleRows: rows.map(row => ({ ...row, date: row.date.toISOString().slice(0, 10) })), verified: task.state === "ready", omissions: task.reasonCode };
-  });
 }
 
 export async function finishOnboardingRun(scope: AgentScope, runId: string, expectedVersion: number) {

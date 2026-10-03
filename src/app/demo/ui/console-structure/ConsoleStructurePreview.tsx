@@ -6,8 +6,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SessionContext } from "next-auth/react";
 import { SWRConfig, useSWRConfig } from "swr";
-import { ArrowRight, BookOpen, ChevronRight, Compass, Search, X } from "lucide-react";
+import { ArrowRight, BookOpen, ChevronRight, Compass, Search, X, RotateCcw } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
+import { FeatureReminder } from "@/components/console/FeatureReminder";
 import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
 import { ConsoleOverview } from "@/components/dashboard/ConsoleOverview";
 import type { AgentConsoleOperationalSummary } from "@/lib/agent-console/console-summary";
@@ -31,6 +32,18 @@ const Exports = dynamic(() => import("@/app/(app)/exports/page"), { loading });
 const Clients = dynamic(() => import("@/app/(app)/clients/ClientsClient").then(module => module.ClientsClient), { loading });
 const SettingsPage = dynamic(() => import("@/app/(app)/settings/page"), { loading });
 const cache = () => new Map();
+
+/** Review control lives only in the demo route, never in customer Settings. */
+function SettingsFeatureReplay({ hrefFor }: { hrefFor: (href: string) => string }) {
+  const [open, setOpen] = useState(false);
+  return <>
+    <div className="mx-6 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-panel p-4 sm:mx-10 lg:mx-12">
+      <div><p className="text-sm font-semibold text-ink">Feature pop-up preview</p><p className="mt-1 text-xs text-ink-mute">Replay anytime for design review. Preview only.</p></div>
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-panel px-4 text-sm font-medium text-ink hover:bg-surface-muted"><RotateCcw size={16} aria-hidden />Replay feature preview</button>
+    </div>
+    <FeatureReminder open={open} onClose={() => setOpen(false)} hrefFor={hrefFor} />
+  </>;
+}
 
 export function ConsoleStructurePreview() {
   const pathname = usePathname();
@@ -183,7 +196,7 @@ function ProductionScreen({ productionPath, state, onState, notice, onNotice }: 
   else if (productionPath === "/explorer") content = <PageShell section="warehouse"><Explorer/></PageShell>;
   else if (productionPath === "/exports") content = <Exports/>;
   else if (productionPath === "/clients") content = <Clients/>;
-  else if (productionPath === "/settings") content = <SettingsPage/>;
+  else if (productionPath === "/settings") content = <><SettingsFeatureReplay hrefFor={routeHref}/><SettingsPage/></>;
   else content = <PageShell><h1>Page unavailable in this preview</h1><Link href={routeHref("/directory")}>Browse console directory</Link></PageShell>;
 
   return <div className={s.root} onClickCapture={follow}><AppLayout visualPreview previewTitle={title} previewPath={section?.path ?? productionPath} previewHref={routeHref} previewDirectories={Object.fromEntries(consoleDirectory.map(area => [area.path, area.entries.map(entry => ({ label: entry.label, href: routeHref(entry.href) }))]))}>

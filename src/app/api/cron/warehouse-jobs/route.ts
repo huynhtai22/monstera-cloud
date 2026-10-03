@@ -16,7 +16,7 @@ const BATCH_SIZE = 5;
  * (Hobby has no minute-level Vercel cron) and nightly via /api/cron/master.
  *
  * 1. Reclaims orphaned running jobs whose lease expired.
- * 2. Claims due queued jobs up to BATCH_SIZE (by priority DESC, scheduledAt ASC).
+ * 2. Claims due queued jobs up to BATCH_SIZE (by priority, then least active workspace, then due time).
  * 3. Executes each job with durable progress tracking, heartbeats, and retry management.
  */
 export async function GET(req: Request) {

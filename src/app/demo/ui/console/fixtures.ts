@@ -9,6 +9,7 @@ export type PreviewState =
   | "New workspace"
   | "Multi-currency"
   | "Monitoring setup"
+  | "Monitoring draft"
   | "Monitoring active";
 export const previewStates: PreviewState[] = [
   "Overview",
@@ -19,6 +20,7 @@ export const previewStates: PreviewState[] = [
   "New workspace",
   "Multi-currency",
   "Monitoring setup",
+  "Monitoring draft",
   "Monitoring active",
 ];
 

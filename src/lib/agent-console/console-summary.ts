@@ -1,3 +1,4 @@
+import type { DataHealthSetupDraft } from "./setup-contracts";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceRole } from "./persistence";
 import { isAgentConsoleMonitoringAvailable } from "./availability";
@@ -23,6 +24,7 @@ export interface AgentConsoleOperationalSummary {
     lastSuccessfulAt: string | null;
     scopeCount: number;
   }>;
+  setupDrafts: DataHealthSetupDraft[];
   openCases: Array<{
     id: string;
     title: string;
@@ -115,9 +117,9 @@ export async function getAgentConsoleOperationalSummary(
   // Get data-through coverage across confirmed responsibility scoped connections
   let scopedConnIds: string[] = [];
   if (activeResp) {
-    scopedConnIds = Array.from(new Set(activeResp.scopes.map((s) => s.connectionId)));
+    scopedConnIds = Array.from(new Set(activeResp.scopes.filter(s => s.scopeRevision === activeResp.scopeRevision).map((s) => s.connectionId)));
   } else if (pausedResp) {
-    scopedConnIds = Array.from(new Set(pausedResp.scopes.map((s) => s.connectionId)));
+    scopedConnIds = Array.from(new Set(pausedResp.scopes.filter(s => s.scopeRevision === pausedResp.scopeRevision).map((s) => s.connectionId)));
   }
 
   let dataThroughCoverage: string | null = null;
@@ -157,7 +159,17 @@ export async function getAgentConsoleOperationalSummary(
       version: r.version,
       nextDueAt: r.nextDueAt ? r.nextDueAt.toISOString() : null,
       lastSuccessfulAt: r.lastSuccessfulAt ? r.lastSuccessfulAt.toISOString() : null,
-      scopeCount: r.scopes.length,
+      scopeCount: r.scopes.filter(s => s.scopeRevision === r.scopeRevision).length,
+    })),
+    setupDrafts: responsibilities.filter(r => r.kind === "data_health" && r.status === "draft").map(r => ({
+      id: r.id, version: r.version, timezone: r.timezone, updatedAt: r.updatedAt.toISOString(),
+      goalLabel: typeof (r.configuration as { onboardingGoal?: { context?: unknown } }).onboardingGoal?.context === "string"
+        ? (r.configuration as { onboardingGoal: { context: string } }).onboardingGoal.context : null,
+      onboardingRunId: typeof (r.configuration as { onboardingRunId?: unknown }).onboardingRunId === "string"
+        ? (r.configuration as { onboardingRunId: string }).onboardingRunId : null,
+      scopes: r.scopes.filter(s => s.scopeRevision === r.scopeRevision).map(s => ({
+        connectionId: s.connectionId, provider: s.provider, providerAccountId: s.providerAccountId, accountName: s.accountName,
+      })),
     })),
     openCases: openCases.map((c) => ({
       id: c.id,
