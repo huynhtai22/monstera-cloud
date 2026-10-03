@@ -11,7 +11,7 @@ import styles from "./Onboarding.module.css";
 type Task = AgentSnapshot["tasks"][number];
 export type TaskAction = "defer" | "reconnect" | "discover" | "reuse" | "change_scope" | "retry_failed";
 export type ImportChoice = { selectedAccountIds: string[]; since: string; until: string; expectedVersion: number };
-export type DataPreview = { provider: string; coverage: { limitations: string[] }; verified: boolean; rowsCount: number; timezone: string; omissions: string | null; window: { since: string; until: string }; accounts: { id: string; accountId: string; connectionId: string; groups: { currency: string | null; rows: number; spend: number; conversions: number; revenue: number; dataThroughDate: string | null }[] }[]; sampleRows: { date: string; accountId: string; campaignName: string; spend: number; conversions: number; currency: string | null }[] };
+export type DataPreview = { provider: string; coverage: { limitations: string[] }; verified: boolean; rowsCount: number; timezone: string; omissions: string | null; window: { since: string; until: string }; accounts: { id: string; accountId: string; connectionId: string; groups: { currency: string | null; rows: number; spend: number; conversions: number; revenue: number; dataThroughDate: string | null }[] }[]; sampleRows: { date: string; accountId: string; campaignName: string; spend: number; revenue: number; conversions: number; currency: string | null }[] };
 
 export function AgentTaskSetup({ task, workspaceId, canAuthorize, disabled, onAction, onConfirm, onReviewed, explorerPath }: {
   task: Task; workspaceId: string; canAuthorize: boolean; disabled: boolean;
