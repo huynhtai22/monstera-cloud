@@ -32,6 +32,8 @@ try {
         assert.ok(box.x >= 0 && box.x + box.width <= width && box.height <= height * .9 + 1);
         const cancel = await dialog.getByRole("button", { name: "Cancel", exact: true }).boundingBox();
         assert.ok(cancel && cancel.y >= 0 && cancel.y + cancel.height <= height, "footer actions stay inside short viewports");
+        const footerNote = await dialog.getByText(`Sign in on ${provider}. Disconnect anytime in Monstera Cloud.`, { exact: true }).boundingBox();
+        assert.ok(footerNote && footerNote.y + footerNote.height <= height, "the complete footer remains reachable");
         const permissions = dialog.getByRole('region', { name: 'Access for reporting' });
         assert.ok(await permissions.isVisible());
         if (provider === 'Meta Ads') await dialog.screenshot({ path: `/tmp/connector-${theme}-${width}.png` });
