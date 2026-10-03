@@ -117,6 +117,7 @@ model User {
   workCategory                WorkCategory?
   workContext                 String?                      @db.VarChar(500)
   workProfileAnsweredAt       DateTime?
+  consoleReminderHistory      Json?
   agentRuns                   AgentRun[]
   accounts                    Account[]
   sessions                    Session[]
