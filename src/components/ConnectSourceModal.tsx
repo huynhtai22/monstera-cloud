@@ -197,6 +197,8 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
 
     const handleAuthenticate = () => {
         if (isProcessing) return;
+        // Move focus before Continue becomes inert, including before passive effects run.
+        dialogRef.current?.focus();
         if (previewMode) {
             setConnectionPhase("opening");
             return;
