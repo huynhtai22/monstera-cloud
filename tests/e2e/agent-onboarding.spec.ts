@@ -32,6 +32,40 @@ test.describe("persisted agent onboarding (M2)", () => {
     await db.$disconnect();
   });
 
+  test("dashboard delegation preserves intent and client scope through setup and reload", async ({ page }) => {
+    await db.user.update({ where: { id: userId }, data: { workProfileAnsweredAt: new Date(), workCategory: "AGENCY_CONSULTANT" } });
+    const client = await db.client.create({ data: { workspaceId, name: "North client" } });
+    await page.goto("/console");
+    const delegation = page.locator("[data-dashboard-delegation]");
+    await expect(delegation.getByRole("heading", { name: "What would you like Monstera to do?" })).toBeVisible();
+    await delegation.getByLabel("Task reporting client").selectOption(client.id);
+    await delegation.getByLabel("Additional reporting context (optional)").fill("Prepare the weekly North report");
+    await delegation.getByRole("button", { name: "Prepare task" }).click();
+    await expect(delegation.getByRole("link", { name: "Continue task" })).toBeVisible();
+    const run = await db.agentRun.findFirstOrThrow({ where: { workspaceId } });
+    expect(run.clientId).toBe(client.id);
+    expect(await db.agentTask.count({ where: { workspaceId } })).toBe(0);
+    await delegation.getByRole("button", { name: /Confirm the reporting scope/ }).press("Enter");
+    await expect(delegation.getByText("Prepare the weekly North report", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(delegation.getByText("Prepare client reporting · North client")).toBeVisible();
+    expect(await db.agentRun.count({ where: { workspaceId } })).toBe(1);
+    await delegation.getByRole("link", { name: "Continue task" }).click();
+    await expect(page).toHaveURL(new RegExp(`/onboarding\\?workspaceId=${workspaceId}`));
+    await expect(page.getByRole("heading", { name: "Let’s prepare client reporting." })).toBeVisible();
+    await expect(page.getByLabel("Reporting client")).toHaveValue(client.id);
+    await expect(page.getByLabel("Reporting client")).toBeDisabled();
+    await page.getByRole("textbox", { name: "Tell Monstera which sources to connect" }).fill("Connect Meta Ads");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await page.getByRole("button", { name: /Add Meta Ads agent/ }).click();
+    await expect(page.getByText("Meta Ads agent", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Continue later" }).click();
+    await expect(delegation.getByRole("link", { name: "Open paused task" })).toBeVisible();
+    await expect(delegation.getByRole("button", { name: /Meta Ads · reporting data Task paused/ })).toBeVisible();
+    expect((await db.agentRun.findFirstOrThrow({ where: { workspaceId } })).id).toBe(run.id);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
   test("role, conversation, explicit agents, reload and recovery use durable records", async ({ page }) => {
     await page.goto("/console");
     await expect(page).toHaveURL(new RegExp(`/onboarding\\?workspaceId=${workspaceId}`));

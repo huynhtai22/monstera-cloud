@@ -27,6 +27,7 @@ export function WorkspaceSetupEntry({ workspaceId, role }: { workspaceId: string
       : enabled ? <Link className="mt-4 inline-block text-sm text-ink underline underline-offset-4" href={`${prefix}/onboarding?workspaceId=${encodeURIComponent(workspaceId)}`}>{viewer ? "View workspace setup →" : "Open workspace setup →"}</Link>
       : <p className="mt-3 text-sm text-ink-mute">Guided setup is rolling out gradually. Source management is available now.</p>}
     {viewer && <p className="mt-2 text-sm text-ink-mute">A workspace member must authorize connections and change setup.</p>}
+    {enabled && <div className="mt-5 border-t border-line pt-4"><h4 className="text-sm font-medium text-ink">Task permissions</h4><p className="mt-2 text-sm text-ink-mute">Tasks use your workspace role and source grants. Each import requires approval of its accounts and dates. Starting a new task carries no previous import approval.</p><Link className="mt-3 inline-block text-sm text-ink underline underline-offset-4" href={`${prefix}/settings?tab=team`}>Review people & roles →</Link></div>}
     <Link className="mt-3 block text-sm text-ink-mute underline underline-offset-4" onClick={() => useWorkspaceStore.getState().setActiveWorkspaceId(workspaceId)} href={`${prefix}/sources`}>Manage sources →</Link>
   </section>;
 }
