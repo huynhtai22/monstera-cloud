@@ -4,6 +4,7 @@ import type { AiToolContext, AiToolResult } from "@/lib/ai/tools/types";
 import type { EvidencePack } from "@/lib/ai/evidence-pack";
 import type { ReportingReadiness } from "@/lib/reporting-readiness";
 import prisma from "@/lib/prisma";
+import { contextStrip, formatGovernedAnswer, generateGovernedNarrative, type NarrativeUsage } from "@/lib/ai/narrative";
 
 export type AnalystTurnStatus = "answered" | "refused" | "queued";
 
@@ -33,6 +34,7 @@ export type AnalystTurnResult = {
   blockers?: string[];
   evidence?: EvidencePack;
   queuedCopy?: string;
+  usage?: NarrativeUsage;
 };
 
 const QUEUED_COPY = "Deeper briefs queue for the nightly AI worker.";
@@ -108,6 +110,7 @@ export async function runAnalystTurn(opts: {
   const citations: EvidencePack["citations"] = [];
   const toolNotes: string[] = [];
   let readiness: ReportingReadiness | null = null;
+  let bestEffort = false;
   type SourceHealthItem = {
     connectionId: string;
     provider: string;
@@ -177,6 +180,7 @@ export async function runAnalystTurn(opts: {
           evidence: packFromReadiness(readiness, citations),
         };
       }
+      bestEffort = readiness.status === "blocked" && !!opts.acknowledgeBestEffort;
     } else if (name === "get_source_health" && Array.isArray(result.data)) {
       sourceHealthList = result.data as SourceHealthItem[];
     } else if (name === "query_metrics" && result.data) {
@@ -433,9 +437,21 @@ export async function runAnalystTurn(opts: {
     ...limitations.map((l) => `- ${l}`),
   ].join("\n");
 
+  let body = formattedAnswer;
+  let usage: NarrativeUsage | undefined;
+  if (role === "interactive") {
+    const narrative = await generateGovernedNarrative({ question: opts.question, toolNotes });
+    if (narrative?.prose) {
+      body = narrative.prose;
+      usage = narrative.usage;
+    }
+  }
+
   return {
     status: "answered",
-    answer: formattedAnswer,
+    answer: formatGovernedAnswer(contextStrip(readiness, { bestEffort }), body),
+    blockers: bestEffort ? ["best_effort", ...(readiness?.blockers ?? [])] : readiness?.blockers,
+    usage,
     structured,
     evidence: readiness
       ? packFromReadiness(readiness, citations)
