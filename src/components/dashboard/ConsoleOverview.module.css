@@ -97,7 +97,7 @@
 }
 .primaryButton:hover {
   background: #ececec;
-  transform: translateY(-1px);
+
 }
 .button:disabled {
   opacity: 0.6;
@@ -232,7 +232,7 @@
 }
 .metric {
   border: 1px solid var(--console-line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: linear-gradient(125deg, #191919 0, var(--console-surface) 65%);
   padding: 19px;
   min-width: 0;
@@ -363,7 +363,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--console-line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: #0e0e0e;
   margin-bottom: 28px;
 }
@@ -426,7 +426,7 @@
   background: var(--console-surface);
   border: 1px solid var(--console-line);
   padding: 22px;
-  border-radius: 12px;
+  border-radius: 8px;
   min-width: 0;
 }
 .panel .sectionHeading h2 {
@@ -1418,10 +1418,10 @@
   }
 }
 
-.statusGroup { margin-bottom: 24px; border: 1px solid var(--color-line); border-radius: 14px; overflow: hidden; background: var(--color-panel); }
+.statusGroup { margin-bottom: 24px; border: 1px solid var(--color-line); border-radius: 8px; overflow: hidden; background: var(--color-panel); }
 .statusGroup .healthStrip { border: 0; border-radius: 0; margin: 0; }
 .statusGroup .attention { border: 0; border-top: 1px solid var(--color-line); border-radius: 0; margin: 0; }
-.guidedEmpty { padding: 24px; background: var(--color-surface-muted); border-radius: 12px; }
+.guidedEmpty { padding: 24px; background: var(--color-surface-muted); border-radius: 8px; }
 .guidedEmpty h3 { font-size: 16px; font-weight: 600; }
 .guidedEmpty p { margin-top: 8px; color: var(--color-ink-mute); font-size: 13px; }
 .checklist { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0; margin: 20px 0 0; list-style: none; }

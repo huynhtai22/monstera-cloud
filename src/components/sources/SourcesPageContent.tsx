@@ -930,13 +930,13 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
             <div data-console-page-header="true" className="console-section-heading mb-7 flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                 <div>
                     <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-ink-mute">Workspace / Data connections</p>
-                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[var(--console-motion-accent)]">.</span></h1>
+                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources</h1>
                     <p className="mt-2 text-sm text-ink-mute">
                         {isLoading
                             ? "Loading your workspace…"
                             : connectedSourceCount === 0
                               ? "Connect a platform to start bringing data into your workspace."
-                              : "A clear view of every platform feeding your workspace."}
+                              : "Manage platform connections, account scope, and import status."}
                     </p>
                     {!isLoading && activeWorkspace && (
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-mute" role="status">
@@ -1276,7 +1276,7 @@ export function SourcesPageContent({ previewBasePath = "/sources", previewMode =
                             {activeFilter === "connected" && catalogIntegrations.length > 0 ? (
                                 <aside className="console-source-discover flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-line bg-panel px-5 py-4" aria-label="Discover available connectors">
                                     <div className="mr-auto min-w-[210px]">
-                                        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[#9fc6a9]">Keep building</p>
+                                        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Source connections</p>
                                         <h2 className="mt-1 text-sm font-medium text-ink">Connect another platform</h2>
                                         <p className="mt-1 text-xs text-ink-mute">Add an account whenever you need it.</p>
                                     </div>

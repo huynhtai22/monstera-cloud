@@ -46,6 +46,10 @@ Guidance for autonomous agents working in this repo.
 
 - For standard dev commands (`npm run dev`, `npm run lint`, `npm run build`), see root `README.md` and `package.json`.
 
+## Mandatory console production standard
+
+All console sections, subsections, dialogs, and new features must follow `docs/CONSOLE_PRODUCTION_STANDARD.md`. Use the refined Settings experience as the reference: clear scope, direct operational copy, compact controls, semantic themes, restrained motion, and verified keyboard/mobile behavior. Do not ship demo-only actions, simulated success, decorative progress, or unverified readiness claims as production functionality.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

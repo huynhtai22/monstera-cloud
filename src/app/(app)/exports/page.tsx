@@ -40,7 +40,7 @@ export default function ExportsPage() {
             {/* Header */}
             <div data-console-section-header="true" data-console-page-header="true" className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">
                 <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-white shadow-xs">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-panel text-ink shadow-xs">
                         <Send className="h-5 w-5" aria-hidden />
                     </div>
                     <div>
@@ -60,7 +60,7 @@ export default function ExportsPage() {
             <div data-console-destinations="true" className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Google Sheets Card */}
-                <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-white/30">
+                <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-ink-mute/40">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
                             <IntegrationMark src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" size="lg" />
@@ -101,7 +101,7 @@ export default function ExportsPage() {
                 </div>
 
                 {/* Looker Studio Card */}
-                <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-white/30">
+                <div className="relative overflow-hidden rounded-lg border border-line bg-panel shadow-xs transition-colors hover:border-ink-mute/40">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
                             <IntegrationMark src={INTEGRATION_LOGOS.looker} alt="Looker Studio" size="lg" />
