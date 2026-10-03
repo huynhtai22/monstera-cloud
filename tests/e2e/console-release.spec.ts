@@ -113,7 +113,7 @@ test("light connector cards and consent portal use readable light surfaces", asy
   await expect(cards.first()).toBeVisible();
   const colors = await cards.evaluateAll(elements => elements.map(element => getComputedStyle(element).backgroundColor));
   expect(colors.every(color => color === "rgb(255, 255, 255)")).toBe(true);
-  await page.getByRole("button", { name: "Add data source", exact: true }).click();
+  await page.getByRole("button", { name: /^Add (data )?source$/ }).click();
   await page.getByRole("option", { name: /^Meta Ads Facebook/ }).click();
   const dialog = page.getByRole("dialog", { name: "Connect Meta Ads to Monstera Cloud", exact: true });
   await expect(dialog).toBeVisible();
