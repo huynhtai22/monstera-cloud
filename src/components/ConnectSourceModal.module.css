@@ -26,7 +26,7 @@
 :global(html[data-console-theme="light"]) .surface :global(p),
 :global(html[data-console-theme="light"]) .surface :global(summary) { color: var(--dialog-muted); }
 :global(html[data-console-theme="light"]) .surface :global(input) { background: var(--dialog-panel); color: var(--dialog-ink); border-color: var(--dialog-border); }
-.consent { min-height: 520px; }
+.consent { min-height: 0; }
 @media (max-width: 480px) { .consent { min-height: 0; } .actions { gap: 8px; } .actions button { padding-inline: 10px; } }
 .surface {
   --dialog-ease: cubic-bezier(.2,.8,.2,1);
