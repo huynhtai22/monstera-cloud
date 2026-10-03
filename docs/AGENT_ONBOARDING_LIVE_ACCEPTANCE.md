@@ -45,3 +45,28 @@ The production deployment helper requires a clean checkout whose HEAD equals `or
 | Shopee | Blocked: live onboarding unavailable; active live partner configuration and designated shop scope pending. |
 
 To resume: prepare a reviewed onboarding release with its migrations, deploy it through the normal release path, and enable only the designated pilot cohort/providers. Identify the permitted workspace and accounts, then complete consent and the walkthrough above. All four providers remain pending; local tests cannot satisfy these live gates.
+
+## New-customer launch acceptance — follow-up 2026-10-03
+
+Start with a genuinely new customer identity and an empty designated workspace, rather than an operator's existing connection. Add that workspace to the explicit pilot cohort; empty cohorts still deny guided setup. Test the ordinary registration/login entry point and record whether an operator had to intervene. A member outside the cohort should receive source-management guidance without agent API access.
+
+For the customer session: choose a work goal and reporting client; complete provider consent; approve exact account/connection pairs and dates; verify consent does not itself import; approve import; inspect the actual first-overview row sample, separate currency totals, data-through and timezone limitations. Accounts with no rows must remain visible as a coverage gap, not invented zero activity. Confirm no unselected account/date appears. Then acknowledge review, open the same workspace, reload and resume one deferred or failed source without widening approval.
+
+For a reporting promise, use the reporting-readiness next step with the same client/window, then independently inspect the rendered Sheets cells or Looker view. Compare date-by-date with warehouse aggregates and provider totals using identical account, currency, timezone and conversion context. Inspect destination output **before** consulting the server receipt. Resolve any coverage or reconciliation difference before claiming report readiness. Warehouse review alone does not satisfy this gate.
+
+| Field | Customer-session record |
+| --- | --- |
+| Commit / environment / cohort | |
+| Workspace / client / provider | |
+| Approved accounts and reporting dates | |
+| Consent result and callback scope | |
+| Import job, start/end, selected-only proof | |
+| Warehouse rows, currencies, timezone, data-through | |
+| Provider reconciliation and differences | |
+| Destination rendered output, then receipt | |
+| Recovery / reload / same-workspace handoff | |
+| Minutes to first usable rows / verified destination | |
+| Operator interventions and customer minutes | |
+| Pass / fail / limitations / follow-up owner | |
+
+All live fields remain unexecuted until the designated customer performs the authorized session. Automated fixture journeys are recorded separately.

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, CheckCircle2, ChevronRight, Copy, Check, Lock, ArrowRight, ShieldCheck, ExternalLink } from "lucide-react";
+import { X, CheckCircle2, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -14,7 +14,9 @@ import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { trackEvent } from "@/lib/analytics-events";
 import { useMounted } from "@/hooks/useMounted";
 import { LogoMark } from "@/components/Logo";
+import { CONSOLE_MOTION } from "@/lib/console-motion";
 import styles from "./ConnectSourceModal.module.css";
+import { ReportingJourneyMotion } from "./onboarding/ReportingJourneyMotion";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -55,23 +57,12 @@ function isOAuthSourceId(sourceId: string): boolean {
     return (OAUTH_SOURCE_IDS as readonly string[]).includes(sourceId);
 }
 
-const PROVIDER_ACCENT: Record<string, string> = {
-    meta_ads: "#1877F2",
-    google_ads: "#4285F4",
-    tiktok_business: "#FE2C55",
-    tiktok_shop: "#FE2C55",
-    shopee: "#EE4D2D",
-    shopify: "#95BF47",
-    amazon: "#FF9900",
-    lazada: "#0F146D",
-};
-
 const CONNECT_DESCRIPTION: Record<string, string> = {
-    meta_ads: "Bring Facebook and Instagram ad results into this workspace.",
-    google_ads: "Bring Google Ads campaigns, spend, and conversions into this workspace.",
+    meta_ads: "See Facebook and Instagram spend and results together for client reporting.",
+    google_ads: "See Google Ads spend and conversions alongside your other reporting sources.",
     tiktok_business: "Bring TikTok ad results into this workspace.",
     tiktok_shop: "Bring orders and product data from your TikTok Shop.",
-    shopee: "Bring orders, products, and sales from your Shopee shop.",
+    shopee: "Bring Shopee orders and sales into your workspace for client reporting.",
     shopify: "Bring orders and products from your Shopify store.",
     lazada: "Bring orders and sales from your Lazada shop.",
     amazon: "Bring orders, inventory, and sales from your Amazon account.",
@@ -88,8 +79,8 @@ const PICKER_DESCRIPTION: Record<string, string> = {
     amazon: "Sales, orders, and inventory.",
 };
 
-const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
-const PANEL_DURATION_MS = 280;
+const PANEL_EASE = CONSOLE_MOTION.easing;
+const PANEL_DURATION_MS = CONSOLE_MOTION.normal;
 
 export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [], previewState, previewMode = false }: ConnectSourceModalProps) {
     const mounted = useMounted();
@@ -98,7 +89,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const shopifyRequestAbort = useRef<AbortController | null>(null);
     const isProcessing = connectionPhase !== null;
     const displayPhase = previewState ?? connectionPhase;
-    const [copiedWhich, setCopiedWhich] = useState<null | "production" | "session">(null);
     const [shopDomain, setShopDomain] = useState("");
     const [draftPick, setDraftPick] = useState<SourcesCatalogItem | null>(null);
 
@@ -110,38 +100,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const id = effective?.id ?? "";
     const name = effective?.name ?? "";
     const logoSrc = effective?.logoSrc ?? INTEGRATION_LOGOS.shopee;
-    const accent = PROVIDER_ACCENT[id] ?? "#67e8f9";
     const uiConfig = getSourceUIConfig(id);
     const connectDescription = CONNECT_DESCRIPTION[id] ?? `Bring ${name} data into this workspace.`;
 
     const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
     const { data: intConfig } = useSWR(isOpen ? "/api/integrations/config" : null, integrationsConfigFetcher);
-
-    const oauthCallbackUrl =
-        id === "meta_ads"
-            ? intConfig?.oauthCallbacks?.metaAds
-            : id === "google_ads"
-              ? intConfig?.oauthCallbacks?.googleAds
-              : id === "amazon"
-                ? intConfig?.oauthCallbacks?.amazon
-                : id === "lazada"
-                  ? intConfig?.oauthCallbacks?.lazada
-                  : undefined;
-
-    const productionOauthUrl =
-        id === "meta_ads"
-            ? intConfig?.oauthCallbacksProduction?.metaAds
-            : id === "google_ads"
-              ? intConfig?.oauthCallbacksProduction?.googleAds
-              : id === "amazon"
-                ? intConfig?.oauthCallbacksProduction?.amazon
-              : id === "lazada"
-                ? intConfig?.oauthCallbacksProduction?.lazada
-                : undefined;
-
-    const sessionDiffersFromProduction = Boolean(
-        productionOauthUrl && oauthCallbackUrl && oauthCallbackUrl !== productionOauthUrl
-    );
 
     const step1Content = useMemo(() => {
         if (uiConfig?.stepContent) return uiConfig.stepContent;
@@ -161,7 +124,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const previousActiveElement = useRef<Element | null>(null);
 
     useEffect(() => {
-        if (!isOpen) return;
+        // The Continue button becomes inert during handoff; keep keyboard focus inside the dialog.
+        if (isOpen && displayPhase) dialogRef.current?.focus();
+    }, [isOpen, displayPhase]);
+
+    useEffect(() => {
+        if (!shouldRender) return;
         previousActiveElement.current = document.activeElement;
         const timer = setTimeout(() => {
             dialogRef.current?.focus();
@@ -172,13 +140,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 previousActiveElement.current.focus();
             }
         };
-    }, [isOpen]);
+    }, [shouldRender]);
 
     useEffect(() => {
         if (isOpen) {
             setDraftPick(null);
             setShopDomain("");
-            setCopiedWhich(null);
             setConnectionPhase(null);
             return;
         }
@@ -187,7 +154,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         const resetTimer = setTimeout(() => {
             setDraftPick(null);
             setShopDomain("");
-            setCopiedWhich(null);
             setConnectionPhase(null);
         }, PANEL_DURATION_MS);
         return () => clearTimeout(resetTimer);
@@ -199,24 +165,25 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     }, []);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!shouldRender) return;
         const prev = document.body.style.overflow;
         document.body.style.overflow = "hidden";
         return () => {
             document.body.style.overflow = prev;
         };
-    }, [isOpen]);
+    }, [shouldRender]);
 
     useEffect(() => {
         if (isOpen) {
             setShouldRender(true);
+            let settleFrame = 0;
             const raf = requestAnimationFrame(() => {
-                requestAnimationFrame(() => setIsVisible(true));
+                settleFrame = requestAnimationFrame(() => setIsVisible(true));
             });
-            return () => cancelAnimationFrame(raf);
+            return () => { cancelAnimationFrame(raf); cancelAnimationFrame(settleFrame); };
         }
         setIsVisible(false);
-        const t = setTimeout(() => setShouldRender(false), PANEL_DURATION_MS);
+        const t = setTimeout(() => setShouldRender(false), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PANEL_DURATION_MS);
         return () => clearTimeout(t);
     }, [isOpen]);
 
@@ -233,6 +200,8 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
 
     const handleAuthenticate = () => {
         if (isProcessing) return;
+        // Move focus before Continue becomes inert, including before passive effects run.
+        dialogRef.current?.focus();
         if (previewMode) {
             setConnectionPhase("opening");
             return;
@@ -297,17 +266,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         onClose();
     };
 
-    const copyOAuthCallback = async (url: string, which: "production" | "session") => {
-        if (!url) return;
-        try {
-            await navigator.clipboard.writeText(url);
-            setCopiedWhich(which);
-            setTimeout(() => setCopiedWhich(null), 2000);
-        } catch {
-            /* ignore */
-        }
-    };
-
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Escape") {
             if (!isProcessing && !integration && draftPick) {
@@ -346,22 +304,22 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     if (!shouldRender || !mounted) return null;
 
     const dialogMotion = cn(
-        "relative flex w-full max-h-[min(90vh,850px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-[0_32px_100px_#0009] outline-none",
-        "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none motion-reduce:transform-none",
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+        "relative flex w-full max-h-[90dvh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-[0_32px_100px_#0009] outline-none",
+        "transition-[opacity,transform] duration-[var(--console-duration-normal)] motion-reduce:transition-none motion-reduce:transform-none",
+        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
     );
 
     const overlay = (
         <div
             className={cn(
                 "fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6",
-                !isVisible && "pointer-events-none"
+                "pointer-events-auto"
             )}
         >
             <div
                 className={cn(
-                    "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
-                    "transition-opacity duration-200 ease-out motion-reduce:transition-none",
+                    styles.veil, "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
+                    "transition-opacity duration-[var(--console-duration-fast)] ease-out motion-reduce:transition-none",
                     isVisible ? "opacity-100" : "opacity-0"
                 )}
                 onClick={handleClose}
@@ -372,16 +330,17 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     ref={dialogRef}
                     onKeyDown={handleKeyDown}
                     onClick={(e) => e.stopPropagation()}
+                    inert={!isOpen}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
                     className={cn(dialogMotion, styles.surface, "max-w-[640px]")}
-                    style={{ transitionTimingFunction: PANEL_EASE }}
+                    style={{ transitionTimingFunction: PANEL_EASE, transitionDuration: `${isVisible ? CONSOLE_MOTION.slow : PANEL_DURATION_MS}ms` }}
                 >
                     <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] px-6 pb-5 pt-6 sm:px-8 sm:pt-7">
                         <div className="min-w-0">
-                            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.17em] text-[#9fc6a9]">New connection</p>
+                            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.17em] text-[#86c99b]">New connection</p>
                             <h3 id="connect-source-picker-title" className="mt-2.5 text-[27px] font-medium tracking-[-0.045em] text-white sm:text-[31px]">
                                 Where is your data?
                             </h3>
@@ -435,7 +394,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         })}
                     </ul>
                     <div className="flex items-center gap-2 border-t border-white/[0.07] px-6 py-4 text-[11px] text-[#858b86] sm:px-8">
-                        <ShieldCheck size={14} className="text-[#9fc6a9]" aria-hidden />
+                        <ShieldCheck size={14} className="text-[#86c99b]" aria-hidden />
                         Your credentials stay with the provider. You can disconnect at any time.
                     </div>
                 </div>
@@ -444,161 +403,84 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     ref={dialogRef}
                     onKeyDown={handleKeyDown}
                     onClick={(e) => e.stopPropagation()}
+                    inert={!isOpen}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="connect-source-modal-title"
                     tabIndex={-1}
-                    className={cn(dialogMotion, styles.surface, displayPhase && styles.connecting, "max-w-[590px]")}
-                    style={{ transitionTimingFunction: PANEL_EASE, "--provider-accent": accent } as React.CSSProperties}
+                    className={cn(dialogMotion, styles.surface, styles.consent, displayPhase && styles.connecting, "max-w-[590px]")}
+                    style={{ transitionTimingFunction: PANEL_EASE, transitionDuration: `${isVisible ? CONSOLE_MOTION.slow : PANEL_DURATION_MS}ms` }}
                 >
-                    <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4 sm:px-7">
+                    <div className="flex items-center justify-between px-6 pt-5 sm:px-8">
                         <div className="flex items-center gap-2.5">
-                            <LogoMark className="h-6 w-6 shrink-0" />
-                            <span className="text-[12px] font-medium tracking-[-0.01em] text-[#d3d6d3]">Monstera Cloud</span>
-                            <ChevronRight className="h-3 w-3 text-[#585b59]" aria-hidden="true" />
-                            <span className="text-[12px] text-[#929793]">New connection</span>
+                            <LogoMark className="h-5 w-5 shrink-0" />
+                            <span className="text-[11px] font-medium tracking-[0.01em] text-[#c9d0ca]">Monstera Cloud</span>
                         </div>
                         <button type="button" onClick={handleClose} aria-label="Close dialog" className="grid h-8 w-8 place-items-center rounded-lg text-[#969b97] transition-colors hover:bg-white/[0.07] hover:text-white">
                             <X className="h-4 w-4" strokeWidth={1.6} />
                         </button>
                     </div>
 
-                    <div className="overflow-y-auto overscroll-contain px-6 pb-5 sm:px-8">
-                        <div className={cn(styles.visual, "-mx-6 sm:-mx-8")} aria-hidden="true">
-                            <div className={cn(styles.node, styles.providerNode)}>
-                                <span className={styles.waitingRing} />
-                                <IntegrationMark src={logoSrc} alt="" size="md" />
-                            </div>
-                            <div className={styles.bridge}><span className={styles.pulse} /></div>
-                            <div className={cn(styles.node, styles.monsteraNode)}><LogoMark className="h-[62px] w-[62px]" /></div>
-                        </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-5 sm:px-8">
+                        <ReportingJourneyMotion compact visual={{ step: "connect", provider: id, logoSrc, running: Boolean(displayPhase) }} />
 
                         <div className={cn(styles.waitingPanel, displayPhase && styles.waitingPanelActive)} aria-hidden={!displayPhase} inert={!displayPhase} role={displayPhase ? "status" : undefined} aria-live={displayPhase ? "polite" : undefined}>
-                            <div className="pb-2 text-center">
-                                <p className="mb-3 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#a4d7b1]">Connecting to {name}</p>
-                                <h3 id={displayPhase ? "connect-source-modal-title" : undefined} className="text-[27px] font-medium tracking-[-0.045em] text-white">
-                                    {displayPhase === "preparing" ? "Getting your sign-in link" : `Opening ${name}`}
+                            <div className="pb-4 text-center">
+                                <p className={styles.statusBadge}><span className={styles.statusDot} aria-hidden="true" />{displayPhase === "preparing" ? "Preparing secure connection" : "Opening secure sign-in"}</p>
+                                <h3 id={displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white">
+                                    {displayPhase === "preparing" ? "Preparing your connection" : `Opening ${name}`}
                                 </h3>
-                                <p className="mx-auto mt-3 max-w-[390px] text-[13px] leading-[1.65] text-[#a0a5a1]">
+                                <p className="mx-auto mt-3 max-w-[390px] text-[14px] leading-[1.6] text-[#c6d0c8]">
                                     {displayPhase === "preparing"
-                                        ? `Monstera is getting a secure sign-in link from ${name}.`
-                                        : `Approve access on ${name}. You’ll return here to choose the accounts to sync.`}
+                                        ? `Getting a secure sign-in link from ${name}…`
+                                        : `Approve access with ${name}. You'll return here to choose the accounts to sync.`}
                                 </p>
-                                <div className="mx-auto mt-7 flex max-w-[340px] items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-[11px] text-[#aeb5af]">
-                                    <Lock className="h-3.5 w-3.5 shrink-0 text-[#a4d7b1]" aria-hidden="true" />
-                                    Sign-in happens on {name}.
-                                </div>
+
+                                <p className="mt-5 text-[12px] text-[#aab5ac]">Your sign-in happens securely on {name}.</p>
                             </div>
                         </div>
 
                         <div className={cn(styles.idlePanel, displayPhase && styles.idlePanelHidden)} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
-                                <div className="text-center">
-                                    <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#a4d7b1]">Connect a source</p>
-                                    <h3 id={!displayPhase ? "connect-source-modal-title" : undefined} className="mt-2 text-[29px] font-medium tracking-[-0.05em] text-white sm:text-[32px]">Connect {name}</h3>
-                                    <p className="mx-auto mt-1.5 max-w-[420px] text-[13px] leading-[1.6] text-[#a0a5a1]">
+                            <div className={styles.phaseBody}>
+                                <div className={styles.intro}>
+                                    <h3 id={!displayPhase ? "connect-source-modal-title" : undefined} className="text-[28px] font-medium tracking-[-0.045em] text-white sm:text-[30px]">Connect {name} to Monstera Cloud</h3>
+                                    <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-[1.6] text-[#afb8b0]">
                                         {connectDescription}
                                     </p>
                                 </div>
 
-                                <div className="mt-5 overflow-hidden rounded-xl border border-white/[0.09] bg-[#1a1c1b]">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] px-4 py-3">
-                                        <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#a4d7b1]" strokeWidth={1.7} aria-hidden="true" /><span className="text-[12px] font-medium text-[#e4e9e5]">What Monstera can read</span></div>
-                                        <span className="rounded-full border border-[#9dceab]/20 bg-[#9dceab]/[0.08] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[#abd8b8]">Read-only</span>
-                                    </div>
-                                    <ul className="grid gap-2 px-4 py-3 sm:grid-cols-1">
+                                <section className={styles.accessDetails} aria-label="Access for reporting">
+                                    <h4 className={styles.accessHeading}><ShieldCheck size={17} aria-hidden /> Access for reporting</h4>
+                                    <ul className={styles.permissionList}>
                                         {step1Content.permissions.map((line) => (
-                                            <li key={line} className="flex items-start gap-2.5 text-[11px] leading-[1.5] text-[#b7bcb8]"><CheckCircle2 className="mt-[1px] h-3.5 w-3.5 shrink-0 text-[#8ab99a]" strokeWidth={1.7} />{line}</li>
+                                            <li key={line}><CheckCircle2 size={16} aria-hidden /> <span>{line}</span></li>
                                         ))}
                                     </ul>
-                                </div>
+                                    <p className={styles.accessNote}>You’ll review the provider’s permissions before approving. After sign-in, choose your accounts and reporting dates.</p>
+                                </section>
 
                                 {id === "shopify" && (
                                     <div className="mt-5 space-y-2">
                                         <label htmlFor="shopify-domain" className="font-mono text-[10px] font-medium uppercase tracking-[0.13em] text-[#a0a5a1]">{uiConfig?.domainInputLabel ?? "Shopify store domain"}</label>
-                                        <input id="shopify-domain" type="text" placeholder={uiConfig?.domainInputPlaceholder ?? "mystore.myshopify.com"} value={shopDomain} onChange={(e) => setShopDomain(e.target.value)} disabled={isProcessing} className="w-full rounded-lg border border-white/[0.12] bg-[#0d0e0d] px-3.5 py-3 text-sm text-white placeholder:text-[#777d79] focus:border-[#a4d7b1]/60 focus:outline-none disabled:opacity-50" />
+                                        <input id="shopify-domain" type="text" placeholder={uiConfig?.domainInputPlaceholder ?? "mystore.myshopify.com"} value={shopDomain} onChange={(e) => setShopDomain(e.target.value)} disabled={isProcessing} className="w-full rounded-lg border border-white/[0.12] bg-[#0d0e0d] px-3.5 py-3 text-sm text-white placeholder:text-[#777d79] focus:border-[#b8b8b8]/60 focus:outline-none disabled:opacity-50" />
                                     </div>
                                 )}
 
-                                <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[11px] text-[#828b84]">
-                                    <span className="flex items-center gap-1.5"><Lock className="h-3 w-3" aria-hidden="true" /> Access tokens are encrypted. Disconnect anytime.</span>
-                                    {!integration && draftPick && <button type="button" onClick={() => setDraftPick(null)} className="text-[#a9cdb2] hover:text-white">Choose a different source</button>}
-                                </div>
-                                <p className="mt-2 text-[11px] leading-relaxed text-[#777e78]">{step1Content.footnote}</p>
-                                {/* Developer: OAuth callback — collapsed by default */}
-                        {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
-                            <details className="group mt-3">
-                                <summary className="cursor-pointer list-none text-[11px] text-ink-mute hover:text-ink select-none flex items-center gap-1">
-                                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" strokeWidth={1.5} />
-                                    Advanced setup
-                                </summary>
-                                <div className="mt-3 space-y-2 rounded-md border border-dashed border-line px-3 py-3">
-                                    <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
-                                        {id === "meta_ads"
-                                            ? "Meta — Valid OAuth Redirect URI"
-                                            : id === "google_ads"
-                                            ? "Google Cloud — Authorized redirect URI"
-                                            : id === "amazon"
-                                                ? "Amazon — Allowed OAuth redirect URI"
-                                                : "Lazada — Callback URL"}
-                                    </p>
-                                    <p className="text-[11px] leading-snug text-ink-mute">
-                                        Production domain{" "}
-                                        <span className="text-ink">monsteracloud.com</span> — paste the full URL into the developer console.
-                                    </p>
-                                    {productionOauthUrl ? (
-                                        <div className="flex items-start gap-2">
-                                            <code className="flex-1 break-all rounded-md border border-line bg-canvas px-2.5 py-2 font-mono text-[11px] leading-relaxed text-ink">
-                                                {productionOauthUrl}
-                                            </code>
-                                            <button
-                                                type="button"
-                                                onClick={() => copyOAuthCallback(productionOauthUrl, "production")}
-                                                className="shrink-0 rounded-md border border-line p-2 text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink"
-                                                title="Copy production URL"
-                                            >
-                                                {copiedWhich === "production" ? (
-                                                    <Check className="h-4 w-4 text-accent" strokeWidth={1.5} aria-hidden />
-                                                ) : (
-                                                    <Copy className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-                                                )}
-                                            </button>
-                                        </div>
-                                    ) : intConfig ? (
-                                        <p className="text-[11px] text-amber-400">Could not load production callback URL.</p>
-                                    ) : (
-                                        <p className="animate-pulse text-[11px] text-ink-mute">Loading…</p>
-                                    )}
-                                    {sessionDiffersFromProduction && oauthCallbackUrl && (
-                                        <div className="space-y-1.5 border-t border-line pt-2">
-                                            <p className="font-mono text-[10px] uppercase tracking-wide text-ink-mute">
-                                                This session (local / preview)
-                                            </p>
-                                            <div className="flex items-start gap-2">
-                                                <code className="flex-1 break-all rounded-md border border-line bg-canvas/70 px-2 py-1.5 font-mono text-[11px] text-ink-mute">
-                                                    {oauthCallbackUrl}
-                                                </code>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => copyOAuthCallback(oauthCallbackUrl, "session")}
-                                                    className="shrink-0 rounded-md border border-line px-2 py-1.5 font-mono text-[10px] text-ink-mute hover:text-ink"
-                                                >
-                                                    {copiedWhich === "session" ? "Copied" : "Copy"}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </details>
-                        )}
-
+                                {!integration && draftPick && <button type="button" onClick={() => setDraftPick(null)} className="mt-4 text-[11px] text-[#86c99b] hover:text-white">Choose a different source</button>}
+                            </div>
                         </div>
                     </div>
 
-                    <div className={cn(styles.footer, displayPhase && styles.footerHidden, "flex flex-col gap-3 border-t border-white/[0.07] bg-[#171918] px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8")} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
-                            <span className="flex items-center gap-1.5 text-[11px] text-[#878f89]"><ExternalLink className="h-3 w-3" aria-hidden="true" /> Next: sign in to {name}</span>
-                            <button type="button" onClick={handleAuthenticate} disabled={isProcessing || oauthPrimaryDisabled} className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#d7e8d9] px-4 text-[12px] font-semibold text-[#102017] shadow-[0_2px_14px_#91c9a325] transition-[background,transform] hover:-translate-y-px hover:bg-[#e6f3e8] disabled:cursor-not-allowed disabled:opacity-50">
-                                Continue to {name}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
-                            </button>
+                    <div className={cn(styles.footer, displayPhase && styles.footerHidden, "px-6 pb-7 sm:px-8")} aria-hidden={Boolean(displayPhase)} inert={Boolean(displayPhase)}>
+                            <div className={styles.phaseBody}>
+                            <div className={styles.actions}>
+                                <button type="button" onClick={handleClose} className={styles.cancel}>Cancel</button>
+                                <button type="button" onClick={handleAuthenticate} aria-busy={isProcessing} disabled={isProcessing || oauthPrimaryDisabled} className={styles.continue}>
+                                    Continue to {name}<ArrowRight size={16} aria-hidden />
+                                </button>
+                            </div>
+                            <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-[#858d87]"><Lock className="h-3 w-3 shrink-0" aria-hidden="true" /> Sign in on {name}. Disconnect anytime in Monstera Cloud.</p>
+                        </div>
                     </div>
                 </div>
             )}

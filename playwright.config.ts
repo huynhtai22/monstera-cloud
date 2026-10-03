@@ -3,6 +3,10 @@ import { validateE2eCommitSha } from "./src/lib/e2e-env-guard";
 
 // Port is overridable so suites can run on a non-3000 port; default unchanged.
 const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+// Explicit disposable workspace cohort; never broadens production rollout.
+const onboardingTestCohort = process.env.MONSTERA_E2E_ISOLATED === "1" && process.env.ENABLE_AGENT_ONBOARDING === "1"
+  ? ["desktop-chromium", "mobile-chromium"].flatMap(project => Array.from({ length: 64 }, (_, worker) => `agent-ui-workspace-${project}-${worker}`)).join(",")
+  : "";
 const commitSha = validateE2eCommitSha(process.env);
 
 export default defineConfig({
@@ -37,6 +41,9 @@ export default defineConfig({
       MONSTERA_E2E_ISOLATED: process.env.MONSTERA_E2E_ISOLATED ?? "",
       CLIENT_ASSIGNMENT_TEST_DB: process.env.CLIENT_ASSIGNMENT_TEST_DB ?? "",
       GIT_COMMIT_SHA: commitSha,
+      AGENCY_HOST_ROUTING_ENABLED: process.env.MONSTERA_E2E_ISOLATED === "1" ? "1" : "",
+      ENABLE_AGENT_ONBOARDING: process.env.ENABLE_AGENT_ONBOARDING ?? "",
+      AGENT_ONBOARDING_WORKSPACE_IDS: process.env.AGENT_ONBOARDING_WORKSPACE_IDS ?? onboardingTestCohort,
       PILOT_MODE: "1",
       ENABLE_GOVERNED_ANALYST: "1",
       NEXT_PUBLIC_ENABLE_GOVERNED_ANALYST: "1",

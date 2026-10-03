@@ -87,8 +87,9 @@ export class TikTokBusinessClient {
 
     const json = (await res.json()) as Record<string, unknown>;
     if ((json.code as number) !== 0 || !json.data) {
-      const msg = (json.message as string) || JSON.stringify(json);
-      throw new Error(`TikTok Marketing API token error ${json.code}: ${msg}`);
+      // Provider messages can echo credentials; retain only a numeric diagnostic code.
+      const code = typeof json.code === "number" && Number.isSafeInteger(json.code) ? json.code : "unknown";
+      throw new Error(`TikTok Marketing API token error ${code}: Token exchange rejected; verify app configuration or reconnect TikTok Ads.`);
     }
 
     // The advertiser authorization flow returns a long-lived token. It normally
@@ -189,8 +190,9 @@ export class TikTokBusinessClient {
 
     const json = (await res.json()) as Record<string, unknown>;
     if ((json.code as number) !== 0 || !json.data) {
-      const msg = (json.message as string) || JSON.stringify(json);
-      throw new Error(`TikTok Marketing API refresh error ${json.code}: ${msg}`);
+      // Never propagate an echoed refresh token into logs or persisted connection errors.
+      const code = typeof json.code === "number" && Number.isSafeInteger(json.code) ? json.code : "unknown";
+      throw new Error(`TikTok Marketing API refresh error ${code}: Token refresh rejected; verify app configuration or reconnect TikTok Ads.`);
     }
 
     return json.data as unknown as TikTokBusinessTokenResponse;

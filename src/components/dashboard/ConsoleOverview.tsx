@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode, Ref } from "react";
+import { LogoMark } from "@/components/Logo";
+import { ConsoleCountUp } from "@/components/console/ConsoleMotion";
+import { useState, type ReactNode, type Ref } from "react";
 import Link from "next/link";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import {
@@ -22,6 +24,10 @@ import type {
   DashboardOverviewDTO,
   DashboardIssueItem,
 } from "@/lib/dashboard-overview";
+import type { DataHealthSetupDraft } from "@/lib/agent-console/setup-contracts";
+import { useSearchParams } from "next/navigation";
+import { OnboardingHandoffCard } from "./OnboardingHandoffCard";
+import { ConnectedDataResponsibilitySetup } from "./ConnectedDataResponsibilitySetup";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import {
@@ -54,6 +60,38 @@ type Props = {
   onWizardResume: () => void;
   onReconnect: (issue: DashboardIssueItem) => void;
   performancePanelRef?: Ref<HTMLDivElement>;
+  agentConsoleSummary?: {
+    workspaceId?: string;
+    schedulerStatus: "active" | "delayed" | "paused" | "unavailable" | "no_responsibility";
+    monitoringAvailable: boolean;
+    supportedCadenceLabel: string;
+    nextScheduledCheck: string | null;
+    lastSuccessfulCheck: string | null;
+    dataThroughCoverage: string | null;
+    activeBlockers: string[];
+    setupDrafts?: DataHealthSetupDraft[];
+    responsibilities?: Array<{
+      id: string;
+      kind: string;
+      status: string;
+      cadence: string;
+      version: number;
+      nextDueAt: string | null;
+      lastSuccessfulAt: string | null;
+      scopeCount: number;
+    }>;
+    openCases?: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      state: string;
+      priority: string;
+      version: number;
+      requiredAction: string | null;
+      createdAt: string;
+    }>;
+  } | null;
+  onRefreshSummary?: () => void | Promise<unknown>;
 };
 
 function Status({
@@ -127,9 +165,9 @@ function EmptyState({
 }
 
 const channelColors = [
-  "#b8c8dc",
-  "#828b99",
-  "#575d67",
+  "#5eead4",
+  "#a78bfa",
+  "#fbbf24",
   "#a5a5a5",
   "#8f8181",
   "#777777",
@@ -146,8 +184,76 @@ export function ConsoleOverview({
   onWizardResume,
   onReconnect,
   performancePanelRef,
+  agentConsoleSummary,
+  onRefreshSummary,
 }: Props) {
+  const searchParams = useSearchParams();
   const { hrefFor } = useClientContextNavigation();
+  const [activeCaseActionId, setActiveCaseActionId] = useState<string | null>(null);
+  const [activeRespAction, setActiveRespAction] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const activeResp = agentConsoleSummary?.responsibilities?.find((r) => r.status === "active");
+  const pausedResp = agentConsoleSummary?.responsibilities?.find((r) => r.status === "paused");
+  const monitoredResp = activeResp || pausedResp;
+
+  const handleTogglePause = async () => {
+    if (!monitoredResp || !workspace.id) return;
+    setActiveRespAction(true);
+    setActionError(null);
+    try {
+      const targetAction = monitoredResp.status === "active" ? "pause" : "resume";
+      const res = await fetch(`/api/agent-console/responsibilities/${monitoredResp.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          expectedVersion: monitoredResp.version,
+          action: targetAction,
+          reason: targetAction === "pause" ? "Paused by user from console overview" : "Resumed by user from console overview",
+        }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || "Failed to update responsibility status");
+      }
+      if (onRefreshSummary) {
+        await onRefreshSummary();
+      }
+      onRefresh();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActiveRespAction(false);
+    }
+  };
+
+  const handleRecoverCase = async (c: { id: string; version: number; requiredAction: string | null }) => {
+    if (!workspace.id) return;
+    setActiveCaseActionId(c.id);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/agent-console/cases/${c.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          expectedVersion: c.version,
+          action: "recover",
+        }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || (typeof errJson.details === "string" ? errJson.details : JSON.stringify(errJson.details)) || "Failed to trigger case recovery");
+      }
+      if (onRefreshSummary) onRefreshSummary();
+      onRefresh();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActiveCaseActionId(null);
+    }
+  };
   const {
     workspace,
     summaryCards,
@@ -172,7 +278,7 @@ export function ConsoleOverview({
       <>
         {metrics.byCurrency.map((item) => (
           <span key={item.currency} className={styles.currencyValue}>
-            {formatCurrency(item[key], item.currency)}
+            <ConsoleCountUp value={item[key]} format={value => formatCurrency(value, item.currency)} />
             {mixedCurrency && <small>{item.currency}</small>}
           </span>
         ))}
@@ -202,7 +308,7 @@ export function ConsoleOverview({
         : mixedCurrency
           ? "Multiple currencies"
           : singleRoas
-            ? `${firstCurrency.roas.toFixed(2)}×`
+            ? <ConsoleCountUp value={firstCurrency.roas} format={value => `${value.toFixed(2)}×`} />
             : "—",
       detail: mixedCurrency
         ? "Review each currency in the warehouse"
@@ -211,7 +317,7 @@ export function ConsoleOverview({
     {
       name: "Impressions",
       icon: <MousePointer2 />,
-      value: hasMetrics ? formatCompactNumber(metrics.impressions) : "—",
+      value: hasMetrics ? <ConsoleCountUp value={metrics.impressions} format={value => formatCompactNumber(Math.round(value))} /> : "—",
       detail: hasMetrics
         ? `${formatCompactNumber(metrics.clicks)} clicks · ${formatCompactNumber(metrics.conversions)} conversions`
         : "Traffic appears after your first import",
@@ -229,7 +335,7 @@ export function ConsoleOverview({
 
   return (
     <div className={styles.console} data-console-page="true" data-console-section="dashboard">
-      <header className={styles.header}>
+      <header data-console-page-header="true" className={styles.header}>
         <div>
           <p className={styles.eyebrow}>
             WORKSPACE OVERVIEW <span className={styles.eyebrowDivider}>/</span>{" "}
@@ -241,6 +347,25 @@ export function ConsoleOverview({
           </p>
         </div>
         <div className={styles.headerActions}>
+          {monitoredResp && (
+            <button
+              className={styles.button}
+              type="button"
+              onClick={handleTogglePause}
+              disabled={activeRespAction || (monitoredResp.status === "paused" && !agentConsoleSummary?.monitoringAvailable)}
+              title={monitoredResp.status === "paused" && !agentConsoleSummary?.monitoringAvailable
+                ? "Monitoring cannot resume until its scheduled worker is enabled"
+                : undefined}
+            >
+              <ConsoleSyncLabel
+                active={activeRespAction}
+                idleLabel={monitoredResp.status === "active"
+                  ? "Pause monitoring"
+                  : agentConsoleSummary?.monitoringAvailable ? "Resume monitoring" : "Resume unavailable"}
+                activeLabel={monitoredResp.status === "active" ? "Pausing…" : "Resuming…"}
+              />
+            </button>
+          )}
           <button
             className={styles.button}
             type="button"
@@ -264,6 +389,13 @@ export function ConsoleOverview({
         </div>
       </header>
 
+      {actionError && (
+        <div role="status" className={styles.warning}>
+          <TriangleAlert size={18} />
+          <p>{actionError}</p>
+        </div>
+      )}
+
       {showRefreshWarning && (
         <div role="status" className={styles.warning}>
           <TriangleAlert size={18} />
@@ -282,6 +414,8 @@ export function ConsoleOverview({
         </div>
       )}
 
+      <OnboardingHandoffCard workspaceId={workspace.id} onDraftSaved={onRefreshSummary} />
+      <section className={styles.statusGroup} aria-label="Workspace status">
       <div
         className={styles.healthStrip}
         data-working={workInProgress ? "true" : undefined}
@@ -319,23 +453,31 @@ export function ConsoleOverview({
             busy={warehouse.status === "refreshing"}
           />
           <span>
-            {warehouseSnapshot.dataThroughDate
-              ? `Data through ${warehouseSnapshot.dataThroughDate}`
-              : "Awaiting first import"}
+            {agentConsoleSummary?.dataThroughCoverage
+              ? `Data through ${agentConsoleSummary.dataThroughCoverage}`
+              : warehouseSnapshot.dataThroughDate
+              ? `Data through ${formatDateTime(`${warehouseSnapshot.dataThroughDate}T00:00:00`).split(",")[0]}`
+              : warehouse.totalRows > 0 ? "Stored history available" : summaryCards.syncs.successful7d > 0 ? "Sync completed without metric rows" : "Awaiting first import"}
           </span>
+          {agentConsoleSummary && (
+            <span style={{ fontSize: "9px", opacity: 0.85 }}>
+              {agentConsoleSummary.schedulerStatus === "unavailable" ? (
+                <strong style={{ color: "#ef4444" }}>Monitoring unavailable (worker offline)</strong>
+              ) : agentConsoleSummary.schedulerStatus === "delayed" ? (
+                <strong style={{ color: "#f59e0b" }}>Scheduler delayed (overdue)</strong>
+              ) : agentConsoleSummary.schedulerStatus === "paused" ? (
+                <strong>Monitoring paused</strong>
+              ) : agentConsoleSummary.nextScheduledCheck ? (
+                `Next check: ${formatDateTime(agentConsoleSummary.nextScheduledCheck)}`
+              ) : (
+                agentConsoleSummary.supportedCadenceLabel
+              )}
+            </span>
+          )}
         </div>
       </div>
 
-      {!wizardDismissed && (
-        <SetupWizard
-          activation={overview.pilotActivation}
-          plan={workspace.plan}
-          workspaceStatus={workspace.status}
-          onDismiss={onWizardDismiss}
-        />
-      )}
-
-      {needsAttention.length > 0 && (
+      {((needsAttention.length > 0) || (agentConsoleSummary?.openCases && agentConsoleSummary.openCases.length > 0)) && (
         <section
           className={styles.attention}
           aria-labelledby="attention-heading"
@@ -343,9 +485,41 @@ export function ConsoleOverview({
           <div className={styles.attentionHeading}>
             <TriangleAlert size={16} />
             <h2 id="attention-heading">Needs your attention</h2>
-            <span>{needsAttention.length}</span>
+            <span>{needsAttention.length + (agentConsoleSummary?.openCases?.length ?? 0)}</span>
           </div>
-          {needsAttention.map((issue) => (
+          {agentConsoleSummary?.openCases?.map((c) => (
+            <div key={`agent-case-${c.id}`} className={styles.issue}>
+              <div>
+                <h3>{c.title}</h3>
+                <p>{c.description || "Source health incident requires review or recovery."}</p>
+                <time dateTime={c.createdAt}>
+                  {formatDateTime(c.createdAt)}
+                </time>
+              </div>
+              {c.requiredAction === "reconnect" ? (
+                <Link className={styles.button} href={hrefFor(`/sources#case-${encodeURIComponent(c.id)}`)}>
+                  Reconnect source
+                  <ArrowRight size={14} />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.button}
+                  onClick={() => handleRecoverCase(c)}
+                  disabled={activeCaseActionId === c.id}
+                >
+                  <ConsoleSyncLabel
+                    active={activeCaseActionId === c.id}
+                    idleLabel="Recover data"
+                    activeLabel="Recovering…"
+                  />
+                  <ArrowRight size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+          {[...Map.groupBy(needsAttention, issue => JSON.stringify([issue.title, issue.explanation, issue.actionType])).values()].map(group => {
+            const rows = group.map(issue => (
             <div key={issue.id} className={styles.issue}>
               <div>
                 <h3>{issue.title}</h3>
@@ -370,8 +544,39 @@ export function ConsoleOverview({
                 </Link>
               )}
             </div>
-          ))}
+            ));
+            return group.length > 1 ? (
+              <details key={group[0].id} className={styles.issueGroup}>
+                <summary>{group[0].title} <span>· {group.length} sources — review actions</span></summary>
+                {rows}
+              </details>
+            ) : rows;
+          })}
         </section>
+      )}
+
+      </section>
+      {agentConsoleSummary && !agentConsoleSummary.responsibilities?.some((responsibility) => responsibility.kind === "data_health" && ["active", "paused"].includes(responsibility.status)) && (
+        <ConnectedDataResponsibilitySetup
+          workspaceId={workspace.id}
+          sources={sourcesList}
+          preferredDraftId={searchParams.get("monitoringDraftId")}
+          drafts={agentConsoleSummary.setupDrafts}
+          onSaved={onRefreshSummary}
+          monitoringAvailable={agentConsoleSummary.monitoringAvailable}
+          onActivated={async () => {
+            await onRefreshSummary?.();
+            onRefresh();
+          }}
+        />
+      )}
+      {!wizardDismissed && (
+        <SetupWizard
+          activation={overview.pilotActivation}
+          plan={workspace.plan}
+          workspaceStatus={workspace.status}
+          onDismiss={onWizardDismiss}
+        />
       )}
 
       <section
@@ -391,7 +596,21 @@ export function ConsoleOverview({
             </Link>
           </div>
         </div>
-        <div className={styles.metrics}>
+        {!hasMetrics && (
+          <div className={styles.guidedEmpty}>
+            <h3>{warehouse.totalRows > 0 ? "No metrics in the last 7 days" : summaryCards.syncs.successful7d > 0 ? "Sync completed; no metric rows returned" : "Build your first performance report"}</h3>
+            <p>{warehouse.totalRows > 0 ? "Your stored history is available in the data explorer. Review the date window or sync recent data." : "Follow these steps to bring source data into a report."}</p>
+            <ol className={styles.checklist}>
+              {[{ label: "Connect", href: "/sources", done: sourcesList.some(source => !["disconnected", "error", "unknown"].includes(source.state)) },
+                { label: "Sync", href: "/explorer", done: warehouse.totalRows > 0 },
+                { label: "Review", href: "/explorer", done: Boolean(overview.pilotActivation.dashboardReviewedAt) },
+                { label: "Report", href: "/reports", done: false }].map((step, index) => (
+                <li key={step.label}><Link href={hrefFor(step.href)}><span aria-label={step.done ? "Complete" : "Incomplete"}>{step.done ? <Check size={15} /> : index + 1}</span>{step.label}<ArrowRight size={14} /></Link></li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {hasMetrics && <div className={styles.metrics}>
           {metricsCards.map((card) => (
             <article
               key={card.name}
@@ -420,11 +639,12 @@ export function ConsoleOverview({
               <p className={styles.metricDetail}>
                 {hasMetrics
                   ? card.detail
-                  : "Waiting for your first data import"}
+                  : "No metric rows for this date window"}
               </p>
             </article>
           ))}
         </div>
+        }
         {hasMetrics && metrics.byPlatform.length > 0 && (
           <div className={styles.channelMix}>
             <div className={styles.channelHeading}>
@@ -525,7 +745,7 @@ export function ConsoleOverview({
                         <div className={styles.sourceIds}>
                           {source.managerBadge && (
                             <CopyableBadge
-                              text={source.managerBadge}
+                              text={source.managerBadge.replace(/^\[|\]$/g, "")}
                               copyValue={source.managerBadge
                                 .replace(/^\[|\]$/g, "")
                                 .replace(/^(MCC|BM|BC):\s*/, "")}
@@ -743,11 +963,11 @@ export function ConsoleOverview({
       )}
       <footer className={styles.footer}>
         <span>
-          <span className={styles.footerMark}>✳</span> Monstera Cloud
+          <LogoMark className="h-5 w-5 shrink-0" /> Monstera Cloud
         </span>
         <p>
-          {summaryCards.syncs.lastSyncTimeAgo
-            ? `Last successful sync ${summaryCards.syncs.lastSyncTimeAgo}`
+          {warehouseSnapshot.lastRefreshAt
+            ? `Last successful sync ${formatDateTime(warehouseSnapshot.lastRefreshAt)}`
             : "Built around your data"}
         </p>
         <span>Workspace overview</span>

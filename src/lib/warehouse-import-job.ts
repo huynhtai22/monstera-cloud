@@ -37,8 +37,8 @@ export interface BatchImportJobResult {
   upserted?: number;
   error?: string;
   retryable?: boolean;
-  retryAfterMs?: number;
   retryItems?: BatchImportItem[];
+  retryAfterMs?: number;
 }
 
 export interface BatchImportJobState {
@@ -369,7 +369,7 @@ export async function claimImportJob(
 
 /**
  * Claims the next available queued or expired job from the PostgreSQL queue.
- * Orders by priority DESC, scheduledAt ASC.
+ * Orders by priority DESC, least active workspace, then scheduledAt ASC.
  * Default lease duration is 60 seconds (60000ms).
  *
  * With `excludePilotJobs`, extended-pilot jobs (idempotency prefix
@@ -381,57 +381,59 @@ export async function claimNextImportJob(
   leaseDurationMs = 60000,
   opts?: { excludePilotJobs?: boolean },
 ): Promise<{ claimed: boolean; leaseId?: string; job?: BatchImportJobState }> {
-  const now = new Date();
-  const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
   const leaseId = randomUUID();
-  const pilotExclusion = opts?.excludePilotJobs
-    ? [{ OR: [{ idempotencyKey: null }, { NOT: { idempotencyKey: { startsWith: "xbpilot:" } } }] }]
-    : [];
-
-  // Find next eligible candidate
-  const candidate = await prisma.warehouseImportJob.findFirst({
-    where: {
-      AND: [
-        {
-          OR: [
-            { status: "queued", scheduledAt: { lte: now } },
-            { status: "running", leaseExpiresAt: { lt: now } },
-          ],
-        },
-        ...pilotExclusion,
-      ],
-    },
-    orderBy: [{ priority: "desc" }, { scheduledAt: "asc" }],
+  // Serialize only the short generic admission transaction. Provider calls happen
+  // after commit, so a slow import cannot hold this lock. Each admission sees the
+  // previous worker's committed lease before comparing workspace occupancy.
+  const job = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('warehouse:generic-admission'))`;
+    const now = new Date();
+    const candidates = await tx.$queryRaw<Array<{ id: string; workspaceId: string }>>`
+      SELECT candidate.id, candidate."workspaceId"
+      FROM "WarehouseImportJob" candidate
+      LEFT JOIN (
+        SELECT "workspaceId", COUNT(*) AS occupied
+        FROM "WarehouseImportJob"
+        WHERE status = 'running' AND "leaseExpiresAt" >= ${now.toISOString()}::timestamp
+        GROUP BY "workspaceId"
+      ) active ON active."workspaceId" = candidate."workspaceId"
+      WHERE ((candidate.status = 'queued' AND candidate."scheduledAt" <= ${now.toISOString()}::timestamp)
+        OR (candidate.status = 'running' AND candidate."leaseExpiresAt" < ${now.toISOString()}::timestamp))
+        AND (NOT ${Boolean(opts?.excludePilotJobs)} OR candidate."idempotencyKey" IS NULL
+          OR candidate."idempotencyKey" NOT LIKE 'xbpilot:%')
+      ORDER BY candidate.priority DESC, COALESCE(active.occupied, 0) ASC,
+        candidate."scheduledAt" ASC, candidate.id ASC
+      LIMIT 1
+      FOR UPDATE OF candidate SKIP LOCKED`;
+    const candidate = candidates[0];
+    if (!candidate) return null;
+    const current = await tx.warehouseImportJob.findFirst({
+      where: { id: candidate.id, workspaceId: candidate.workspaceId },
+    });
+    if (!current) return null;
+    const updated = await tx.warehouseImportJob.updateMany({
+      where: {
+        id: current.id,
+        workspaceId: current.workspaceId,
+        OR: [
+          { status: "queued", scheduledAt: { lte: now } },
+          { status: "running", leaseExpiresAt: { lt: now } },
+        ],
+      },
+      data: {
+        status: "running", leaseId,
+        leaseExpiresAt: new Date(now.getTime() + leaseDurationMs),
+        heartbeatAt: now,
+        startedAt: current.startedAt ?? now,
+      },
+    });
+    if (updated.count === 0) return null;
+    return tx.warehouseImportJob.findFirst({ where: { id: current.id, workspaceId: current.workspaceId } });
   });
-
-  if (!candidate) return { claimed: false };
-
-  const updated = await prisma.warehouseImportJob.updateMany({
-    where: {
-      id: candidate.id,
-      OR: [
-        { status: "queued", scheduledAt: { lte: now } },
-        { status: "running", leaseExpiresAt: { lt: now } },
-      ],
-    },
-    data: {
-      status: "running",
-      leaseId,
-      leaseExpiresAt,
-      heartbeatAt: now,
-      startedAt: candidate.startedAt ?? now,
-    },
-  });
-
-  if (updated.count === 0) {
-    return { claimed: false };
-  }
-
-  const job = await prisma.warehouseImportJob.findUnique({ where: { id: candidate.id } });
   if (!job) return { claimed: false };
 
   const state = toState(job);
-  const queueWaitMs = candidate.scheduledAt ? Math.max(0, now.getTime() - new Date(candidate.scheduledAt).getTime()) : 0;
+  const queueWaitMs = Math.max(0, Date.now() - job.scheduledAt.getTime());
 
   emitConnectorTelemetry({
     eventCategory: "job_lifecycle",
@@ -622,7 +624,6 @@ export async function retryPartialImportJob(
   results: BatchImportJobResult[],
   approximateRows: number,
   errorMsg: string,
-  requestedRetryAfterMs?: number,
 ): Promise<BatchImportJobState> {
   const now = new Date();
   const current = await prisma.warehouseImportJob.findFirst({
@@ -642,10 +643,7 @@ export async function retryPartialImportJob(
     );
   }
 
-  const delayMs = Math.min(
-    Math.max(computeBackoffMs(current.retryCount), requestedRetryAfterMs ?? 0),
-    6 * 60 * 60 * 1000,
-  );
+  const delayMs = Math.max(computeBackoffMs(current.retryCount), ...results.filter(result => result.retryable && Number.isFinite(result.retryAfterMs)).map(result => Math.max(0, result.retryAfterMs ?? 0)));
   const updated = await prisma.warehouseImportJob.updateMany({
     where: { id: jobId, leaseId, status: "running", leaseExpiresAt: { gte: now } },
     data: {

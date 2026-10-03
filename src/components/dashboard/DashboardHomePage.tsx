@@ -4,6 +4,7 @@ import React, { useState, useCallback } from "react";
 import useSWR from "swr";
 import { AlertTriangle } from "lucide-react";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
+import { AutomaticFeatureReminder } from "../console/AutomaticFeatureReminder";
 import { DashboardHandoff } from "./DashboardHandoff";
 import { useWorkspaceStartupActions } from "../WorkspaceStartup";
 import { PageShell } from "@/components/ui/PageShell";
@@ -58,6 +59,12 @@ export function DashboardHomePage() {
   // Readiness follows the committed destination, rather than the network callback.
   const deferredOverview = React.useDeferredValue(receivedOverview);
   const overview = deferredOverview?.workspace.id === workspaceId ? deferredOverview : undefined;
+
+  const { data: consoleSummary, mutate: mutateSummary } = useSWR<any>(
+    workspaceId ? `/api/agent-console/summary?workspaceId=${workspaceId}` : null,
+    fetcher,
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  );
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [manualRefreshFailed, setManualRefreshFailed] = useState(false);
@@ -195,11 +202,14 @@ export function DashboardHomePage() {
 
   return (
     <DashboardHandoff ready>
+      <AutomaticFeatureReminder workspaceId={workspaceId!} enabled={overview.overallStatus.state === "healthy" && !isUpdating && !error && !fixTarget} />
       <ConsoleOverview
         overview={overview}
         isUpdating={isUpdating}
         showRefreshWarning={Boolean(error || manualRefreshFailed)}
         onRefresh={handleManualRefresh}
+        agentConsoleSummary={consoleSummary}
+        onRefreshSummary={() => mutateSummary()}
         wizardDismissed={wizardDismissed}
         onWizardDismiss={handleWizardDismiss}
         onWizardResume={() => {

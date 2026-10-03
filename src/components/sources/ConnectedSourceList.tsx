@@ -1,5 +1,7 @@
 "use client";
 
+import { groupConsoleConnections, countConsoleConnections } from "@/lib/console-connections";
+import { SlidingControlIndicator, useConsoleRowReorder } from "@/components/console/ConsoleMotion";
 import React, { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
@@ -11,12 +13,12 @@ import { ConsoleSyncLabel } from "@/components/dashboard/ConsoleSyncLabel";
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, Filter, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
+import { formatDateTime } from "@/components/dashboard/console-presentation";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import styles from "./ConnectedSourceList.module.css";
 import type { SourceHealthState } from "@/lib/source-health";
 import {
   PROVIDER_DISPLAY_NAME,
-  formatLastSyncLabel,
   sourceStateFor,
   summarizeAccountScope,
   type AccountTagEntry,
@@ -40,6 +42,7 @@ type IntegrationRow = {
   healthState?: SourceHealthState;
   errorMsg?: string;
   lastSync?: string;
+  syncAttemptAt?: string;
   dataThroughDate?: string | null;
   logoSrc?: string;
   pipelineId?: string;
@@ -51,20 +54,21 @@ type SortKey = "name" | "status" | "lastSync";
 
 interface ConnectedSourceListProps {
   rows: IntegrationRow[];
-  searchQuery: string;
-  onSearchChange: (value: string) => void;
+  searchQuery?: string;
+  onSearchChange?: (value: string) => void;
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
   onDirectSync: (connectionId: string, provider: string) => void;
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
+  onBulkReconnect?: (rows: IntegrationRow[]) => void;
   onRenameConnection?: (connectionId: string, newName: string) => Promise<void> | void;
 }
 
 function statusRank(row: IntegrationRow): number {
   const s = sourceStateFor(row, false);
   if (s.kind === "auth-required") return 0;
-  if (s.kind === "sync-issue" || s.kind === "attention") return 1;
+  if (s.kind === "stuck" || s.kind === "sync-issue" || s.kind === "attention") return 1;
   if (s.kind === "partial") return 2;
   if (s.kind === "stale") return 3;
   if (s.kind === "not-synced") return 4;
@@ -86,17 +90,17 @@ function canDirectSync(provider: string | undefined): boolean {
 
 function statusBadgeClass(kind: SourceStateKind): string {
   if (kind === "auth-required") return "text-rose-300";
-  if (kind === "sync-issue" || kind === "partial") return "text-amber-300";
+  if (kind === "stuck" || kind === "sync-issue" || kind === "partial") return "text-amber-300";
   if (kind === "not-synced") return "text-sky-300";
-  if (kind === "syncing") return "text-[#9dd7ae]";
+  if (kind === "syncing") return "text-[#b8b8b8]";
   if (kind === "stale" || kind === "attention") return "text-ink-mute";
   return "text-emerald-300";
 }
 
 function StatusIcon({ kind }: { kind: SourceStateKind }) {
   if (kind === "auth-required") return <AlertCircle className="h-3 w-3 text-rose-400 shrink-0" />;
-  if (kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />;
-  if (kind === "syncing") return <Loader2 className="h-3 w-3 motion-safe:animate-spin text-[#86c99b] shrink-0" />;
+  if (kind === "stuck" || kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />;
+  if (kind === "syncing") return <Loader2 className="h-3 w-3 motion-safe:animate-spin text-[#b8b8b8] shrink-0" />;
   if (kind === "not-synced") return <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />;
   if (kind === "stale") return <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 shrink-0" />;
   if (kind === "attention") return <AlertCircle className="h-3 w-3 text-ink-mute" />;
@@ -157,7 +161,7 @@ function AccountsCell({
 }
 
 function LastSyncCell({ lastSync }: { lastSync?: string }) {
-  const formatted = formatLastSyncLabel(lastSync);
+  const formatted = { text: lastSync ? formatDateTime(lastSync) : "Never synced", title: lastSync ? formatDateTime(lastSync) : "Never synced" };
   return (
     <div className="flex items-center gap-1.5 text-[11px] text-ink-mute" title={formatted.title}>
       <Clock className="h-3 w-3 text-ink-mute/70 shrink-0" />
@@ -177,15 +181,17 @@ function SourceSelector({ checked, onChange, label }: { checked: boolean; onChan
 
 export function ConnectedSourceList({
   rows,
-  searchQuery,
-  onSearchChange,
+  searchQuery = "",
+  onSearchChange = () => {},
   busyActions,
   onSync,
   onDirectSync,
   onDisconnect,
   onFixConnection,
+  onBulkReconnect,
   onRenameConnection,
 }: ConnectedSourceListProps) {
+  const duplicateGroups = groupConsoleConnections(rows).filter(group => group.length > 1);
   const router = useRouter();
   const { hrefFor } = useClientContextNavigation();
   const { mutate } = useSWRConfig();
@@ -197,18 +203,18 @@ export function ConnectedSourceList({
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"connections" | "detailed" | "lite">("connections");
+  const [viewMode, setViewMode] = useState<"connections" | "lite">("connections");
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem("monstera_sources_view_mode_v2");
-      if (saved === "connections" || saved === "detailed" || saved === "lite") {
+      if (saved === "connections" || saved === "lite") {
         setViewMode(saved);
       }
     } catch {}
   }, []);
 
-  const handleViewModeChange = (mode: "connections" | "detailed" | "lite") => {
+  const handleViewModeChange = (mode: "connections" | "lite") => {
     setViewMode(mode);
     try {
       localStorage.setItem("monstera_sources_view_mode_v2", mode);
@@ -261,6 +267,14 @@ export function ConnectedSourceList({
     }
   };
 
+  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
+  const anySelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(rows.map((r) => r.id)));
+  };
+
   const toggleSelectOne = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -305,24 +319,10 @@ export function ConnectedSourceList({
       }
       return 0;
     });
-    return list;
+    return groupConsoleConnections(list).flat();
   }, [rows, selectedPlatform, searchQuery, sortKey, sortDir]);
 
-  useEffect(() => {
-    const visibleIds = new Set(filteredAndSortedRows.map((row) => row.id));
-    setSelectedIds((selected) => {
-      const next = new Set([...selected].filter((id) => visibleIds.has(id)));
-      return next.size === selected.size ? selected : next;
-    });
-  }, [filteredAndSortedRows]);
-
-  const allSelected = filteredAndSortedRows.length > 0 && filteredAndSortedRows.every((row) => selectedIds.has(row.id));
-  const anySelected = selectedIds.size > 0;
-
-  const toggleSelectAll = () => {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filteredAndSortedRows.map((r) => r.id)));
-  };
+  const rowMotionRef = useConsoleRowReorder(`${viewMode}:${filteredAndSortedRows.map(row => row.id).join(",")}`);
 
   const bulkSync = () => {
     for (const r of rows) {
@@ -385,7 +385,7 @@ export function ConnectedSourceList({
         </button>
       );
     }
-    if (sourceState.kind === "sync-issue" || sourceState.kind === "partial") {
+    if (sourceState.kind === "stuck" || sourceState.kind === "sync-issue" || sourceState.kind === "partial") {
       return (
         <button
           type="button"
@@ -421,7 +421,7 @@ export function ConnectedSourceList({
   };
 
   return (
-    <div className={cn("console-source-list overflow-hidden rounded-xl border border-line bg-panel shadow-xs", styles.list)}>
+    <div ref={rowMotionRef} className={cn("console-source-list overflow-hidden rounded-xl border border-line bg-panel shadow-xs", styles.list)}>
       <div className="flex flex-col gap-4 border-b border-line bg-panel p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
@@ -432,7 +432,8 @@ export function ConnectedSourceList({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
+            <div role="group" aria-label="Connection view" className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
+              <SlidingControlIndicator />
               <button
                 type="button"
                 onClick={() => handleViewModeChange("connections")}
@@ -440,7 +441,7 @@ export function ConnectedSourceList({
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   viewMode === "connections"
-                    ? "bg-white text-black font-semibold shadow-2xs"
+                    ? "bg-[var(--console-brand-green)] text-neutral-950 font-semibold shadow-2xs"
                     : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
                 )}
                 title="Connection overview with health and account details"
@@ -450,27 +451,12 @@ export function ConnectedSourceList({
               </button>
               <button
                 type="button"
-                onClick={() => handleViewModeChange("detailed")}
-                aria-pressed={viewMode === "detailed"}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
-                  viewMode === "detailed"
-                    ? "bg-white text-black font-semibold shadow-2xs"
-                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
-                )}
-                title="Detailed cards view with full health details and actions"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                <span>Detailed</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => handleViewModeChange("lite")}
                 aria-pressed={viewMode === "lite"}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   viewMode === "lite"
-                    ? "bg-white text-black font-semibold shadow-2xs"
+                    ? "bg-[var(--console-brand-green)] text-neutral-950 font-semibold shadow-2xs"
                     : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
                 )}
                 title="Lite compact table view for dense scanning"
@@ -503,12 +489,20 @@ export function ConnectedSourceList({
           </div>
         </div>
 
+        {duplicateGroups.map(group => (
+          <div key={group[0].id} className={styles.bulkBar} role="group" aria-label="Duplicate connections">
+            <p className="text-xs text-ink">{group[0].managerBadge}: {group.length} saved connections — all listed below.</p>
+            <SecondaryButton onClick={() => setSelectedIds(new Set(group.map(row => row.id)))}>Select group</SecondaryButton>
+            {onBulkReconnect && <SecondaryButton onClick={() => onBulkReconnect(group)}>Reconnect group</SecondaryButton>}
+          </div>
+        ))}
         {anySelected && (
-          <div className={cn("flex flex-wrap items-center gap-2 rounded-xl border border-[#86c99b]/20 bg-[#86c99b]/[0.06] px-3 py-2", styles.bulkBar)}>
-            <span className="mr-auto text-xs font-medium text-[#a9d9b9]">{selectedIds.size} selected</span>
+          <div className={cn("flex flex-wrap items-center gap-2 rounded-xl border border-[#b8b8b8]/20 bg-[#b8b8b8]/[0.06] px-3 py-2", styles.bulkBar)}>
+            <span className="mr-auto text-xs font-medium text-[#d4d4d4]">{selectedIds.size} selected</span>
             <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
               <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
             </PrimaryButton>
+            {onBulkReconnect && <SecondaryButton onClick={() => onBulkReconnect(rows.filter(row => selectedIds.has(row.id)))}>Reconnect selected</SecondaryButton>}
             <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
               <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
             </SecondaryButton>
@@ -522,7 +516,7 @@ export function ConnectedSourceList({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search by MCC, account ID, Gmail, or name…"
+              placeholder="Search by MCC, account ID, Gmail, or name"
               className="h-8.5 w-full rounded-lg border border-line bg-canvas pl-8.5 pr-8 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
             />
             {searchQuery && (
@@ -544,7 +538,7 @@ export function ConnectedSourceList({
                 value={selectedPlatform}
                 onChange={(event) => setSelectedPlatform(event.target.value)}
               >
-                <option value="all">All platforms · {rows.length}</option>
+                <option value="all">All platforms · {countConsoleConnections(rows)}</option>
                 {availablePlatforms.map((platform) => (
                   <option key={platform.id} value={platform.id}>{platform.label} · {platform.count}</option>
                 ))}
@@ -578,13 +572,13 @@ export function ConnectedSourceList({
               (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
             const sourceState = sourceStateFor(r, Boolean(syncBusy));
             const state = sourceState.kind;
-            const needsDiagnostic = state === "auth-required" || state === "sync-issue" || state === "partial" || state === "syncing";
+            const needsDiagnostic = state === "stuck" || state === "auth-required" || state === "sync-issue" || state === "partial" || state === "syncing";
             return (
               <article
                 key={r.id}
                 className={cn(
                   styles.row,
-                  syncBusy && "bg-[#86c99b]/[0.035]"
+                  syncBusy && "bg-[#b8b8b8]/[0.035]"
                 )}
                 style={{ "--row-index": Math.min(index, 8) } as React.CSSProperties}
                 data-source-connection={r.id}
@@ -596,13 +590,13 @@ export function ConnectedSourceList({
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <Link
                         href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                        className="truncate text-sm font-medium tracking-tight text-ink hover:text-white"
+                        className="truncate text-sm font-medium tracking-tight text-ink hover:text-ink"
                       >
                         {r.name}
                       </Link>
                       {r.managerBadge ? (
                         <CopyableBadge
-                          text={r.managerBadge}
+                          text={r.managerBadge.replace(/^\[|\]$/g, "")}
                           copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
                           title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
                           className="max-w-[190px] truncate text-[10px] text-ink-mute"
@@ -652,131 +646,6 @@ export function ConnectedSourceList({
             );
           })}
         </div>
-      ) : viewMode === "detailed" ? (
-        <div className={styles.detailGrid}>
-          {filteredAndSortedRows.map((r) => {
-            const syncBusy =
-              (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
-            const disconnectBusy = busyActions.has(r.id);
-            const sourceState = sourceStateFor(r, Boolean(syncBusy));
-            const showDiagnostic = sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial" || sourceState.kind === "syncing";
-
-            return (
-              <div
-                key={r.id}
-                onClick={(e) => {
-                  if (!(e.target as HTMLElement).closest("[data-no-card-click]")) {
-                    router.push(hrefFor(`/sources/${encodeURIComponent(r.id)}`));
-                  }
-                }}
-                className={cn(
-                  "glass-card governed-hover relative flex flex-col justify-between h-full rounded-2xl border p-5 sm:p-5.5 transition-all duration-200 cursor-pointer group shadow-xs",
-                  sourceState.kind === "auth-required"
-                    ? "border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50"
-                    : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
-                      ? "border-amber-500/30 bg-amber-950/10 hover:border-amber-500/50"
-                      : sourceState.kind === "not-synced" || sourceState.kind === "syncing"
-                        ? "border-sky-500/30 bg-sky-950/10 hover:border-sky-500/50"
-                        : "border-line/70 bg-panel/75 hover:border-white/20 hover:bg-panel"
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    {r.logoSrc ? (
-                      <div className="p-2 rounded-xl border border-white/[0.08] bg-white/[0.03] shrink-0 shadow-2xs">
-                        <IntegrationMark src={r.logoSrc} size="md" />
-                      </div>
-                    ) : null}
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-1.5 group/name">
-                        <Link
-                          href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                          className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
-                          data-no-card-click
-                        >
-                          {r.name}
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRenamingRow({ id: r.id, name: r.name });
-                            setRenameValue(r.name);
-                          }}
-                          className="opacity-0 group-hover/name:opacity-100 p-0.5 text-ink-mute hover:text-ink transition-opacity rounded cursor-pointer shrink-0"
-                          title="Rename connection / add nickname"
-                          data-no-card-click
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                      </div>
-                      {r.managerBadge && (
-                        <CopyableBadge
-                          text={r.managerBadge}
-                          copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
-                          title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
-                          className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 shrink-0" data-no-card-click onClick={(e) => e.stopPropagation()}>
-                    <StatusBadge state={sourceState} />
-                    <SourceSelector checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} label={`Select ${r.name}`} />
-                  </div>
-                </div>
-
-                <div className="my-4 space-y-2.5 text-xs">
-                  <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
-                    <span className="text-ink-mute shrink-0">Accounts:</span>
-                    <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} align="end" />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
-                    <span className="text-ink-mute shrink-0">Last sync:</span>
-                    <LastSyncCell lastSync={r.lastSync} />
-                  </div>
-                  <SourceTrustSummary compact state={sourceState} lastSync={r.lastSync} dataThrough={r.dataThroughDate} reportsHref={hrefFor("/reports?view=performance#report-readiness")} />
-                  {showDiagnostic && sourceState.detail && (
-                    <div className={cn(
-                      "rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2.5 mt-2",
-                      sourceState.kind === "auth-required"
-                        ? "border-rose-500/25 bg-rose-500/[0.08] text-rose-300"
-                        : sourceState.kind === "syncing"
-                        ? "border-[#86c99b]/25 bg-[#86c99b]/[0.08] text-[#86c99b]"
-                          : "border-amber-500/25 bg-amber-500/[0.08] text-amber-300"
-                    )}>
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <p className="text-xs break-words opacity-90">{sourceState.detail}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-3.5 mt-auto border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
-                  <Link
-                    href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-ink transition-colors py-1"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {canDirectSync(r.provider) ? "Manage accounts" : "Open details"}
-                  </Link>
-                  <div className="flex items-center gap-1.5">
-                    {renderRowAction(r, sourceState, Boolean(syncBusy))}
-                    <button
-                      type="button"
-                      disabled={disconnectBusy}
-                      onClick={() => onDisconnect(r.id, r.name)}
-                      className="h-8.5 w-8.5 rounded-lg border border-line bg-canvas text-ink-mute hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer shrink-0"
-                      title="Disconnect source"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       ) : (
         <div className="max-lg:overflow-x-auto">
           <table className="min-w-[850px] w-full text-sm">
@@ -806,7 +675,7 @@ export function ConnectedSourceList({
                 const syncBusy =
                   (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
                 const sourceState = sourceStateFor(r, Boolean(syncBusy));
-                const showDiagnostic = sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial" || (sourceState.kind === "syncing" && Boolean(r.errorMsg));
+                const showDiagnostic = sourceState.kind === "auth-required" || sourceState.kind === "stuck" || sourceState.kind === "sync-issue" || sourceState.kind === "partial" || (sourceState.kind === "syncing" && Boolean(r.errorMsg));
                 return (
                   <React.Fragment key={r.id}>
                     <tr
@@ -831,7 +700,7 @@ export function ConnectedSourceList({
                             <div className="flex items-center gap-1.5 group/name">
                               <Link
                                 href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)}
-                                className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
+                                className="truncate text-sm font-semibold tracking-tight text-ink hover:text-ink transition-colors"
                                 data-no-row-click
                               >
                                 {r.name}
@@ -852,7 +721,7 @@ export function ConnectedSourceList({
                             </div>
                             {r.managerBadge && (
                               <CopyableBadge
-                                text={r.managerBadge}
+                                text={r.managerBadge.replace(/^\[|\]$/g, "")}
                                 copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
                                 title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
                                 className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
@@ -903,23 +772,23 @@ export function ConnectedSourceList({
                                 sourceState.kind === "auth-required"
                                   ? "border-rose-500/30 bg-rose-500/10"
                                   : sourceState.kind === "syncing"
-                                    ? "border-[#86c99b]/30 bg-[#86c99b]/10"
+                                    ? "border-[#b8b8b8]/30 bg-[#b8b8b8]/10"
                                     : "border-amber-500/30 bg-amber-500/10",
                               )}>
                                 <AlertCircle className={cn(
                                   "h-4 w-4 shrink-0 mt-0.5",
-                                  sourceState.kind === "auth-required" ? "text-rose-400" : sourceState.kind === "syncing" ? "text-[#86c99b]" : "text-amber-400",
+                                  sourceState.kind === "auth-required" ? "text-rose-400" : sourceState.kind === "syncing" ? "text-[#b8b8b8]" : "text-amber-400",
                                 )} />
                                 <div className="min-w-0">
                                   <h4 className={cn(
                                     "text-sm font-semibold",
-                                    sourceState.kind === "auth-required" ? "text-rose-200" : sourceState.kind === "syncing" ? "text-[#86c99b]" : "text-amber-200",
+                                    sourceState.kind === "auth-required" ? "text-rose-200" : sourceState.kind === "syncing" ? "text-[#b8b8b8]" : "text-amber-200",
                                   )}>
                                     {sourceState.kind === "auth-required" ? "Needs re-auth" : sourceState.kind === "syncing" ? "Still processing" : "Sync diagnostic"}
                                   </h4>
                                   <p className={cn(
                                     "mt-0.5 text-xs leading-relaxed",
-                                    sourceState.kind === "auth-required" ? "text-rose-300/90" : sourceState.kind === "syncing" ? "text-[#86c99b]/90" : "text-amber-300/90",
+                                    sourceState.kind === "auth-required" ? "text-rose-300/90" : sourceState.kind === "syncing" ? "text-[#b8b8b8]/90" : "text-amber-300/90",
                                   )}>
                                     {sourceState.detail}
                                   </p>
@@ -929,11 +798,11 @@ export function ConnectedSourceList({
                             <SourceTrustSummary state={sourceState} lastSync={r.lastSync} dataThrough={r.dataThroughDate} reportsHref={hrefFor("/reports?view=performance#report-readiness")} />
                             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-mute">
                               <div className="flex flex-wrap items-center gap-3">
-                                <Link href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)} className="font-semibold text-ink hover:text-white transition-colors">
+                                <Link href={hrefFor(`/sources/${encodeURIComponent(r.id)}`)} className="font-semibold text-ink hover:text-ink transition-colors">
                                   Open source details →
                                 </Link>
                                 <span className="text-line">·</span>
-                                <Link href={hrefFor("/explorer")} className="font-semibold text-ink hover:text-white transition-colors">
+                                <Link href={hrefFor("/explorer")} className="font-semibold text-ink hover:text-ink transition-colors">
                                   View warehouse data →
                                 </Link>
                               </div>

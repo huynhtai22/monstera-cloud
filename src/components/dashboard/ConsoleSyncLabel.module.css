@@ -26,33 +26,22 @@
 .idleIcon {
   opacity: 1;
   transform: rotate(0) scale(1);
-  filter: blur(0);
-  transition:
-    color 140ms ease,
-    opacity 300ms linear,
-    transform 400ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 250ms ease;
+  transition: opacity var(--console-duration-normal, 240ms) var(--console-ease, ease), transform var(--console-duration-normal, 240ms) var(--console-ease, ease);
 }
 .dotStage {
   opacity: 0;
   transform: rotate(-65deg) scale(0.4);
-  filter: blur(1px);
-  transition:
-    opacity 300ms linear,
-    transform 400ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 220ms ease;
+  transition: opacity var(--console-duration-normal, 240ms) var(--console-ease, ease), transform var(--console-duration-normal, 240ms) var(--console-ease, ease);
 }
 .root[data-busy="true"] .idleIcon {
   color: var(--console-motion-accent);
   opacity: 0;
   transform: rotate(75deg) scale(0.45);
-  filter: blur(1px);
   transition-delay: 0ms;
 }
 .root[data-busy="true"] .dotStage {
   opacity: 1;
   transform: rotate(0) scale(1);
-  filter: blur(0);
   transition-delay: 0ms;
 }
 .dots {
@@ -105,9 +94,7 @@
 .idleText,
 .busyText {
   grid-area: 1 / 1;
-  transition:
-    opacity 200ms ease,
-    transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity var(--console-duration-normal, 240ms) var(--console-ease, ease), transform var(--console-duration-normal, 240ms) var(--console-ease, ease);
 }
 .idleText {
   opacity: 1;
@@ -170,3 +157,7 @@
     -webkit-text-fill-color: CanvasText;
   }
 }
+
+.large .symbol { width: 28px; height: 28px; }
+.large .dots { grid-template-columns: repeat(3, 6px); gap: 3px; width: 24px; height: 24px; }
+.large .dots > span { width: 6px; height: 6px; border-radius: 1.5px; }

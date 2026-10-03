@@ -1,3 +1,5 @@
+> Launch review, 2026-10-03: Architecture coverage below is not provider approval or live acceptance. Production connect flags enable Meta Ads, Google Ads, TikTok Ads and Shopee; Lazada and TikTok Shop are disabled. Shopee is Vietnam-gated. SEA/worldwide commercial availability remains unverified pending provider-console approvals and account/date reconciliation. See `LAUNCH_REVIEW_2026-10-03.md`.
+
 # Connector Region Policy & Multi-Region Expansion Architecture
 
 **Scope:** Architectural standard and regional policy for Monstera Cloud connectors.  
@@ -10,7 +12,7 @@
 
 Monstera Cloud is an ETL and reporting platform that integrates advertising and e-commerce platforms, normalizes performance data into a unified schema, and delivers it to analytics and visualization destinations (Google Sheets, Looker Studio, BI tools).
 
-Our immediate commercial and technical focus is pilot customers in **Vietnam**. Our current Vietnam connectors and sync workflows are fully operational. While we anticipate expanding to Southeast Asian markets (Singapore, Malaysia, Thailand, Philippines, Indonesia) and beyond, we will **not** build speculative multi-region runtime frameworks that jeopardize the simplicity, reliability, or speed of current operations.
+Our immediate commercial and technical focus is pilot customers in **Vietnam**. Vietnam is the current pilot scope; live customer acceptance must be established per connector. While we anticipate expanding to Southeast Asian markets (Singapore, Malaysia, Thailand, Philippines, Indonesia) and beyond, we will **not** build speculative multi-region runtime frameworks that jeopardize the simplicity, reliability, or speed of current operations.
 
 ### Foundational Principles
 
@@ -38,9 +40,9 @@ To avoid cross-border architectural confusion, Monstera Cloud enforces a strict 
 
 | Provider | Endpoint Model | Regional Policy Today | Future Readiness | Action Required Today |
 |---|---|---|---|---|
-| **Meta Ads** | Global Graph API (`graph.facebook.com/v23.0`) | Region-agnostic. Accounts dynamically discover currency and timezone from Meta Graph API. | 100% SEA Ready. Supports accounts worldwide with zero code adjustments. | **None.** |
-| **Google Ads** | Global API (`googleads.googleapis.com/v16`) | Region-agnostic. Account discovery queries customer metadata; currency and timezones are dynamic per CID. | 100% SEA Ready. Works across any Google Ads MCC or customer account globally. | **None.** |
-| **TikTok Business** | Global Open API (`business-api.tiktok.com/open_api/v1.3`) | Region-agnostic. Advertiser metadata provides native currency and timezone. Task polling and reporting endpoints are global. | 100% SEA Ready. Authoritative advertiser IDs and currencies dynamically mapped. | **None.** |
+| **Meta Ads** | Global Graph API (`graph.facebook.com (configured version)`) | Region-agnostic. Accounts dynamically discover currency and timezone from Meta Graph API. | Global endpoint architecture; app permissions and live acceptance remain unverified. | Verify provider approval and one live scoped reconciliation. |
+| **Google Ads** | Global API (`googleads.googleapis.com/v23`) | Region-agnostic. Account discovery queries customer metadata; currency and timezones are dynamic per CID. | Global endpoint architecture; production access level and authorized customers must be verified. | Verify provider approval and one live scoped reconciliation. |
+| **TikTok Business** | Global Open API (`business-api.tiktok.com/open_api/v1.3`) | Region-agnostic. Advertiser metadata provides native currency and timezone. Task polling and reporting endpoints are global. | Global endpoint architecture; app scopes and advertiser authorization must be verified. | Verify provider approval and one live scoped reconciliation. |
 | **Shopee Open Platform** | Regionalized Open Platform (`partner.shopeemobile.com`) | **Vietnam-restricted capability gate:** `src/lib/provider-market-policy.ts` enforces `shopInfo.region === 'VN'` for Ads and reporting. | High. Authoritative region is queried once at OAuth (`GET /api/v2/shop/get_shop_info`) and stored in `extraFields.region`. Multi-region enablement requires only configuration list expansion. | **None.** Current policy is already clean, isolated, and tested. |
 | **Lazada** | Regional Lazop Gateway (`api.lazada.sg/rest`) | Deferred for pilot. Country returned in token exchange (`tokenData.country`) and stored in credentials. | High. Token exchange stores country. Future activation requires routing through appropriate Lazop endpoints. | **Deferred.** |
 | **TikTok Shop** | Regional/Global Services (`open-api.tiktokshop.com`) | Deferred for pilot. Auth and tokens store seller info. | High. Uses unified OpenAPI v2. | **Deferred.** |

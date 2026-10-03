@@ -1,0 +1,1391 @@
+"use client";
+
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import { toast } from "sonner";
+import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock, Users } from "lucide-react";
+import { ConnectSourceModal } from "@/components/ConnectSourceModal";
+import { FixConnectionModal } from "@/components/FixConnectionModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import useSWR, { useSWRConfig } from "swr";
+import { useWorkspaceStore } from "@/store/workspace";
+import { integrationCatalogId, isSourceEnvReady, visibleSourcesCatalog } from "@/lib/sources-integration-catalog";
+import { logoPathForConnectionProvider } from "@/lib/integration-logos";
+import { cn } from "@/lib/utils";
+import { trackEvent, trackOnce } from "@/lib/analytics-events";
+import { PageShell } from "@/components/ui/PageShell";
+import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
+import { RefreshedAt } from "@/components/ui/RefreshedAt";
+import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/components/ui";
+import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
+import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
+import { SlidingControlIndicator } from "@/components/console/ConsoleMotion";
+import { countConsoleConnections } from "@/lib/console-connections";
+import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
+import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
+import { countSourceHealthStatuses } from "@/lib/source-health";
+import { displayConnectionName, shopeeShopIdFrom, sourceManagerBadge } from "@/lib/source-list-display";
+import { ClientAccountsSection } from "@/components/sources/ClientAccountsSection";
+import { SavedViews } from "@/components/ui/SavedViews";
+
+const fetcher = async (url: string) => {
+    const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const message = data.error || (res.status === 429 ? 'Too Many Requests — please wait a moment before retrying' : 'Failed to fetch data');
+        throw new Error(message);
+    }
+    return data;
+};
+
+const CONNECTED_CARD_SORT_ORDER = [
+    "meta_ads",
+    "google_ads",
+    "tiktok_business",
+    "shopee",
+    "tiktok_shop",
+    "lazada",
+    "shopify",
+    "amazon",
+] as const;
+
+function connectedSourceSortRank(catalogId: string): number {
+    const i = (CONNECTED_CARD_SORT_ORDER as readonly string[]).indexOf(catalogId);
+    return i === -1 ? 100 : i;
+}
+
+const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
+    meta_ads: "Facebook & Instagram Ads — performance reporting for this workspace.",
+    google_ads: "Google Ads — search and Performance Max reporting for this workspace.",
+    tiktok_business: "TikTok Ads — Marketing API reporting for this workspace.",
+    shopee: "Shopee Open Platform — orders and shop data for this workspace.",
+    tiktok_shop: "TikTok Shop — catalog and orders for this workspace.",
+    lazada: "Lazada Seller — orders and finance for this workspace.",
+    shopify: "Shopify — store orders for this workspace.",
+    amazon: "Amazon Selling Partner — SP-API OAuth for this workspace.",
+};
+
+// See src/components/sources/ for extracted sub-components.
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Sources Page
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+export function SourcesPageContent({ previewBasePath = "/sources", previewMode = false }: { previewBasePath?: string; previewMode?: boolean }) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const { switchClient } = useClientContextNavigation();
+    const urlClientId = searchParams.get("clientId");
+    const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+    const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
+    const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") ?? "");
+    const [activeFilter, setActiveFilter] = useState(() => searchParams.get("tab") ?? "connected");
+    const pendingFilterRef = useRef<string | null>(null);
+    const chooseFilter = (tab: string) => {
+        pendingFilterRef.current = tab;
+        setActiveFilter(tab);
+    };
+    const [initialClientId, setInitialClientId] = useState<string | null>(null);
+    const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
+    const addSourceMenuRef = useRef<HTMLDivElement>(null);
+    const [sourceOutcome, setSourceOutcome] = useState<SourceOutcomeNotice | null>(null);
+
+    // P1: Fix It flow state
+    const [fixConnectionTarget, setFixConnectionTarget] = useState<{
+        id: string;
+        name: string;
+        provider: string;
+        catalogId: string;
+        status: string;
+        errorMsg?: string;
+        lastSync?: string;
+        managerBadge?: string | null;
+        accountEmail?: string | null;
+    } | null>(null);
+
+    /* #1 — Fix outgoingActionId race condition: Set instead of single string */
+    const [busyActions, setBusyActions] = useState<Set<string>>(new Set());
+    const addBusy = useCallback((id: string) => setBusyActions(prev => new Set(prev).add(id)), []);
+    const removeBusy = useCallback((id: string) => setBusyActions(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+    }), []);
+
+    const firstRunFilterAppliedRef = useRef(false);
+
+    // Global State
+    const { activeWorkspaceId } = useWorkspaceStore();
+    const { mutate } = useSWRConfig();
+
+    async function disconnectSource(connectionId: string, displayName: string) {
+        setDisconnectTarget({ id: connectionId, name: displayName });
+    }
+
+    async function handleRenameConnection(connectionId: string, newName: string) {
+        const res = await fetch(`/api/connections/${connectionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newName }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "Failed to rename connection");
+        }
+        toast.success(`Connection renamed to "${newName}"`);
+        await Promise.all([
+            mutate((key) => typeof key === "string" && key.includes("/api/workspaces")),
+            mutate((key) => typeof key === "string" && key.includes("/api/connections")),
+        ]);
+        router.refresh();
+    }
+
+    async function confirmDisconnect() {
+        if (!disconnectTarget) return;
+        const { id: connectionId, name: displayName } = disconnectTarget;
+        addBusy(connectionId);
+        try {
+            const res = await fetch(`/api/connections/${connectionId}`, { method: "DELETE" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Disconnect failed");
+            }
+            await Promise.all([
+                mutate("/api/workspaces"),
+                activeWorkspaceId ? mutate(`/api/workspaces/${activeWorkspaceId}/connections?type=source`) : Promise.resolve(),
+            ]);
+            trackEvent("source_disconnected", { sourceName: displayName });
+            setSourceOutcome({
+                kind: "success",
+                title: "Source disconnected",
+                detail: "Syncs from this source have stopped. Existing Warehouse history was retained and you can reconnect the source later.",
+                action: { href: "/explorer", label: "View warehouse" },
+            });
+        } catch {
+            setSourceOutcome({
+                kind: "error",
+                title: "Source could not be disconnected",
+                detail: "The connection and existing Warehouse history were not changed. Try again, or contact support if this continues.",
+                action: { href: "/support", label: "Get support" },
+            });
+        } finally {
+            removeBusy(connectionId);
+            setDisconnectTarget(null);
+        }
+    }
+
+    /* #1 continued — Sync handler extracted for IntegrationCard callback */
+    const handleSync = useCallback(async (pipelineId: string) => {
+        const key = `sync:${pipelineId}`;
+        addBusy(key);
+        try {
+            const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: 'POST' });
+            if (res.status === 202) {
+                setSourceOutcome({
+                    kind: "blocked",
+                    title: "Sync queued",
+                    detail: "Your sync is queued. Check sync activity for progress.",
+                    action: { href: "/reports?view=sync", label: "View sync activity" },
+                });
+            } else if (res.ok) {
+                setSourceOutcome({
+                    kind: "success",
+                    title: "Pipeline sync complete",
+                    detail: "Review the imported rows and coverage in Data explorer.",
+                    action: { href: "/explorer", label: "View warehouse" },
+                });
+            } else {
+                setSourceOutcome({
+                    kind: "error",
+                    title: "Pipeline sync could not complete",
+                    detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
+                    action: { href: "/reports?view=sync", label: "View sync activity" },
+                });
+            }
+        } catch {
+            setSourceOutcome({
+                kind: "error",
+                title: "Pipeline sync could not start",
+                detail: "Check your connection, then try again. Existing data is unchanged.",
+                action: { href: "/reports?view=sync", label: "View sync activity" },
+            });
+        } finally {
+            removeBusy(key);
+            /* #3 — Refresh sync logs after manual sync */
+            if (activeWorkspaceId) {
+                void mutate(`/api/sync-logs?workspaceId=${activeWorkspaceId}`);
+            }
+        }
+    }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
+
+    /* Direct sync for ad platforms - no pipeline needed, syncs to CampaignMetric for Data Explorer */
+    const handleDirectSync = useCallback(async (connectionId: string) => {
+        const key = `direct-sync:${connectionId}`;
+        addBusy(key);
+        try {
+            const res = await fetch(`/api/connections/${connectionId}/sync`, { method: 'POST' });
+            const data = await res.json();
+
+            const rowsIngested = typeof data.rowsIngested === "number" ? data.rowsIngested : 0;
+            if (res.ok && data.outcome === "success") {
+                setSourceOutcome({
+                    kind: "success",
+                    title: "Sync complete",
+                    detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} are available in Warehouse for this source.`,
+                    action: { href: "/explorer", label: "View warehouse" },
+                });
+            } else if (res.ok && data.outcome === "queued") {
+                setSourceOutcome({
+                    kind: "blocked",
+                    title: "TikTok sync queued",
+                    detail: "TikTok is preparing your report. Check this source for progress.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
+            } else if (res.ok && data.outcome === "partial") {
+                setSourceOutcome({
+                    kind: "partial",
+                    title: "Partial sync",
+                    detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} were imported. Some accounts did not finish; review the source before retrying.`,
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
+            } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
+                setSourceOutcome({
+                    kind: "blocked",
+                    title: "Sync already running",
+                    detail: "Wait for the current sync to finish. Check the source for progress.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
+            } else if (data.code === 'SYNC_COOLDOWN') {
+                setSourceOutcome({
+                    kind: "cooldown",
+                    title: "Synced recently",
+                    detail: "Wait before syncing again. Review the source for its latest data.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
+            } else {
+                setSourceOutcome({
+                    kind: "error",
+                    title: "Sync could not complete",
+                    detail: "Existing warehouse data was not deleted. Review this source before retrying.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
+            }
+        } catch {
+            setSourceOutcome({
+                kind: "error",
+                title: "Sync could not start",
+                detail: "Check your connection, then try again. Existing data is unchanged.",
+                action: { href: `/sources/${connectionId}`, label: "Review source" },
+            });
+        } finally {
+            removeBusy(key);
+        }
+    }, [addBusy, removeBusy]);
+
+    const [reconnectQueue, setReconnectQueue] = useState<any[]>([]);
+    const handleFixConnection = useCallback((integration: any) => {
+        const catalogId = integration.catalogId;
+        if (!catalogId) {
+            toast.error("Could not determine which integration to reconnect.");
+            return;
+        }
+
+        // P1: Open Fix It modal instead of generic connect modal
+        setFixConnectionTarget({
+            id: integration.id,
+            name: integration.name,
+            provider: integration.provider || catalogId,
+            catalogId,
+            status: integration.status,
+            errorMsg: integration.errorMsg,
+            lastSync: integration.lastSync,
+            managerBadge: integration.managerBadge,
+            accountEmail: integration.accountEmail,
+        });
+    }, [setFixConnectionTarget]);
+
+    const handleConnect = useCallback((integration: any) => {
+        trackEvent("integration_card_clicked", {
+            catalogId: integration.catalogId ?? integration.id,
+            status: integration.status,
+        });
+        trackEvent("source_connect_clicked", {
+            catalogId: integration.catalogId ?? integration.id,
+            from: "card",
+        });
+        setSelectedIntegration(integration);
+        setIsSourceModalOpen(true);
+    }, [setSelectedIntegration, setIsSourceModalOpen]);
+
+    // Fetch Data
+    const { data: workspaces, error, isLoading: workspacesLoading } = useSWR("/api/workspaces", fetcher, {
+        shouldRetryOnError: (err) => !String(err?.message).includes("Unauthorized"),
+        errorRetryInterval: 3000,
+        errorRetryCount: 3,
+        dedupingInterval: 4000,
+    });
+    const connectionsUrl = activeWorkspaceId
+        ? (() => {
+            const params = new URLSearchParams({ type: "source" });
+            if (urlClientId && urlClientId !== ALL_CLIENTS_TOKEN) params.set("clientId", urlClientId);
+            return `/api/workspaces/${activeWorkspaceId}/connections?${params.toString()}`;
+        })()
+        : null;
+    const { data: sourceConnections = [], error: connectionsError, isLoading: connectionsLoading } = useSWR(
+        connectionsUrl,
+        fetcher,
+        {
+            refreshInterval: 30000,
+            errorRetryInterval: 3000,
+            errorRetryCount: 3,
+            dedupingInterval: 4000,
+        }
+    );
+    const { data: pipelines = [] } = useSWR(
+        activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
+        fetcher,
+        {
+            errorRetryInterval: 3000,
+            errorRetryCount: 3,
+            dedupingInterval: 4000,
+        }
+    );
+    const isLoading = workspacesLoading || connectionsLoading;
+    const { data: intConfig } = useSWR("/api/integrations/config", fetcher, {
+        dedupingInterval: 10000,
+    });
+
+    const connectedSourceCount = useMemo(() => {
+        return Array.isArray(sourceConnections) ? countConsoleConnections(sourceConnections) : 0;
+    }, [sourceConnections]);
+
+    const lastSyncSummary = useMemo(() => {
+        if (!Array.isArray(sourceConnections)) return null;
+        let latest: Date | null = null;
+        for (const c of sourceConnections) {
+            const raw = (c as { lastSyncAt?: string | null }).lastSyncAt;
+            const t = raw ? new Date(raw) : null;
+            if (t && !Number.isNaN(t.getTime()) && (!latest || t > latest)) latest = t;
+        }
+        return latest ? latest.toLocaleString() : null;
+    }, [sourceConnections]);
+
+    useEffect(() => {
+        trackOnce("mc_sources_session", "sources_visit", { path: "/sources" });
+    }, []);
+
+    useEffect(() => {
+        if (!addSourceMenuOpen) return;
+        const close = (e: MouseEvent) => {
+            if (addSourceMenuRef.current && !addSourceMenuRef.current.contains(e.target as Node)) {
+                setAddSourceMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", close);
+        return () => document.removeEventListener("mousedown", close);
+    }, [addSourceMenuOpen]);
+
+    const [oauthBanner, setOauthBanner] = useState<{
+        provider: string;
+        pipelineReady: boolean;
+        needsDestination: boolean;
+        limit: boolean;
+    } | null>(null);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+
+        // OAuth error params from any provider callback
+        const errorProviders = ["meta_ads", "google_ads", "tiktok", "tiktok_business", "shopee", "amazon", "lazada"] as const;
+        for (const p of errorProviders) {
+            const errVal = params.get(`${p}_error`);
+            if (errVal) {
+                const label = {
+                    meta_ads: "Meta Ads",
+                    google_ads: "Google Ads",
+                    tiktok: "TikTok Shop",
+                    tiktok_business: "TikTok Ads",
+                    shopee: "Shopee",
+                    amazon: "Amazon Selling Partner",
+                    lazada: "Lazada",
+                }[p];
+                toast.error(`${label} connection failed: ${decodeURIComponent(errVal).replace(/_/g, " ")}`);
+                window.history.replaceState({}, "", "/sources");
+                return;
+            }
+        }
+
+        if (params.get("error") === "plan_limit") {
+            setSourceOutcome({
+                kind: "error",
+                title: "Plan limit reached",
+                detail: params.get("message") || "This workspace cannot connect another source on the current plan.",
+                action: {
+                    href: "/settings?tab=billing",
+                    label: "View plans",
+                },
+            });
+            window.history.replaceState({}, "", "/sources");
+            return;
+        }
+
+        if (params.get("oauth_success") !== "1") return;
+        const provider = params.get("provider") ?? "source";
+        const pipelineReady = params.get("pipeline_ready") === "1";
+        const needsDestination = params.get("needs_destination") === "1";
+        const limit = params.get("pipeline_limit") === "1";
+        setOauthBanner({ provider, pipelineReady, needsDestination, limit });
+        setActiveFilter('connected');
+        void mutate('/api/workspaces');
+        trackEvent("oauth_return_success", {
+            provider,
+            pipeline_ready: pipelineReady,
+            needs_destination: needsDestination,
+            pipeline_limit: limit,
+        });
+        if (pipelineReady) {
+            trackEvent("pipeline_created", { provider, auto_linked: true });
+        }
+        window.history.replaceState({}, "", "/sources");
+    }, [mutate]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+
+        let hasError = false;
+        const errorKeys = [
+            'meta_ads_error',
+            'google_ads_error',
+            'tiktok_error',
+            'tiktok_business_error',
+            'shopee_error',
+            'amazon_error',
+            'lazada_error',
+            'shopify_error',
+        ];
+
+        for (const key of errorKeys) {
+            const errVal = params.get(key);
+            if (errVal) {
+                const providerName = key.split('_').slice(0, -1).join(' ');
+                toast.error(`Connection failed for ${providerName}`, {
+                    description: errVal,
+                    duration: 8000,
+                });
+                hasError = true;
+            }
+        }
+
+        if (hasError) {
+            window.history.replaceState({}, "", "/sources");
+        }
+    }, []);
+
+    useEffect(() => {
+        const tab = searchParams.get("tab");
+        const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
+        const urlTab = ["connected", "accounts", "available", "attention"].includes(tab ?? "") ? tab! : cId ? "accounts" : "connected";
+        // An older route commit must not undo a newer keyboard/click selection.
+        if (pendingFilterRef.current && pendingFilterRef.current !== urlTab) return;
+        pendingFilterRef.current = null;
+        setInitialClientId(cId);
+        setSearchQuery(searchParams.get("search") ?? "");
+        const validTabs = ["connected", "accounts", "available", "attention"];
+        setActiveFilter(validTabs.includes(tab ?? "") ? tab! : cId ? "accounts" : "connected");
+    }, [searchParams, urlClientId]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            const params = new URLSearchParams(window.location.search);
+            if (activeFilter === "connected" && !params.has("clientId")) params.delete("tab");
+            else params.set("tab", activeFilter);
+            if (searchQuery.trim()) params.set("search", searchQuery.trim());
+            else params.delete("search");
+            const next = params.toString();
+            const current = window.location.search.replace(/^\?/, "");
+            if (next !== current) router.replace(next ? `${previewBasePath}?${next}` : previewBasePath, { scroll: false });
+            else pendingFilterRef.current = null;
+        }, 120);
+        return () => window.clearTimeout(timer);
+    }, [activeFilter, router, searchQuery, previewBasePath]);
+
+    useEffect(() => {
+        if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
+        if (firstRunFilterAppliedRef.current) return;
+        if (connectedSourceCount !== 0) return;
+        if (activeFilter === 'accounts' || activeFilter === 'attention') return;
+        setActiveFilter('available');
+        firstRunFilterAppliedRef.current = true;
+    }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount, activeFilter]);
+
+    /** Certified connectors plus any uncertified ones explicitly enabled for this workspace. */
+    const catalogIntegrations = useMemo(() => {
+        const active = Array.isArray(workspaces)
+            ? workspaces.find((workspace: { id: string }) => workspace.id === activeWorkspaceId)
+            : null;
+        return visibleSourcesCatalog(intConfig, active?.enabledProviders ?? []).map((item) => ({
+            ...item,
+            status: "available" as const,
+            envConnectReady: isSourceEnvReady(item.id, intConfig),
+        }));
+    }, [intConfig, workspaces, activeWorkspaceId]);
+
+    const connectedCatalogIdList = useMemo(() => {
+        if (!Array.isArray(sourceConnections)) return [] as string[];
+        return sourceConnections.map((c: { provider: string }) => integrationCatalogId(c.provider));
+    }, [sourceConnections]);
+
+    const headerAddOptions = useMemo(() => {
+        return catalogIntegrations;
+    }, [catalogIntegrations]);
+
+    // Filter logic
+    const filteredIntegrations = useMemo(() => {
+        if (!activeWorkspaceId) return catalogIntegrations;
+        const rawSourceConnections = Array.isArray(sourceConnections) ? sourceConnections : [];
+
+        // Count connections per provider to detect multiple connections in the workspace
+        const providerCounts: Record<string, number> = {};
+        for (const c of rawSourceConnections) {
+            providerCounts[c.provider] = (providerCounts[c.provider] || 0) + 1;
+        }
+
+        const connectedSources = rawSourceConnections
+            .map((conn: any) => {
+                const logo = logoPathForConnectionProvider(conn.provider);
+                const catalogId = integrationCatalogId(conn.provider);
+                const explicitAccountScope = Array.isArray(conn.assignedAccounts);
+                const relatedPipeline = !explicitAccountScope && Array.isArray(pipelines)
+                    ? pipelines.find((p: any) => p.sourceConnectionId === conn.id)
+                    : null;
+
+                let creds: any = {};
+                try {
+                    creds = typeof conn.credentials === 'string'
+                        ? JSON.parse(conn.credentials)
+                        : (conn.credentials ?? {});
+                } catch {
+                    creds = {};
+                }
+                const assignedAccountIds: string[] | null = Array.isArray(conn.assignedAccounts)
+                    ? conn.assignedAccounts
+                        .filter((account: unknown): account is { provider: string; accountId: string } =>
+                            Boolean(account && typeof account === "object" && typeof (account as { accountId?: unknown }).accountId === "string"),
+                        )
+                        .map((account: { accountId: string }) => account.accountId)
+                    : null;
+
+                // Extract ad accounts, manager badges, and account tags
+                const accountEmail = (creds.accountEmail || creds.email || null) as string | null;
+                const accountName = (creds.accountName || null) as string | null;
+                let accountTags: Array<{ id: string; label: string } | string> = [];
+                let rawName = (conn.name || "").trim();
+                let displayName = rawName;
+                let managerBadge: string | null = null;
+                let scopeDesc = "";
+                let accountCount: number | undefined;
+
+                if (conn.provider === 'meta_ads') {
+                    const list: Array<{ id: string; name?: string }> =
+                        (Array.isArray(creds.adAccounts) && creds.adAccounts.length > 0 ? creds.adAccounts : null) ??
+                        ((Array.isArray(creds.adAccountIds) && creds.adAccountIds.length > 0
+                            ? creds.adAccountIds
+                            : assignedAccountIds ?? [])).map((id: string) => ({ id }));
+                    accountTags = list.map((a: any) => ({
+                        id: String(a.id),
+                        label: a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, ''),
+                    }));
+                    const bmId = creds.businessManagerId || creds.bmId || null;
+                    const totalCount = accountTags.length;
+                    if (bmId && bmId !== "") {
+                        managerBadge = `BM: ${bmId}`;
+                        scopeDesc = `Business Manager (${bmId}) · ${totalCount} ad account${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1) {
+                        const cleanId = String(list[0].id).replace(/^act_/, '');
+                        managerBadge = `act_${cleanId}`;
+                        scopeDesc = `Ad Account: ${list[0].name || list[0].id} · Direct sync`;
+                    } else if (list.length > 1) {
+                        const cleanFirst = String(list[0].id).replace(/^act_/, '');
+                        managerBadge = `BM Root: ${cleanFirst}`;
+                        scopeDesc = `Meta Business · ${totalCount} ad accounts synced`;
+                    } else {
+                        scopeDesc = `Meta Ads · ${totalCount} ad accounts synced`;
+                    }
+
+                    displayName = displayConnectionName(conn.provider, rawName);
+                } else if (conn.provider === 'google_ads') {
+                    const list: string[] = Array.isArray(creds.customerIds) && creds.customerIds.length > 0
+                        ? creds.customerIds
+                        : assignedAccountIds ?? [];
+                    accountTags = list.map((id: string) => {
+                        const clean = String(id).replace(/\D/g, '');
+                        const formatted = clean.length === 10
+                            ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`
+                            : String(id);
+                        return { id: String(id), label: formatted };
+                    });
+                    const rawRemoteId = String(conn.remoteAccountId ?? "").replace(/\D/g, "");
+                    const isExplicitCustomer = creds.googleAdsRootType === "customer";
+                    const isExplicitManager = Boolean(creds.mccId || creds.managerCustomerId || creds.googleAdsRootType === "manager");
+                    // Treat as MCC if marked as manager, or if unclassified and remote ID differs from child accounts
+                    const resolvedMccId = isExplicitManager
+                        ? (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : null))
+                        : (!isExplicitCustomer && rawRemoteId.length > 0 && !list.includes(rawRemoteId) ? rawRemoteId : null);
+                    const discoveredCustomerCount = Number(creds.discoveredCustomerCount);
+                    const totalCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
+                        ? discoveredCustomerCount
+                        : accountTags.length;
+                    accountCount = totalCount;
+                    const emailSuffix = accountEmail ? ` · ${accountEmail}` : "";
+                    if (resolvedMccId && resolvedMccId !== "") {
+                        const cleanMcc = String(resolvedMccId).replace(/\D/g, '');
+                        const formattedMcc = cleanMcc.length === 10
+                            ? `${cleanMcc.slice(0, 3)}-${cleanMcc.slice(3, 6)}-${cleanMcc.slice(6)}`
+                            : resolvedMccId;
+                        managerBadge = `MCC: ${formattedMcc}`;
+                        scopeDesc = `${managerBadge}${emailSuffix} · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1 || (isExplicitCustomer && rawRemoteId.length > 0)) {
+                        const directCid = list[0] || rawRemoteId;
+                        const cleanCid = String(directCid).replace(/\D/g, '');
+                        const formattedCid = cleanCid.length === 10
+                            ? `${cleanCid.slice(0, 3)}-${cleanCid.slice(3, 6)}-${cleanCid.slice(6)}`
+                            : directCid;
+                        managerBadge = `CID: ${formattedCid}`;
+                        scopeDesc = `Customer: ${formattedCid}${emailSuffix} · Direct Google Ads sync`;
+                    } else if (list.length > 1) {
+                        const cleanFirst = String(list[0]).replace(/\D/g, '');
+                        const formattedFirst = cleanFirst.length === 10
+                            ? `${cleanFirst.slice(0, 3)}-${cleanFirst.slice(3, 6)}-${cleanFirst.slice(6)}`
+                            : list[0];
+                        managerBadge = `MCC: ${formattedFirst}`;
+                        scopeDesc = `MCC Manager${emailSuffix} · ${totalCount} customer accounts synced`;
+                    } else {
+                        scopeDesc = `Google Ads${emailSuffix} · ${totalCount} customer accounts synced`;
+                    }
+
+                    displayName = displayConnectionName(conn.provider, rawName);
+                } else if (conn.provider === 'tiktok_business') {
+                    const list: string[] = Array.isArray(creds.advertiserIds) && creds.advertiserIds.length > 0
+                        ? creds.advertiserIds
+                        : assignedAccountIds ?? [];
+                    accountTags = list.map((id: string) => ({ id: String(id), label: String(id) }));
+                    const bcId = creds.businessCenterId || creds.bcId || null;
+                    const totalCount = accountTags.length;
+                    if (bcId && bcId !== "") {
+                        managerBadge = `BC: ${bcId}`;
+                        scopeDesc = `Business Center (${bcId}) · ${totalCount} advertiser${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1) {
+                        const advId = list[0];
+                        managerBadge = `Adv: ${advId}`;
+                        scopeDesc = `Advertiser ID: ${advId} · Direct TikTok sync`;
+                    } else if (list.length > 1) {
+                        managerBadge = `BC: ${list[0]}`;
+                        scopeDesc = `Business Center · ${totalCount} advertisers synced`;
+                    } else {
+                        scopeDesc = `TikTok Ads · ${totalCount} advertisers synced`;
+                    }
+
+                    displayName = displayConnectionName(conn.provider, rawName);
+                } else if (conn.provider === 'shopee') {
+                    const shop = assignedAccountIds?.[0] ?? shopeeShopIdFrom(creds, rawName);
+                    if (shop) {
+                        accountTags = [{ id: String(shop), label: `Shop ID: ${shop}` }];
+                        managerBadge = `Shop: ${shop}`;
+                    }
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = shop ? `Shop ID: ${shop} · Orders & GMV sync` : "Shopee Marketplace store";
+                } else if (conn.provider === 'shopify') {
+                    const domain = creds.shopDomain || null;
+                    if (domain) {
+                        accountTags = [{ id: String(domain), label: String(domain) }];
+                        managerBadge = `Store: ${domain}`;
+                    }
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = domain ? `Store: ${domain} · E-commerce sync` : "Shopify Store sync";
+                } else if (conn.provider === "lazada") {
+                    const seller = creds.sellerId || creds.seller_id || null;
+                    if (seller) {
+                        accountTags = [{ id: String(seller), label: String(seller) }];
+                    }
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName });
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = seller ? `Seller ${seller} · Orders & finance` : "Lazada Seller";
+                } else if (conn.provider === "amazon") {
+                    const sp = creds.sellingPartnerId && creds.sellingPartnerId !== "pending_user_config"
+                        ? creds.sellingPartnerId
+                        : null;
+                    if (sp) {
+                        accountTags = [{ id: String(sp), label: String(sp) }];
+                    }
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName });
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = "Amazon Selling Partner";
+                } else if (conn.provider === "tiktok_shop") {
+                    const seller = creds.sellerId || creds.seller_id || null;
+                    if (seller) {
+                        accountTags = [{ id: String(seller), label: String(seller) }];
+                    }
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName });
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = seller ? `Seller ${seller} · Catalog & orders` : "TikTok Shop";
+                } else {
+                    const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
+                    displayName = displayConnectionName(conn.provider, rawName) || conn.provider;
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName, remoteAccountId: conn.remoteAccountId });
+                    scopeDesc = baseBlurb;
+                }
+
+                return {
+                    id: conn.id,
+                    provider: conn.provider,
+                    catalogId,
+                    name: displayName,
+                    description: scopeDesc,
+                    managerBadge,
+                    accountEmail,
+                    accountName,
+                    accountCount: accountCount ?? accountTags.length,
+                    shortId: conn.id ? conn.id.slice(-4) : undefined,
+                    // `healthState` is computed server-side from durable
+                    // connection truth. Keep the fallback for older API
+                    // responses while the client cache rolls over.
+                    status: conn.healthState ?? (conn.status === "disconnected"
+                        ? "disconnected"
+                        : conn.lastError?.startsWith("[partial]")
+                          ? "partial"
+                          : conn.lastError?.startsWith("[failed]")
+                            ? "error"
+                          : conn.status === "connected"
+                            ? "connected"
+                            : "error"),
+                    healthState: conn.healthState,
+                    // "auth" wording makes the row show the Reconnect CTA; historical data is retained.
+                    errorMsg: conn.status === "disconnected"
+                        ? "Disconnected — warehouse history retained. Re-authenticate to resume syncing."
+                        : conn.lastError || undefined,
+                    lastSync: conn.lastSyncAt
+                        ? new Date(conn.lastSyncAt).toISOString()
+                        : relatedPipeline?.lastSyncedAt
+                          ? new Date(relatedPipeline.lastSyncedAt).toISOString()
+                          : "Never",
+                    dataThroughDate: conn.dataThroughDate,
+                    syncAttemptAt: conn.updatedAt,
+                    logoSrc: logo,
+                    pipelineId: relatedPipeline?.id,
+                    accountTags,
+                };
+            })
+            .sort((a: { catalogId: string }, b: { catalogId: string }) => {
+                return connectedSourceSortRank(a.catalogId) - connectedSourceSortRank(b.catalogId);
+            });
+
+        const filteredAvailable = catalogIntegrations;
+        const combined = [...connectedSources, ...filteredAvailable];
+
+        return combined.filter((integration: any) => {
+            const query = searchQuery.trim().toLowerCase();
+            const matchesSearch = !query || [
+                integration.name,
+                integration.description,
+                integration.managerBadge,
+                integration.accountEmail,
+                integration.accountName,
+                integration.shortId,
+                integration.id,
+                ...(integration.accountTags ?? []).flatMap((tag: { id?: string; label?: string } | string) =>
+                    typeof tag === "string" ? [tag] : [tag.id, tag.label]),
+            ].some((value) => String(value ?? "").toLowerCase().includes(query));
+
+            if (!matchesSearch) return false;
+
+            if (activeFilter === 'connected') return integration.status !== 'available';
+            if (activeFilter === 'available') return integration.status === 'available';
+            if (activeFilter === 'attention') return ["error", "stale", "disconnected", "unknown", "partial"].includes(integration.status);
+            return integration.status !== 'available';
+        });
+    }, [searchQuery, activeFilter, sourceConnections, pipelines, activeWorkspaceId, catalogIntegrations]);
+
+    const { connectedRows, availableCards } = useMemo(() => {
+        // Keep typing wide enough for both card and list render paths.
+        const connected = (filteredIntegrations as any[]).filter((i) => i.status !== "available");
+        const available = (filteredIntegrations as any[]).filter((i) => i.status === "available");
+        return { connectedRows: connected, availableCards: available };
+    }, [filteredIntegrations]);
+
+    const discoverableCards = useMemo(() => {
+        const connectedIds = new Set(connectedCatalogIdList);
+        const query = searchQuery.trim().toLowerCase();
+        return catalogIntegrations.filter((integration) =>
+            !connectedIds.has(integration.id) &&
+            (!query || `${integration.name} ${integration.description}`.toLowerCase().includes(query))
+        );
+    }, [catalogIntegrations, connectedCatalogIdList, searchQuery]);
+
+    const activeWorkspace = useMemo(() => {
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
+        return workspaces.find((w: { id: string }) => w.id === activeWorkspaceId) ?? null;
+    }, [workspaces, activeWorkspaceId]);
+
+    const filterStats = useMemo(() => {
+        return countSourceHealthStatuses((Array.isArray(sourceConnections) ? sourceConnections : []).map((connection: { healthState?: string; status: string }) => ({ status: connection.healthState ?? connection.status })));
+    }, [sourceConnections]);
+    const needsAttentionCount = useMemo(() => {
+        const connections = Array.isArray(sourceConnections) ? sourceConnections : [];
+        return connections.filter((connection: { healthState?: string; status?: string }) => ["error", "stale", "disconnected", "unknown", "partial", "stuck"].includes(String(connection.healthState ?? connection.status ?? "unknown"))).length;
+    }, [sourceConnections]);
+
+    // Error State (only block the screen when the failing endpoint has NO cached data)
+    const hasCachedWorkspaces = Array.isArray(workspaces) && workspaces.length > 0;
+    const hasCachedConnections = Array.isArray(sourceConnections) && sourceConnections.length > 0;
+    const isBlocked = Boolean(
+        (error && !hasCachedWorkspaces) ||
+        (connectionsError && !hasCachedConnections && activeWorkspaceId)
+    );
+
+    if (isBlocked) {
+        const failure = error || connectionsError;
+        const detail = failure instanceof Error ? failure.message : "Failed to fetch data";
+        const isAuth =
+            detail === "Unauthorized" || detail.toLowerCase().includes("unauthorized");
+        const isRateLimited = detail.toLowerCase().includes("too many requests") || detail.toLowerCase().includes("rate_limit");
+
+        return (
+            <div className="w-full py-24 flex flex-col items-center justify-center text-center px-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-400 mb-4 shadow-xs">
+                    <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold tracking-tight text-ink mb-1.5">
+                    {isRateLimited ? "Rate limit reached" : "Failed to load data sources"}
+                </h3>
+                <p className="text-sm text-ink-mute max-w-md leading-relaxed">
+                    {isAuth
+                        ? "Your session is missing or expired. Sign in again to load workspaces and connections."
+                        : isRateLimited
+                          ? "Too many requests were sent in a short period. Please wait a few seconds and retry."
+                          : "Please check your connection or try again. If this persists, the server may be temporarily unavailable."}
+                </p>
+                {!isAuth && (
+                    <p className="mt-3 text-xs font-mono text-ink-mute/70 bg-panel px-3 py-1.5 rounded-lg border border-line max-w-lg break-words">
+                        {detail}
+                    </p>
+                )}
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                    {isAuth ? (
+                        <Link
+                            href="/login?callbackUrl=%2Fsources"
+                            className={primaryButtonLinkClassName}
+                        >
+                            Sign in
+                        </Link>
+                    ) : (
+                        <SecondaryButton onClick={() => {
+                            void mutate("/api/workspaces");
+                            if (activeWorkspaceId) {
+                                void mutate(`/api/workspaces/${activeWorkspaceId}/connections?type=source`);
+                            }
+                        }}>
+                            Retry
+                        </SecondaryButton>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    /* #2 — Guard null activeWorkspaceId — show "Select a workspace" prompt */
+    if (!isLoading && !activeWorkspaceId) {
+        return (
+            <div className="w-full py-20 flex flex-col items-center justify-center text-center px-4">
+                <Database className="w-10 h-10 text-gray-400 dark:text-gray-500 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                    No workspace selected
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-slate-400 max-w-md">
+                    Select or create a workspace to view and manage your data sources.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <PageShell
+            section="sources"
+            className="w-full"
+            withBackdrop
+        >
+
+            {oauthBanner && (
+                <OAuthSuccessBanner
+                    {...oauthBanner}
+                    onDismiss={() => setOauthBanner(null)}
+                />
+            )}
+
+            <div data-console-page-header="true" className="console-section-heading mb-7 flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+                <div>
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-ink-mute">Workspace / Data connections</p>
+                    <h1 className="mt-2 text-[32px] font-medium leading-tight tracking-[-0.045em] text-ink sm:text-[36px]">Sources<span className="text-[var(--console-motion-accent)]">.</span></h1>
+                    <p className="mt-2 text-sm text-ink-mute">
+                        {isLoading
+                            ? "Loading your workspace…"
+                            : connectedSourceCount === 0
+                              ? "Connect a platform to start bringing data into your workspace."
+                              : "A clear view of every platform feeding your workspace."}
+                    </p>
+                    {!isLoading && activeWorkspace && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-mute" role="status">
+                            <span className="inline-flex items-center gap-1.5 text-ink-mute">
+                                Workspace: <span className="font-semibold text-ink">{activeWorkspace.name}</span>
+                            </span>
+                            <span className="text-ink-mute/50" aria-hidden="true">/</span>
+                            <span className="inline-flex items-center gap-1.5 text-ink-mute">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                {connectedSourceCount} source connection{connectedSourceCount === 1 ? "" : "s"}
+                            </span>
+                            <span className="text-ink-mute/50" aria-hidden="true">/</span>
+                            <span className="inline-flex items-center gap-1.5 text-ink-mute">
+                                <Clock className="h-3.5 w-3.5 text-ink-mute" />
+                                {lastSyncSummary
+                                    ? `Last synced: ${lastSyncSummary}`
+                                    : "No successful sync recorded yet"}
+                            </span>
+                        </div>
+                    )}
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+                    <RefreshedAt
+                        onRefresh={() => mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"), undefined, { revalidate: true })}
+                    />
+                    <SavedViews href={`/sources${searchParams.toString() ? `?${searchParams.toString()}` : ""}`} />
+                    <div className="relative" ref={addSourceMenuRef}>
+                        <button
+                            type="button"
+                            aria-expanded={addSourceMenuOpen}
+                            aria-haspopup="listbox"
+                            onClick={() => setAddSourceMenuOpen((o) => !o)}
+                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 whitespace-nowrap rounded-md bg-primary px-3.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:px-4"
+                        >
+                            <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                            <span className="hidden sm:inline">Add data source</span>
+                            <span className="sm:hidden">Add source</span>
+                            <ChevronDown
+                                className={`h-4 w-4 shrink-0 opacity-90 transition-transform duration-200 ${addSourceMenuOpen ? "-rotate-180" : ""}`}
+                                aria-hidden
+                            />
+                        </button>
+                        {addSourceMenuOpen ? (
+                            <div
+                                className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-1.25rem,22.5rem)] origin-top animate-in fade-in slide-in-from-top-1 duration-200"
+                                role="presentation"
+                            >
+                                <div
+                                    className="overflow-hidden rounded-lg border border-line bg-panel"
+                                    role="listbox"
+                                    aria-label="Connect a source"
+                                >
+                                    <div className="border-b border-line px-4 py-3">
+                                        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
+                                            Quick connect
+                                        </p>
+                                        <p className="mt-0.5 text-xs leading-snug text-ink-mute">
+                                            Choose a platform — you&apos;ll sign in with OAuth next.
+                                        </p>
+                                    </div>
+                                    <div className="max-h-[min(52vh,22rem)] overflow-y-auto overscroll-contain px-2 py-2">
+                                        {headerAddOptions.length === 0 ? (
+                                            <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-8 text-center dark:bg-[#16181c]/50">
+                                                <CheckCircle2 className="h-8 w-8 text-emerald-500/90" aria-hidden />
+                                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">All set</p>
+                                                <p className="max-w-[14rem] text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                                                    Every catalog source is already linked to this workspace.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <ul className="space-y-1">
+                                                {headerAddOptions.map((item) => {
+                                                    const disabled = !item.envConnectReady;
+                                                    return (
+                                                        <li key={item.id}>
+                                                            <button
+                                                                type="button"
+                                                                role="option"
+                                                                aria-selected="false"
+                                                                disabled={disabled}
+                                                                onClick={() => {
+                                                                    if (disabled) {
+                                                                        toast.error(
+                                                                            "This connector is not enabled on this deployment (missing OAuth environment variables)."
+                                                                        );
+                                                                        return;
+                                                                    }
+                                                                    trackEvent("integration_connect_open", {
+                                                                        source: "header_dropdown",
+                                                                        catalogId: item.id,
+                                                                    });
+                                                                    trackEvent("source_connect_clicked", {
+                                                                        catalogId: item.id,
+                                                                        from: "header_dropdown",
+                                                                    });
+                                                                    handleConnect({ ...item, catalogId: item.id });
+                                                                    setAddSourceMenuOpen(false);
+                                                                }}
+                                                                className={cn(
+                                                                    "group flex w-full items-start gap-3 rounded-md px-2 py-2 text-left transition-colors",
+                                                                    disabled
+                                                                        ? "cursor-not-allowed opacity-50"
+                                                                        : "text-ink hover:bg-white/[0.04] focus:outline-none"
+                                                                )}
+                                                            >
+                                                                <IntegrationMark src={item.logoSrc} size="md" />
+                                                                <span className="min-w-0 flex-1 pt-0.5">
+                                                                    <span className="flex items-start justify-between gap-2">
+                                                                        <span className="text-[13px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white">
+                                                                            {item.name}
+                                                                        </span>
+                                                                        {!disabled ? (
+                                                                            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-mute" strokeWidth={1.5} />
+                                                                        ) : (
+                                                                            <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-950/80 dark:text-amber-200">
+                                                                                Off
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    <span className="mt-1 block line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                                                                        {item.description}
+                                                                    </span>
+                                                                </span>
+                                                            </button>
+                                                        </li>
+                                                    );
+                                                })}
+                                            </ul>
+                                        )}
+                                    </div>
+                                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-[#000000]/60">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                trackEvent("integration_connect_open", { source: "header_browse_all" });
+                                                setSelectedIntegration(null);
+                                                setIsSourceModalOpen(true);
+                                                setAddSourceMenuOpen(false);
+                                            }}
+                                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink shadow-xs transition-colors hover:border-white/30 hover:text-white"
+                                        >
+                                            Full catalog — status
+                                            <ChevronRight className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+
+            {!isLoading && (
+                <section className="console-source-summary mb-7 grid grid-cols-2 overflow-hidden rounded-2xl border border-line bg-panel sm:grid-cols-4" aria-label="Source connection summary">
+                    <div className="min-w-0 border-b border-r border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:border-b-0 sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Connections</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-ink tabular-nums">{connectedSourceCount}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">In this workspace</p>
+                    </div>
+                    <div className="min-w-0 border-b border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:border-b-0 sm:border-r sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Linked accounts</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-ink tabular-nums">{connectedRows.reduce((sum: number, row: any) => sum + Number(row.accountCount ?? row.accountTags?.length ?? 0), 0)}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">In the current view</p>
+                    </div>
+                    <div className="min-w-0 border-r border-line p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Syncing well</p>
+                        <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-[var(--console-motion-accent)] tabular-nums">{filterStats.connected}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">Recent successful syncs</p>
+                    </div>
+                    <div className="min-w-0 p-4 transition-colors duration-300 hover:bg-white/[0.025] sm:p-5">
+                        <p className="text-[11px] font-medium text-ink-mute">Needs attention</p>
+                        <p className={cn("mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] tabular-nums", needsAttentionCount > 0 ? "text-amber-300" : "text-ink")}>{needsAttentionCount}</p>
+                        <p className="mt-2 text-[11px] text-ink-mute">Authorization or sync issues</p>
+                    </div>
+                </section>
+            )}
+
+            {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
+            {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
+
+            {sourceOutcome && (
+                <SourceOutcomeBanner
+                    notice={sourceOutcome}
+                    onDismiss={() => setSourceOutcome(null)}
+                />
+            )}
+
+            <div className="mb-6 flex flex-col gap-4 border-b border-line lg:flex-row lg:items-center lg:justify-between">
+                <div className="console-source-tabs flex flex-wrap items-center gap-5" role="tablist" aria-label="Filter integrations" onKeyDown={event => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="tab"]')];
+                    const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+                    if (index < 0) return;
+                    event.preventDefault();
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                    tabs[next]?.focus(); tabs[next]?.click();
+                }}>
+                    <SlidingControlIndicator />
+                    <button
+                        role="tab"
+                        aria-selected={activeFilter === 'connected'}
+                        tabIndex={activeFilter === 'connected' ? 0 : -1}
+                        onClick={() => chooseFilter('connected')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'connected'
+                                ? "bg-white/[0.08] text-white border border-white/15 shadow-xs"
+                                : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
+                        )}
+                    >
+                        <span>Your sources</span>
+                        <span className="rounded border border-line/60 bg-panel px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
+                            {isLoading ? '…' : connectedSourceCount}
+                        </span>
+                    </button>
+                    <button
+                        role="tab"
+                        aria-selected={activeFilter === 'accounts'}
+                        tabIndex={activeFilter === 'accounts' ? 0 : -1}
+                        onClick={() => chooseFilter('accounts')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'accounts'
+                                ? "bg-white/[0.08] text-white border border-white/15 shadow-xs"
+                                : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
+                        )}
+                    >
+                        <Users className="h-3.5 w-3.5" />
+                        <span>Client accounts</span>
+                    </button>
+                    <button
+                        role="tab"
+                        aria-selected={activeFilter === 'available'}
+                        tabIndex={activeFilter === 'available' ? 0 : -1}
+                        onClick={() => chooseFilter('available')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'available'
+                                ? "bg-white/[0.08] text-white border border-white/15 shadow-xs"
+                                : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
+                        )}
+                    >
+                        <span>Integration library</span>
+                    </button>
+                    <button
+                        role="tab"
+                        aria-selected={activeFilter === 'attention'}
+                        tabIndex={activeFilter === 'attention' ? 0 : -1}
+                        onClick={() => chooseFilter('attention')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'attention'
+                                ? "border border-rose-500/30 bg-rose-500/10 text-rose-200"
+                                : "text-ink-mute hover:bg-white/[0.03] hover:text-ink"
+                        )}
+                    >
+                        <span>Needs attention</span>
+                        <span className="rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 font-mono text-[10px] text-rose-200">
+                            {isLoading ? "…" : needsAttentionCount}
+                        </span>
+                    </button>
+                    {!isLoading && filterStats.partial > 0 && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                            {filterStats.partial} partial sync{filterStats.partial === 1 ? "" : "s"}
+                        </span>
+                    )}
+                </div>
+                {activeFilter === 'available' && (
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search integrations…"
+                                aria-label="Search integrations"
+                                className="h-9 w-52 sm:w-60 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Grid — split into "Your sources" strip + "Available" catalog + "Client accounts" */}
+            {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" role="tabpanel">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <IntegrationCardSkeleton key={i} />
+                    ))}
+                </div>
+            ) : activeFilter !== 'accounts' && connectedRows.length === 0 && availableCards.length === 0 ? (
+                <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-line bg-panel py-20 text-center" role="tabpanel" aria-live="polite">
+                    <Database className="w-10 h-10 text-ink-mute mb-4" />
+                    <h3 className="text-sm font-semibold text-ink mb-1">{activeFilter === "attention" ? "No sources need attention" : "No integrations found"}</h3>
+                    <p className="text-xs text-ink-mute max-w-sm mb-6">
+                        {activeFilter === "attention" && !searchQuery ? "All connected sources are currently clear." : `No data sources match “${searchQuery}”.`}
+                    </p>
+                    {searchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => { setSearchQuery(""); setActiveFilter("connected"); }}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.06] transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                            Clear search
+                        </button>
+                    )}
+                </div>
+            ) : (
+                <div role="tabpanel" aria-live="polite" className="space-y-8">
+                    {activeFilter === 'accounts' && activeWorkspaceId && (
+                        <section id="client-accounts-section" aria-label="Client accounts">
+                            <ClientAccountsSection
+                                workspaceId={activeWorkspaceId}
+                                initialClientId={initialClientId}
+                                onClientChange={(clientId) => switchClient(clientId)}
+                            />
+                        </section>
+                    )}
+                    {(activeFilter === 'connected' || activeFilter === 'attention') && connectedRows.length > 0 && (
+                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className={cn("scroll-mt-6", activeFilter === "connected" && catalogIntegrations.length > 0 && "console-source-layout")}>
+                            <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
+                            <ConnectedSourceList
+                                rows={connectedRows}
+                                searchQuery={searchQuery}
+                                onSearchChange={setSearchQuery}
+                                busyActions={busyActions}
+                                onSync={handleSync}
+                                onDirectSync={handleDirectSync}
+                                onDisconnect={disconnectSource}
+                                onBulkReconnect={(rows) => { setReconnectQueue(rows.slice(1)); handleFixConnection(rows[0]); }}
+                                onFixConnection={handleFixConnection}
+                                onRenameConnection={handleRenameConnection}
+                            />
+                            {activeFilter === "connected" && catalogIntegrations.length > 0 ? (
+                                <aside className="console-source-discover flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-line bg-panel px-5 py-4" aria-label="Discover available connectors">
+                                    <div className="mr-auto min-w-[210px]">
+                                        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[#9fc6a9]">Keep building</p>
+                                        <h2 className="mt-1 text-sm font-medium text-ink">Connect another platform</h2>
+                                        <p className="mt-1 text-xs text-ink-mute">Add an account whenever you need it.</p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {discoverableCards.slice(0, 4).map((integration: any) => (
+                                            <button
+                                                key={integration.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedIntegration(integration);
+                                                    setIsSourceModalOpen(true);
+                                                }}
+                                                className="inline-flex items-center gap-2 rounded-xl border border-line bg-canvas px-3 py-2 text-xs text-ink transition-all duration-300 hover:-translate-y-0.5 hover:border-[#86c99b]/40 hover:bg-[#86c99b]/[0.05]"
+                                            >
+                                                <IntegrationMark src={integration.logoSrc} size="sm" />
+                                                {integration.name}
+                                                <Plus className="h-3 w-3 text-ink-mute" aria-hidden />
+                                            </button>
+                                        ))}
+                                        {discoverableCards.length === 0 && <p className="text-xs text-ink-mute">Every available platform has a saved connection. Review any that need reconnection.</p>}
+                                    </div>
+                                    <div className="flex items-center gap-4 lg:border-l lg:border-line lg:pl-5">
+                                        <button type="button" onClick={() => setActiveFilter("available")} className="inline-flex items-center gap-1.5 text-xs font-medium text-ink transition-colors hover:text-[#a9d9b9]">Browse catalog <ChevronRight className="h-3.5 w-3.5" aria-hidden /></button>
+                                        <Link href="/explorer" className="inline-flex items-center gap-1.5 text-xs text-ink-mute transition-colors hover:text-[#a9d9b9]">Warehouse <ChevronRight className="h-3.5 w-3.5" /></Link>
+                                    </div>
+                                </aside>
+                            ) : null}
+                        </section>
+                    )}
+                    {activeFilter === 'available' && availableCards.length > 0 && (
+                        <section aria-labelledby="sources-available-heading">
+                            <div className="mb-3 flex items-end justify-between">
+                                <h2
+                                    id="sources-available-heading"
+                                    className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute"
+                                >
+                                    Available connectors
+                                </h2>
+                                <span className="text-xs text-ink-mute">{availableCards.length}</span>
+                            </div>
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
+                                {availableCards.map((integration: any) => (
+                                    <div key={integration.id} className="stagger-item min-w-0">
+                                    <IntegrationCard
+                                        integration={integration}
+                                        busyActions={busyActions}
+                                        onSync={handleSync}
+                                        onDisconnect={disconnectSource}
+                                        onFixConnection={handleFixConnection}
+                                        onConnect={handleConnect}
+                                    />
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+                </div>
+            )}
+
+            {connectedSourceCount > 0 && (
+                <div className="mt-8 flex items-center justify-between border-t border-line pt-4">
+                    <p className="text-xs text-ink-mute">Destination pipeline history lives in Sync activity. Source refresh status stays on each source.</p>
+                    <Link href="/reports" className="text-xs font-medium text-ink-mute hover:text-ink">
+                        Open logs →
+                    </Link>
+                </div>
+            )}
+
+            <ConfirmDialog
+                open={disconnectTarget !== null}
+                title={disconnectTarget ? `Disconnect ${disconnectTarget.name}?` : "Disconnect?"}
+                description="Syncs from this source will stop. Your existing data in the warehouse is not deleted. You can reconnect later."
+                confirmLabel="Disconnect"
+                cancelLabel="Cancel"
+                variant="danger"
+                onConfirm={confirmDisconnect}
+                onCancel={() => setDisconnectTarget(null)}
+            />
+
+            <ConnectSourceModal
+                isOpen={isSourceModalOpen}
+                onClose={() => setIsSourceModalOpen(false)}
+                integration={selectedIntegration}
+                connectedCatalogIds={connectedCatalogIdList}
+                previewMode={previewMode}
+            />
+
+            {/* P1: Fix It Modal for one-click reconnection */}
+            <FixConnectionModal
+                key={fixConnectionTarget?.id ?? "closed"}
+                isOpen={fixConnectionTarget !== null}
+                onClose={() => { setReconnectQueue([]); setFixConnectionTarget(null); }}
+                connection={fixConnectionTarget}
+                onReconnected={() => {
+                    if (reconnectQueue.length) {
+                        const [next, ...rest] = reconnectQueue;
+                        setReconnectQueue(rest);
+                        handleFixConnection(next);
+                    }
+                    // Refresh data after successful reconnection
+                    mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"));
+                    setSourceOutcome({
+                        kind: "success",
+                        title: "Connection restored",
+                        detail: "Authorization is ready. Existing Warehouse history was retained; run a sync when you want updated data.",
+                        action: { href: "/explorer", label: "View warehouse" },
+                    });
+                }}
+            />
+        </PageShell>
+    );
+}

@@ -4,3 +4,7 @@ d8c752dc349413c756985ffe816957d6766a3ac5:tests/e2e/seat-sharing-revocation.spec.
 
 # Empty documented environment variable; no credential value is present.
 36c522219726cbd2050136039af3dda3faa4a429:.env.example:generic-api-key:15
+
+# Deliberately fake credential used to verify evidence redaction. The scanner
+# reads this immutable C3 commit even after the fixture changes in later commits.
+c24c1ebb318749aca6a95a2fd67b54bd642849d9:src/lib/agent-console/routes.pg.integration.test.ts:generic-api-key:1011
