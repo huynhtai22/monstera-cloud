@@ -1,10 +1,10 @@
 /**
  * Geo → invoice currency for public pricing and Billing.
- * VN → VND (PayOS / VietQR). Everyone else → USD (Paddle). Never mix gates.
+ * VN → VND (PayOS / VietQR). Everyone else → USD (Polar for new checkout). Never mix gates.
  */
 
 export type PricingCurrency = "USD" | "VND";
-export type BillingGate = "paddle" | "vietqr_domestic";
+export type BillingGate = "polar" | "vietqr_domestic";
 
 export function pricingCurrencyFromCountry(country: string | null | undefined): PricingCurrency {
   return (country || "").toUpperCase() === "VN" ? "VND" : "USD";
@@ -30,5 +30,5 @@ export function resolvePricingGeo(opts: {
 }
 
 export function billingGateForCurrency(currency: PricingCurrency): BillingGate {
-  return currency === "VND" ? "vietqr_domestic" : "paddle";
+  return currency === "VND" ? "vietqr_domestic" : "polar";
 }
