@@ -86,7 +86,7 @@ describe("direct provider report routes use one authorized connector context", (
     }) as any;
     metaReportClient.getInsights = (async () => {
       observe("meta", "provider");
-      return [];
+      return [{ spend: "1.00" }];
     }) as any;
     googleAdsOAuthClient.refreshAccessToken = (async () => {
       observe("google", "refresh");

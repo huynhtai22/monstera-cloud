@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth-session';
 import { metaReportClient } from '@/lib/meta-ads';
+import { MetaProviderOutputError } from '@/lib/meta-ads-contract';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
@@ -52,6 +53,11 @@ export async function GET(
 
       if (status.async_status === 'Job Completed') {
         const rows = await metaReportClient.fetchAsyncResults(accessToken, reportRunId);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new MetaProviderOutputError(
+            'Meta async report completed without report rows; the requested output is unavailable.',
+          );
+        }
         return NextResponse.json({ status: 'COMPLETED', percent: 100, rows });
       }
 
@@ -64,8 +70,12 @@ export async function GET(
         percent: status.async_percent_completion,
       });
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    if (err instanceof MetaProviderOutputError) {
+      return NextResponse.json({ error: err.message }, { status: 502 });
+    }
     logger.error('[META_ADS_REPORT_POLL]', err);
-    return NextResponse.json({ error: err.message || 'Failed to check report status' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Failed to check report status';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
