@@ -92,7 +92,7 @@ test.describe("persisted agent onboarding (M2)", () => {
   test("first overview requires explicit review and never blends source currencies", async ({ page }) => {
     await db.user.update({ where: { id: userId }, data: { workProfileAnsweredAt: new Date(), workContext: "Prepare client reporting" } });
     const connection = await db.connection.create({ data: { workspaceId, name: "Local Meta fixture", provider: "meta_ads", type: "source", credentials: "local-fixture-only", remoteAccountId: userId } });
-    const run = await db.agentRun.create({ data: { workspaceId, initiatorUserId: userId, resumeKey: `onboarding:${userId}` } });
+    const run = await db.agentRun.create({ data: { workspaceId, initiatorUserId: userId, resumeKey: `onboarding:${userId}`, lastEventSequence: 1, version: 1, events: { create: { sequence: 1, type: "run_created", payload: { kind: "onboarding", goalId: "reporting" } } } } });
     const today = new Date(); today.setUTCDate(today.getUTCDate() - 1); const until = today.toISOString().slice(0, 10);
     for (const [accountId, currency, spend] of [["act_usd", "USD", 125], ["act_eur", "EUR", 80]] as const) await db.campaignMetric.create({ data: { workspaceId, connectionId: connection.id, platform: "meta_ads", accountId, currency, spend, date: new Date(`${until}T00:00:00Z`), level: "ad", entityId: accountId } });
     await db.agentTask.create({ data: { workspaceId, runId: run.id, provider: "meta_ads", taskKey: "connect:meta_ads", state: "ready", scopeRevision: 1, confirmedScope: { provider: "meta_ads", connectionId: connection.id, selectedAccountIds: ["act_empty_1", "act_empty_2", "act_empty_3", "act_usd", "act_eur"], since: until, until }, connections: { create: { connectionId: connection.id } } } });
